@@ -1,7 +1,7 @@
 name: Go lint and unit tests
 
 on:
-  workflow_call:
+  pull_request:
 
 permissions:
   contents: read
@@ -22,42 +22,36 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: './src/k8s/go.mod'
+          go-version-file: 'go.mod'
 
       - name: go mod download
-        working-directory: src/k8s
         run: go mod download
 
       - name: go fmt
-        working-directory: src/k8s
         run: make go.fmt
 
       - name: go doc
-        working-directory: src/k8s
         run: make go.doc
 
       - name: check diff
         run: |
           if ! [ -z "$(git diff)" ]; then
             echo "Detected changes that have not been committed to the repository"
-            echo "Please run 'cd src/k8s && make go.fmt go.doc'"
+            echo "Please run 'make go.fmt go.doc'"
             echo "git diff:"
             git diff
             exit 1
           fi
 
       - name: go vet
-        working-directory: src/k8s
         run: make go.vet
 
       - name: go test
-        working-directory: src/k8s
         # NOTE: there are a handful of tests checking/setting
         # root ownership so the tests must be run as root:
         run: sudo make go.unit
 
       - name: dqlite-for-golangci-lint
-        working-directory: src/k8s
         run: |
           sudo add-apt-repository ppa:dqlite/dev
           sudo apt update
@@ -67,7 +61,6 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.7.2
-          working-directory: src/k8s
 
   test-binary:
     name: Binaries
@@ -80,14 +73,12 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: './src/k8s/go.mod'
+          go-version-file: 'go.mod'
 
       - name: go mod download
-        working-directory: src/k8s
         run: go mod download
 
       - name: Build static binaries
-        working-directory: src/k8s
         run: |
           make -j static
 
@@ -96,7 +87,6 @@ jobs:
           ./bin/static/k8s-apiserver-proxy --help
 
       - name: Build shared binaries
-        working-directory: src/k8s
         run: |
           make -j dynamic
           export LD_LIBRARY_PATH=bin/dynamic/lib
