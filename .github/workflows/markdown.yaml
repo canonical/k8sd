@@ -1,0 +1,23 @@
+name: "Docs: Markdown lint"
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+
+permissions:
+  contents: read
+
+jobs:
+  markdown-lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          config: "docs/canonicalk8s/.sphinx/.markdownlint.json"
+          globs: |
+            docs/**/*.md
