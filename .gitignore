@@ -4,3 +4,6 @@
 /hack/.build
 /hack/.deps
 coverage.txt
+
+# Default output directory for generated documentation
+.docs/
