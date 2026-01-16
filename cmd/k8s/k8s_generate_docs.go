@@ -23,7 +23,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		Args:   cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			outPath := path.Join(opts.outputDir, "commands")
-			if err := os.MkdirAll(outPath, 0755); err != nil {
+			if err := os.MkdirAll(outPath, 0o755); err != nil {
 				cmd.PrintErrf("Error: Failed to create output directory %s.\n\nThe error was: %v\n", outPath, err)
 				env.Exit(1)
 				return
