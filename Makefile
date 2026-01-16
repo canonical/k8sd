@@ -2,6 +2,7 @@ DQLITE_BUILD_SCRIPTS_DIR ?= $(shell pwd)/hack
 TOOLS_DIR ?= $(shell pwd)/tools
 GO_SOURCES = $(shell find . -name '*.go')
 LOCALBIN ?= $(shell pwd)/bin
+DOCS_OUTPUT_DIR ?= .
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
@@ -24,7 +25,7 @@ go.unit:
 	$(DQLITE_BUILD_SCRIPTS_DIR)/static-go-test.sh -v ./pkg/... ./cmd/... -coverprofile=coverage.txt --cover
 
 go.doc: bin/static/k8s
-	bin/static/k8s generate-docs --output-dir ../../docs/canonicalk8s/_parts/ --project-dir .
+	bin/static/k8s generate-docs --output-dir $(DOCS_OUTPUT_DIR) --project-dir .
 
 ## Static Builds
 static: bin/static/k8s bin/static/k8sd bin/static/k8s-apiserver-proxy
