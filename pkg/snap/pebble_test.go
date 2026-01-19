@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/snap"
-	"github.com/canonical/k8s/pkg/snap/mock"
+	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
 )
 

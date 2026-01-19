@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/pkg/log"
 )
 
 // StartAsyncRestart initiates an asynchronous service restart process (defined

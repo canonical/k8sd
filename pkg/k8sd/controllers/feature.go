@@ -8,13 +8,13 @@ import (
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations"
 	upgradesv1alpha "github.com/canonical/k8s-snap-api/api/v1alpha"
-	"github.com/canonical/k8s/pkg/k8sd/features"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/snap"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
-	"github.com/canonical/k8s/pkg/utils"
-	timeutils "github.com/canonical/k8s/pkg/utils/time"
+	"github.com/canonical/k8sd/pkg/k8sd/features"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/utils"
+	timeutils "github.com/canonical/k8sd/pkg/utils/time"
 	"github.com/canonical/microcluster/v2/state"
 )
 

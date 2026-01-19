@@ -8,9 +8,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/snap"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/utils"
 )
 
 func Etcd(snap snap.Snap, name string, nodeIP net.IP, clientPort, peerPort int, initialClusterMembers map[string]string, extraArgs map[string]*string) error {

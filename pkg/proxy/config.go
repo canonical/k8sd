@@ -6,7 +6,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils"
 )
 
 // Configuration is the format of the apiserver proxy endpoints config file.

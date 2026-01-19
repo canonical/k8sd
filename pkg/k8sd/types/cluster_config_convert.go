@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils"
 )
 
 // ClusterConfigFromBootstrapConfig converts BootstrapConfig from public API into a ClusterConfig.

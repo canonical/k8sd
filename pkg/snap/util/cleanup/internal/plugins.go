@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/pkg/log"
 )
 
 var PluginDirs = []string{"/var/lib/kubelet/plugins/", "/var/lib/kubelet/plugins_registry/"}

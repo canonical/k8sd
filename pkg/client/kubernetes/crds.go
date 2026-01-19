@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	apicrds "github.com/canonical/k8s-snap-api/crds"
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/utils/control"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/utils/control"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

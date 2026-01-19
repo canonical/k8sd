@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/canonical/k8s/cmd/k8s"
-	k8s_apiserver_proxy "github.com/canonical/k8s/cmd/k8s-apiserver-proxy"
-	"github.com/canonical/k8s/cmd/k8sd"
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/cmd/k8s"
+	k8s_apiserver_proxy "github.com/canonical/k8sd/cmd/k8s-apiserver-proxy"
+	"github.com/canonical/k8sd/cmd/k8sd"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/spf13/cobra"
 )
 

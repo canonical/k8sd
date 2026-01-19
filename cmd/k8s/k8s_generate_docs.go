@@ -5,8 +5,8 @@ import (
 	"path"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/docgen"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/docgen"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 )

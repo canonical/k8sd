@@ -1,4 +1,4 @@
-module github.com/canonical/k8s
+module github.com/canonical/k8sd
 
 go 1.25.5
 

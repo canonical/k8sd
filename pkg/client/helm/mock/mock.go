@@ -3,7 +3,7 @@ package mock
 import (
 	"context"
 
-	"github.com/canonical/k8s/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/client/helm"
 )
 
 type MockApplyArguments struct {

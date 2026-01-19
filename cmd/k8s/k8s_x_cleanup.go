@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/k8sd/features"
-	"github.com/canonical/k8s/pkg/snap/util/cleanup"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/k8sd/features"
+	"github.com/canonical/k8sd/pkg/snap/util/cleanup"
 	"github.com/spf13/cobra"
 )
 

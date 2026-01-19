@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/pkg/k8sd/api/impl"
-	"github.com/canonical/k8s/pkg/snap"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/k8sd/api/impl"
+	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/state"
 )

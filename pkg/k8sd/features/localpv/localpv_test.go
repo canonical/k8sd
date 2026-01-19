@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/client/helm"
-	helmmock "github.com/canonical/k8s/pkg/client/helm/mock"
-	"github.com/canonical/k8s/pkg/k8sd/features/localpv"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	snapmock "github.com/canonical/k8s/pkg/snap/mock"
+	"github.com/canonical/k8sd/pkg/client/helm"
+	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
+	"github.com/canonical/k8sd/pkg/k8sd/features/localpv"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
 	"k8s.io/utils/ptr"
 )

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	pkiutil "github.com/canonical/k8s/pkg/utils/pki"
+	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 	. "github.com/onsi/gomega"
 )
 

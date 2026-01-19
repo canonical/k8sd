@@ -5,8 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 func RemoveKubeProxyRules(ctx context.Context, s snap.Snap) {

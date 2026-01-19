@@ -6,9 +6,9 @@ import (
 	"fmt"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/pkg/k8sd/features"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/k8sd/features"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 // SetSnapdFromK8sd uses snapctl to update the local snapd configuration with the new k8sd cluster configuration.

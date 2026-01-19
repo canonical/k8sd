@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/rsa"
 
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/go-logr/logr"
 	certv1 "k8s.io/api/certificates/v1"
 	ctrl "sigs.k8s.io/controller-runtime"

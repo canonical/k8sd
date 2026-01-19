@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/pkg/log"
 )
 
 type MountManager interface {

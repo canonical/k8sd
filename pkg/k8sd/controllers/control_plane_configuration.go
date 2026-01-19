@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/canonical/k8s/pkg/k8sd/pki"
-	"github.com/canonical/k8s/pkg/k8sd/setup"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/snap"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
-	"github.com/canonical/k8s/pkg/utils/control"
-	"github.com/canonical/k8s/pkg/utils/experimental/snapdconfig"
+	"github.com/canonical/k8sd/pkg/k8sd/pki"
+	"github.com/canonical/k8sd/pkg/k8sd/setup"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/utils/control"
+	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
 )
 
 // ControlPlaneConfigurationController watches for changes in the cluster configuration

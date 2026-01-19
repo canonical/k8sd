@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/snap/util/cleanup/internal"
-	mountutils "github.com/canonical/k8s/pkg/utils/mount"
+	"github.com/canonical/k8sd/pkg/snap/util/cleanup/internal"
+	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
 	. "github.com/onsi/gomega"
 )
 

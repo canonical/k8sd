@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 // Meta represents meta configuration that describes how to parse the snapd configuration values.

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/client/helm"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 const (

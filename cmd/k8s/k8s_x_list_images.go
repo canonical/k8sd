@@ -3,8 +3,8 @@ package k8s
 import (
 	"strings"
 
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/k8sd/images"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/k8sd/images"
 	"github.com/spf13/cobra"
 )
 

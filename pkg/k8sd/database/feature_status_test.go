@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/k8s/pkg/k8sd/database"
-	"github.com/canonical/k8s/pkg/k8sd/features"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	testenv "github.com/canonical/k8s/pkg/utils/microcluster"
+	"github.com/canonical/k8sd/pkg/k8sd/database"
+	"github.com/canonical/k8sd/pkg/k8sd/features"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
 	"github.com/canonical/microcluster/v2/state"
 	. "github.com/onsi/gomega"
 )

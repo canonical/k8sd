@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/microcluster/v2/state"
 )
 

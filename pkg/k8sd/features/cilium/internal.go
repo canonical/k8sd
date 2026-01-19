@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations/cilium"
-	"github.com/canonical/k8s/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
 )
 
 const (

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/k8sd/setup"
-	"github.com/canonical/k8s/pkg/snap"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/k8sd/setup"
+	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 )
 
 // startControlPlaneServices starts the control plane services based on the datastore type.

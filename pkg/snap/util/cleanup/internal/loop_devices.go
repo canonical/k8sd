@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/log"
-	mountutils "github.com/canonical/k8s/pkg/utils/mount"
+	"github.com/canonical/k8sd/pkg/log"
+	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
 )
 
 func RemoveLoopDevices(ctx context.Context, mountHelper mountutils.MountManager) {

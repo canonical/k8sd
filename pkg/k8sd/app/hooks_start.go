@@ -7,14 +7,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/canonical/k8s/pkg/k8sd/database"
-	databaseutil "github.com/canonical/k8s/pkg/k8sd/database/util"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/log"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
-	"github.com/canonical/k8s/pkg/utils"
-	"github.com/canonical/k8s/pkg/utils/control"
-	pkiutil "github.com/canonical/k8s/pkg/utils/pki"
+	"github.com/canonical/k8sd/pkg/k8sd/database"
+	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils/control"
+	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 	"github.com/canonical/microcluster/v2/state"
 )
 

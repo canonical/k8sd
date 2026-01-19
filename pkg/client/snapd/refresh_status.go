@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/canonical/k8s/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
 )
 
 type snapdChangeResponse struct {

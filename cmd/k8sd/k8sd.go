@@ -3,9 +3,9 @@ package k8sd
 import (
 	"time"
 
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/k8sd/app"
-	"github.com/canonical/k8s/pkg/log"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/k8sd/app"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/spf13/cobra"
 )
 

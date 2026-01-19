@@ -7,8 +7,8 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 // EnsureAllDirectories ensures all required configuration and state directories are created.

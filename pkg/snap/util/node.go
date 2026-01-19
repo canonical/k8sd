@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/canonical/k8s/pkg/snap"
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/utils"
 )
 
 func IsWorker(snap snap.Snap) (bool, error) {

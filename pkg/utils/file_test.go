@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 )
 

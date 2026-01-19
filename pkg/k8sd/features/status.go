@@ -3,7 +3,7 @@ package features
 import (
 	"context"
 
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 // StatusInterface defines the interface for checking the status of the built-in features.

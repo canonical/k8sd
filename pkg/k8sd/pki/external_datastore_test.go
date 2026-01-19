@@ -3,7 +3,7 @@ package pki_test
 import (
 	"testing"
 
-	"github.com/canonical/k8s/pkg/k8sd/pki"
+	"github.com/canonical/k8sd/pkg/k8sd/pki"
 )
 
 func TestExternalDatastorePKI_CheckCertificates(t *testing.T) {

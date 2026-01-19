@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/moby/sys/mountinfo"
 )
 

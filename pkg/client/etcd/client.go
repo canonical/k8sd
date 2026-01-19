@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	pkiutil "github.com/canonical/k8s/pkg/utils/pki"
+	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/canonical/k8s/pkg/k8sd/database"
+	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/state"
 )

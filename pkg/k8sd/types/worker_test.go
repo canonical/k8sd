@@ -3,7 +3,7 @@ package types_test
 import (
 	"testing"
 
-	"github.com/canonical/k8s/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
 	. "github.com/onsi/gomega"
 )
 

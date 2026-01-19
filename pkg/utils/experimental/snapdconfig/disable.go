@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/k8sd/features"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/k8sd/features"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 func Disable(ctx context.Context, s snap.Snap) error {

@@ -3,7 +3,7 @@ package netnsutils
 import (
 	"context"
 
-	mountutils "github.com/canonical/k8s/pkg/utils/mount"
+	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
 )
 
 type UnixNetworkNamespaceManager struct{}

@@ -3,10 +3,10 @@ package cleanup
 import (
 	"context"
 
-	"github.com/canonical/k8s/pkg/snap"
-	"github.com/canonical/k8s/pkg/snap/util/cleanup/internal"
-	mountutils "github.com/canonical/k8s/pkg/utils/mount"
-	netnsutils "github.com/canonical/k8s/pkg/utils/netns"
+	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/snap/util/cleanup/internal"
+	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
+	netnsutils "github.com/canonical/k8sd/pkg/utils/netns"
 )
 
 // [DANGER] Cleanup containers and runtime state. Note that the order of operations below is crucial.

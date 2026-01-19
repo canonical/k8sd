@@ -2,8 +2,8 @@ package k8s
 
 import (
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/utils"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/spf13/cobra"
 )
 

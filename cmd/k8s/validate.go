@@ -7,8 +7,8 @@ import (
 	"os/exec"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/snap"
 	"gopkg.in/yaml.v2"
 )
 

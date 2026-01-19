@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	databaseutil "github.com/canonical/k8s/pkg/k8sd/database/util"
-	"github.com/canonical/k8s/pkg/k8sd/setup"
-	"github.com/canonical/k8s/pkg/utils"
+	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
+	"github.com/canonical/k8sd/pkg/k8sd/setup"
+	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/state"
 )

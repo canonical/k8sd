@@ -4,7 +4,7 @@ import (
 	"context"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/pkg/client/k8sd"
+	"github.com/canonical/k8sd/pkg/client/k8sd"
 )
 
 // Mock is a mock implementation of k8sd.Client.

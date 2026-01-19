@@ -7,8 +7,8 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/utils"
-	pkiutil "github.com/canonical/k8s/pkg/utils/pki"
+	"github.com/canonical/k8sd/pkg/utils"
+	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 	certv1 "k8s.io/api/certificates/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 )

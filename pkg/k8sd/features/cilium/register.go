@@ -3,7 +3,7 @@ package cilium
 import (
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/k8sd/images"
+	"github.com/canonical/k8sd/pkg/k8sd/images"
 )
 
 func init() {

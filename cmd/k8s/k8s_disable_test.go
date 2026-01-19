@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/cmd/k8s"
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	k8sdmock "github.com/canonical/k8s/pkg/client/k8sd/mock"
-	"github.com/canonical/k8s/pkg/k8sd/features"
-	snapmock "github.com/canonical/k8s/pkg/snap/mock"
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/cmd/k8s"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	k8sdmock "github.com/canonical/k8sd/pkg/client/k8sd/mock"
+	"github.com/canonical/k8sd/pkg/k8sd/features"
+	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
+	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 )
 

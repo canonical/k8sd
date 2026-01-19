@@ -29,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils"
 )
 
 type remote struct {

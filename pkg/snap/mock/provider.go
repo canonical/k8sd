@@ -1,7 +1,7 @@
 package mock
 
 import (
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/microcluster/v2/microcluster"
 )
 

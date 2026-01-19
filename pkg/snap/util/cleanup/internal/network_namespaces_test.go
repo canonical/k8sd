@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/snap/util/cleanup/internal"
-	netnsutils "github.com/canonical/k8s/pkg/utils/netns"
+	"github.com/canonical/k8sd/pkg/snap/util/cleanup/internal"
+	netnsutils "github.com/canonical/k8sd/pkg/utils/netns"
 	. "github.com/onsi/gomega"
 )
 

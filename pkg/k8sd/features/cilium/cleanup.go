@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
