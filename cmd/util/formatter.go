@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/pkg/log"
 	"gopkg.in/yaml.v2"
 )
 

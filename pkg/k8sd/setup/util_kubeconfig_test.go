@@ -3,7 +3,7 @@ package setup_test
 import (
 	"testing"
 
-	"github.com/canonical/k8s/pkg/k8sd/setup"
+	"github.com/canonical/k8sd/pkg/k8sd/setup"
 	. "github.com/onsi/gomega"
 )
 

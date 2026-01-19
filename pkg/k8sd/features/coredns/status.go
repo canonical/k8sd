@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/snap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/canonical/k8s/pkg/client/kubernetes"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 func getNewK8sClientWithRetries(ctx context.Context, snapObj snap.Snap, admin bool) (*kubernetes.Client, error) {

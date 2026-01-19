@@ -6,12 +6,12 @@ import (
 	"net"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/client/helm"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/snap"
-	"github.com/canonical/k8s/pkg/utils"
-	"github.com/canonical/k8s/pkg/utils/control"
+	"github.com/canonical/k8sd/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/microcluster/v2/state"
 )
 

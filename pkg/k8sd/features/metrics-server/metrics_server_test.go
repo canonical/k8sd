@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations/metrics-server"
-	"github.com/canonical/k8s/pkg/client/helm"
-	helmmock "github.com/canonical/k8s/pkg/client/helm/mock"
-	metrics_server "github.com/canonical/k8s/pkg/k8sd/features/metrics-server"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	snapmock "github.com/canonical/k8s/pkg/snap/mock"
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/client/helm"
+	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
+	metrics_server "github.com/canonical/k8sd/pkg/k8sd/features/metrics-server"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
+	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 )
 

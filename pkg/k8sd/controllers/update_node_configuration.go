@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/client/kubernetes"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/snap"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
-	pkiutil "github.com/canonical/k8s/pkg/utils/pki"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 )
 
 // UpdateNodeConfigurationController asynchronously performs updates of the cluster config.

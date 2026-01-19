@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/k8s/pkg/k8sd/pki"
-	pkiutil "github.com/canonical/k8s/pkg/utils/pki"
+	"github.com/canonical/k8sd/pkg/k8sd/pki"
+	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 )

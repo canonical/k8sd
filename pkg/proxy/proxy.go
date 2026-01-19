@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/pkg/log"
 )
 
 func startProxy(ctx context.Context, listenURL string, endpointURLs []string) error {

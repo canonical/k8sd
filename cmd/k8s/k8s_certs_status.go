@@ -8,7 +8,7 @@ import (
 	"time"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	cmdutil "github.com/canonical/k8s/cmd/util"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/util/duration"
 )

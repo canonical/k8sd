@@ -3,8 +3,8 @@ package k8s_apiserver_proxy
 import (
 	"time"
 
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/proxy"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/proxy"
 	"github.com/spf13/cobra"
 )
 

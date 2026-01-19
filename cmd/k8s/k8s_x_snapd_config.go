@@ -5,9 +5,9 @@ import (
 	"time"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/utils/control"
-	"github.com/canonical/k8s/pkg/utils/experimental/snapdconfig"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/utils/control"
+	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
 	"github.com/spf13/cobra"
 )
 

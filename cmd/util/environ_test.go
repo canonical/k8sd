@@ -3,7 +3,7 @@ package cmdutil_test
 import (
 	"testing"
 
-	cmdutil "github.com/canonical/k8s/cmd/util"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
 	. "github.com/onsi/gomega"
 )
 

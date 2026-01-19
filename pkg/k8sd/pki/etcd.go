@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	pkiutil "github.com/canonical/k8s/pkg/utils/pki"
+	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 )
 
 // EtcdPKI is a list of certificates required by the etcd datastore.

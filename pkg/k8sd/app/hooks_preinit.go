@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/shared"
 	microclusterTypes "github.com/canonical/microcluster/v2/rest/types"
 	"github.com/canonical/microcluster/v2/state"

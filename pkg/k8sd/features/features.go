@@ -1,6 +1,6 @@
 package features
 
-import "github.com/canonical/k8s/pkg/k8sd/types"
+import "github.com/canonical/k8sd/pkg/k8sd/types"
 
 const (
 	DNS           types.FeatureName = "dns"

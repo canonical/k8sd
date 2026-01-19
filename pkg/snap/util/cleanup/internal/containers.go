@@ -5,8 +5,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/utils/shims"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/utils/shims"
 )
 
 func RemoveContainers(ctx context.Context) {

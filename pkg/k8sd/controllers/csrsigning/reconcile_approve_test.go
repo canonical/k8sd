@@ -8,9 +8,9 @@ import (
 	"errors"
 	"testing"
 
-	k8smock "github.com/canonical/k8s/pkg/k8sd/controllers/csrsigning/test"
-	"github.com/canonical/k8s/pkg/log"
-	pkiutil "github.com/canonical/k8s/pkg/utils/pki"
+	k8smock "github.com/canonical/k8sd/pkg/k8sd/controllers/csrsigning/test"
+	"github.com/canonical/k8sd/pkg/log"
+	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 	. "github.com/onsi/gomega"
 	certv1 "k8s.io/api/certificates/v1"
 	v1 "k8s.io/api/core/v1"

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	cmdutil "github.com/canonical/k8s/cmd/util"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/spf13/cobra"
 )
 

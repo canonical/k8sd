@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/snap/mock"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
 )

@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/log"
-	netnsutils "github.com/canonical/k8s/pkg/utils/netns"
+	"github.com/canonical/k8sd/pkg/log"
+	netnsutils "github.com/canonical/k8sd/pkg/utils/netns"
 )
 
 func RemoveNetworkNamespaces(ctx context.Context, netnsHelper netnsutils.NetworkNamespaceManager) {

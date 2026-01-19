@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/k8sd/database"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/utils"
-	testenv "github.com/canonical/k8s/pkg/utils/microcluster"
+	"github.com/canonical/k8sd/pkg/k8sd/database"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/utils"
+	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
 	"github.com/canonical/microcluster/v2/state"
 	. "github.com/onsi/gomega"
 )

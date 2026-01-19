@@ -1,7 +1,7 @@
 package k8s
 
 import (
-	"github.com/canonical/k8s/pkg/utils/shims"
+	"github.com/canonical/k8sd/pkg/utils/shims"
 	"github.com/spf13/cobra"
 )
 

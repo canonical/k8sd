@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/pkg/snap"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
-	nodeutil "github.com/canonical/k8s/pkg/utils/node"
+	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	nodeutil "github.com/canonical/k8sd/pkg/utils/node"
 	"github.com/canonical/microcluster/v2/state"
 )
 

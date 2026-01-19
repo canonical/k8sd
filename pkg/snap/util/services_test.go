@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/snap/mock"
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/snap/mock"
+	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 )
 

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/k8sd/database"
+	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/microcluster/v2/state"
 )
 

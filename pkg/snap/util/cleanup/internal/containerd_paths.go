@@ -6,9 +6,9 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/snap"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 )
 
 // TryCleanupContainerdPaths attempts to clean up all containerd directories which were

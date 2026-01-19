@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

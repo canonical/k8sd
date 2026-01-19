@@ -4,13 +4,13 @@ import (
 	"context"
 	"strings"
 
-	"github.com/canonical/k8s/pkg/client/dqlite"
-	"github.com/canonical/k8s/pkg/client/etcd"
-	"github.com/canonical/k8s/pkg/client/helm"
-	"github.com/canonical/k8s/pkg/client/k8sd"
-	"github.com/canonical/k8s/pkg/client/kubernetes"
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/client/dqlite"
+	"github.com/canonical/k8sd/pkg/client/etcd"
+	"github.com/canonical/k8sd/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/client/k8sd"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/snap"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 )
 

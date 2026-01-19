@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/k8sd/api"
-	"github.com/canonical/k8s/pkg/k8sd/database"
-	testenv "github.com/canonical/k8s/pkg/utils/microcluster"
+	"github.com/canonical/k8sd/pkg/k8sd/api"
+	"github.com/canonical/k8sd/pkg/k8sd/database"
+	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
 	"github.com/canonical/microcluster/v2/state"
 	. "github.com/onsi/gomega"
 )

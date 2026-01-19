@@ -3,8 +3,8 @@ package features
 import (
 	"context"
 
-	"github.com/canonical/k8s/pkg/k8sd/types"
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/microcluster/v2/state"
 )
 

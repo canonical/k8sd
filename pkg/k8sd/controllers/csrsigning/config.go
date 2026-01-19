@@ -2,7 +2,7 @@ package csrsigning
 
 import (
 	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations/csrsigning"
-	"github.com/canonical/k8s/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
 )
 
 type internalConfig struct {

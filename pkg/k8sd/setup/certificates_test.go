@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/k8sd/pki"
-	"github.com/canonical/k8s/pkg/k8sd/setup"
-	"github.com/canonical/k8s/pkg/snap/mock"
+	"github.com/canonical/k8sd/pkg/k8sd/pki"
+	"github.com/canonical/k8sd/pkg/k8sd/setup"
+	"github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
 )
 

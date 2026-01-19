@@ -3,7 +3,7 @@ package upgrade
 import (
 	"fmt"
 
-	"github.com/canonical/k8s/pkg/version"
+	"github.com/canonical/k8sd/pkg/version"
 )
 
 // GetName returns the name of the upgrade resource based on the version info.

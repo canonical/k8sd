@@ -10,14 +10,14 @@ import (
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations"
 	upgradesv1alpha "github.com/canonical/k8s-snap-api/api/v1alpha"
-	databaseutil "github.com/canonical/k8s/pkg/k8sd/database/util"
-	"github.com/canonical/k8s/pkg/log"
-	snaputil "github.com/canonical/k8s/pkg/snap/util"
-	upgradepkg "github.com/canonical/k8s/pkg/upgrade"
-	"github.com/canonical/k8s/pkg/utils"
-	"github.com/canonical/k8s/pkg/utils/control"
-	"github.com/canonical/k8s/pkg/utils/experimental/snapdconfig"
-	"github.com/canonical/k8s/pkg/version"
+	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
+	"github.com/canonical/k8sd/pkg/log"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	upgradepkg "github.com/canonical/k8sd/pkg/upgrade"
+	"github.com/canonical/k8sd/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils/control"
+	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
+	"github.com/canonical/k8sd/pkg/version"
 	"github.com/canonical/microcluster/v2/state"
 )
 

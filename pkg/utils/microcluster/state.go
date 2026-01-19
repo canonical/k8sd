@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/canonical/k8s/pkg/k8sd/app"
-	"github.com/canonical/k8s/pkg/snap/mock"
+	"github.com/canonical/k8sd/pkg/k8sd/app"
+	"github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/microcluster/v2/state"
 )
 

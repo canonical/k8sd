@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/client/dqlite"
+	"github.com/canonical/k8sd/pkg/client/dqlite"
 	. "github.com/onsi/gomega"
 )
 

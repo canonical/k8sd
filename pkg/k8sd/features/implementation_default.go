@@ -1,11 +1,11 @@
 package features
 
 import (
-	"github.com/canonical/k8s/pkg/k8sd/features/cilium"
-	"github.com/canonical/k8s/pkg/k8sd/features/coredns"
-	"github.com/canonical/k8s/pkg/k8sd/features/localpv"
-	"github.com/canonical/k8s/pkg/k8sd/features/metallb"
-	metrics_server "github.com/canonical/k8s/pkg/k8sd/features/metrics-server"
+	"github.com/canonical/k8sd/pkg/k8sd/features/cilium"
+	"github.com/canonical/k8sd/pkg/k8sd/features/coredns"
+	"github.com/canonical/k8sd/pkg/k8sd/features/localpv"
+	"github.com/canonical/k8sd/pkg/k8sd/features/metallb"
+	metrics_server "github.com/canonical/k8sd/pkg/k8sd/features/metrics-server"
 )
 
 // Default implements the Canonical Kubernetes built-in features.

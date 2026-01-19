@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/pkg/log"
-	"github.com/canonical/k8s/pkg/utils/control"
+	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/lxd/shared/api"
 	"github.com/canonical/microcluster/v2/rest/types"
 )

@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/canonical/k8s/pkg/k8sd/app"
+	"github.com/canonical/k8sd/pkg/k8sd/app"
 	. "github.com/onsi/gomega"
 )
 

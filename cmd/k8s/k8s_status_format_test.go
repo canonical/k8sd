@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	"github.com/canonical/k8s/cmd/k8s"
+	"github.com/canonical/k8sd/cmd/k8s"
 	. "github.com/onsi/gomega"
 )
 

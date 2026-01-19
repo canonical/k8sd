@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/canonical/k8s/pkg/utils/control"
+	"github.com/canonical/k8sd/pkg/utils/control"
 )
 
 func (c *Client) RemoveNodeByAddress(ctx context.Context, address string) error {

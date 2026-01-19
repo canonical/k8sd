@@ -1,9 +1,9 @@
 package app
 
 import (
-	"github.com/canonical/k8s/pkg/k8sd/api"
-	"github.com/canonical/k8s/pkg/snap"
-	"github.com/canonical/k8s/pkg/utils"
+	"github.com/canonical/k8sd/pkg/k8sd/api"
+	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/microcluster/v2/microcluster"
 )
 

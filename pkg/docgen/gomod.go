@@ -75,7 +75,7 @@ func getGoPackageDir(packageName string, projectDir string) (string, error) {
 		return "", fmt.Errorf("could not retrieve package dir, no package name specified.")
 	}
 
-	if strings.HasPrefix(packageName, "github.com/canonical/k8s/") {
+	if strings.HasPrefix(packageName, "github.com/canonical/k8sd/") {
 		return strings.Replace(packageName, "github.com/canonical/k8s", projectDir, 1), nil
 	}
 

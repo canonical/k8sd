@@ -3,7 +3,7 @@ package features
 import (
 	"context"
 
-	"github.com/canonical/k8s/pkg/snap"
+	"github.com/canonical/k8sd/pkg/snap"
 )
 
 type CleanupInterface interface {

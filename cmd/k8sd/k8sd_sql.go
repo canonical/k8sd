@@ -1,8 +1,8 @@
 package k8sd
 
 import (
-	cmdutil "github.com/canonical/k8s/cmd/util"
-	"github.com/canonical/k8s/pkg/k8sd/app"
+	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/k8sd/app"
 	"github.com/spf13/cobra"
 )
 

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/canonical/k8s/pkg/log"
+	"github.com/canonical/k8sd/pkg/log"
 )
 
 // APIServerProxy is a TCP proxy that forwards requests to the API Servers of the cluster.

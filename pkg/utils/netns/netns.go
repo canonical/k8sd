@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/canonical/k8s/pkg/log"
-	mountutils "github.com/canonical/k8s/pkg/utils/mount"
+	"github.com/canonical/k8sd/pkg/log"
+	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
 	"golang.org/x/sys/unix"
 )
 
