@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
@@ -12,7 +13,7 @@ import (
 func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
-		bootstrap    apiv1.BootstrapConfig
+		bootstrap    apiv2.BootstrapConfig
 		expectConfig types.ClusterConfig
 	}{
 		{
@@ -28,7 +29,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 		},
 		{
 			name: "DisableRBAC",
-			bootstrap: apiv1.BootstrapConfig{
+			bootstrap: apiv2.BootstrapConfig{
 				DisableRBAC: utils.Pointer(true),
 			},
 			expectConfig: types.ClusterConfig{
@@ -41,8 +42,8 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "K8sDqliteDefault",
-			bootstrap: apiv1.BootstrapConfig{
+			name: "EtcdDefault",
+			bootstrap: apiv2.BootstrapConfig{
 				DatastoreType: utils.Pointer(""),
 			},
 			expectConfig: types.ClusterConfig{
@@ -55,24 +56,8 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "K8sDqlite",
-			bootstrap: apiv1.BootstrapConfig{
-				DatastoreType: utils.Pointer("k8s-dqlite"),
-				K8sDqlitePort: utils.Pointer(9090),
-			},
-			expectConfig: types.ClusterConfig{
-				APIServer: types.APIServer{
-					AuthorizationMode: utils.Pointer("Node,RBAC"),
-				},
-				Datastore: types.Datastore{
-					Type:          utils.Pointer("k8s-dqlite"),
-					K8sDqlitePort: utils.Pointer(9090),
-				},
-			},
-		},
-		{
 			name: "ExternalDatastore",
-			bootstrap: apiv1.BootstrapConfig{
+			bootstrap: apiv2.BootstrapConfig{
 				DatastoreType:       utils.Pointer("external"),
 				DatastoreServers:    []string{"https://10.0.0.1:2379", "https://10.0.0.2:2379"},
 				DatastoreCACert:     utils.Pointer("CA DATA"),
@@ -94,7 +79,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 		},
 		{
 			name: "EtcdDatastore",
-			bootstrap: apiv1.BootstrapConfig{
+			bootstrap: apiv2.BootstrapConfig{
 				DatastoreType: utils.Pointer("etcd"),
 				EtcdPort:      utils.Pointer(12379),
 				EtcdPeerPort:  utils.Pointer(12380),
@@ -112,7 +97,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 		},
 		{
 			name: "Full",
-			bootstrap: apiv1.BootstrapConfig{
+			bootstrap: apiv2.BootstrapConfig{
 				ClusterConfig: apiv1.UserFacingClusterConfig{
 					Annotations: map[string]string{
 						"key": "value",
@@ -203,7 +188,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 		},
 		{
 			name: "ControlPlainTaints",
-			bootstrap: apiv1.BootstrapConfig{
+			bootstrap: apiv2.BootstrapConfig{
 				ControlPlaneTaints: []string{"node-role.kubernetes.io/control-plane:NoSchedule"},
 			},
 			expectConfig: types.ClusterConfig{
@@ -231,53 +216,17 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 	t.Run("Invalid", func(t *testing.T) {
 		for _, tc := range []struct {
 			name      string
-			bootstrap apiv1.BootstrapConfig
+			bootstrap apiv2.BootstrapConfig
 		}{
 			{
-				name: "K8sDqliteWithExternalServers",
-				bootstrap: apiv1.BootstrapConfig{
-					DatastoreType:    utils.Pointer(""),
-					DatastoreServers: []string{"http://10.0.0.1:2379"},
-				},
-			},
-			{
-				name: "K8sDqliteWithExternalCA",
-				bootstrap: apiv1.BootstrapConfig{
-					DatastoreType:   utils.Pointer(""),
-					DatastoreCACert: utils.Pointer("CA DATA"),
-				},
-			},
-			{
-				name: "K8sDqliteWithExternalClientCert",
-				bootstrap: apiv1.BootstrapConfig{
-					DatastoreType:       utils.Pointer(""),
-					DatastoreClientCert: utils.Pointer("CERT DATA"),
-				},
-			},
-			{
-				name: "K8sDqliteWithExternalClientKey",
-				bootstrap: apiv1.BootstrapConfig{
-					DatastoreType:      utils.Pointer(""),
-					DatastoreClientKey: utils.Pointer("KEY DATA"),
-				},
-			},
-			{
-				name: "ExternalWithK8sDqlitePort",
-				bootstrap: apiv1.BootstrapConfig{
-					DatastoreType:    utils.Pointer("external"),
-					DatastoreServers: []string{"http://10.0.0.1:2379"},
-					K8sDqlitePort:    utils.Pointer(18080),
-				},
-			},
-			{
 				name: "ExternalWithoutServers",
-				bootstrap: apiv1.BootstrapConfig{
+				bootstrap: apiv2.BootstrapConfig{
 					DatastoreType: utils.Pointer("external"),
 				},
 			},
 			{
 				name: "UnsupportedDatastore",
-				bootstrap: apiv1.BootstrapConfig{
+				bootstrap: apiv2.BootstrapConfig{
 					DatastoreType: utils.Pointer("unknown"),
 				},
 			},

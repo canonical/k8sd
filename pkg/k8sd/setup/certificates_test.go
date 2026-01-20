@@ -11,36 +11,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// TestEnsureK8sDqlitePKI tests the EnsureK8sDqlitePKI function.
-func TestEnsureK8sDqlitePKI(t *testing.T) {
-	g := NewWithT(t)
-	tempDir := t.TempDir()
-	mock := &mock.Snap{
-		Mock: mock.Mock{
-			K8sDqliteStateDir: tempDir,
-			UID:               os.Getuid(),
-			GID:               os.Getgid(),
-		},
-	}
-	certificates := &pki.K8sDqlitePKI{
-		K8sDqliteCert: "dqlite_cert",
-		K8sDqliteKey:  "dqlite_key",
-	}
-
-	_, err := setup.EnsureK8sDqlitePKI(mock, certificates)
-	g.Expect(err).To(Not(HaveOccurred()))
-
-	expectedFiles := []string{
-		filepath.Join(tempDir, "cluster.crt"),
-		filepath.Join(tempDir, "cluster.key"),
-	}
-
-	for _, file := range expectedFiles {
-		_, err := os.Stat(file)
-		g.Expect(err).To(Not(HaveOccurred()))
-	}
-}
-
 // TestEnsureControlPlanePKI tests the EnsureControlPlanePKI function.
 func TestEnsureControlPlanePKI(t *testing.T) {
 	g := NewWithT(t)
@@ -211,9 +181,9 @@ func TestEmptyCert(t *testing.T) {
 	tempDir := t.TempDir()
 	mock := &mock.Snap{
 		Mock: mock.Mock{
-			K8sDqliteStateDir: tempDir,
-			UID:               os.Getuid(),
-			GID:               os.Getgid(),
+			K8sdStateDir: tempDir,
+			UID:          os.Getuid(),
+			GID:          os.Getgid(),
 		},
 	}
 
@@ -222,22 +192,22 @@ func TestEmptyCert(t *testing.T) {
 		filepath.Join(tempDir, "cluster.key"),
 	}
 
-	certificates := &pki.K8sDqlitePKI{
-		K8sDqliteCert: "dqlite-cert",
-		K8sDqliteKey:  "dqlite-key",
+	certificates := &pki.EtcdPKI{
+		ServerCert: "server-cert",
+		ServerKey:  "server-key",
 	}
 
 	// Should create files
-	_, err := setup.EnsureK8sDqlitePKI(mock, certificates)
+	_, err := setup.EnsureEtcdPKI(mock, certificates)
 	g.Expect(err).To(Not(HaveOccurred()))
 
-	certificates = &pki.K8sDqlitePKI{
-		K8sDqliteCert: "",
-		K8sDqliteKey:  "",
+	certificates = &pki.EtcdPKI{
+		ServerCert: "",
+		ServerKey:  "",
 	}
 
 	// Should delete files
-	_, err = setup.EnsureK8sDqlitePKI(mock, certificates)
+	_, err = setup.EnsureEtcdPKI(mock, certificates)
 	g.Expect(err).To(Not(HaveOccurred()))
 
 	for _, file := range expectedFiles {

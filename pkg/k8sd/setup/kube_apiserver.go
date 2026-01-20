@@ -19,7 +19,7 @@ type apiserverAuthTokenWebhookTemplateConfig struct {
 	CAPath string
 }
 
-var SupportedDatastores = []string{"k8s-dqlite", "external"}
+var SupportedDatastores = []string{"etcd", "external"}
 
 var (
 	apiserverAuthTokenWebhookTemplate = mustTemplate("apiserver", "auth-token-webhook.conf")
@@ -79,7 +79,7 @@ func KubeAPIServer(snap snap.Snap, securePort int, nodeIP net.IP, serviceCIDR st
 	}
 
 	switch datastore.GetType() {
-	case "k8s-dqlite", "etcd", "external":
+	case "etcd", "external":
 	default:
 		return fmt.Errorf("unsupported datastore %s, must be one of %v", datastore.GetType(), SupportedDatastores)
 	}

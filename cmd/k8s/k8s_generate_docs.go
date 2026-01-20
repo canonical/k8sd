@@ -5,6 +5,7 @@ import (
 	"path"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/docgen"
 	"github.com/spf13/cobra"
@@ -36,7 +37,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			outPath = path.Join(opts.outputDir, "bootstrap_config.md")
-			err := docgen.MarkdownFromJsonStructToFile(apiv1.BootstrapConfig{}, outPath, opts.projectDir)
+			err := docgen.MarkdownFromJsonStructToFile(apiv2.BootstrapConfig{}, outPath, opts.projectDir)
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to generate markdown documentation for bootstrap configuration\n\n")
 				cmd.PrintErrf("Error: %v", err)
@@ -45,7 +46,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			outPath = path.Join(opts.outputDir, "control_plane_join_config.md")
-			err = docgen.MarkdownFromJsonStructToFile(apiv1.ControlPlaneJoinConfig{}, outPath, opts.projectDir)
+			err = docgen.MarkdownFromJsonStructToFile(apiv2.ControlPlaneJoinConfig{}, outPath, opts.projectDir)
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to generate markdown documentation for ctrl plane join configuration\n\n")
 				cmd.PrintErrf("Error: %v", err)

@@ -8,6 +8,7 @@ import (
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
 	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations"
+	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
@@ -25,7 +26,7 @@ var (
 type testCase struct {
 	name           string
 	yamlConfig     string
-	expectedConfig apiv1.BootstrapConfig
+	expectedConfig apiv2.BootstrapConfig
 	expectedError  string
 }
 
@@ -33,7 +34,7 @@ var testCases = []testCase{
 	{
 		name:       "FullConfig",
 		yamlConfig: bootstrapConfigFull,
-		expectedConfig: apiv1.BootstrapConfig{
+		expectedConfig: apiv2.BootstrapConfig{
 			ClusterConfig: apiv1.UserFacingClusterConfig{
 				Network: apiv1.NetworkConfig{
 					Enabled: utils.Pointer(true),
@@ -72,8 +73,7 @@ var testCases = []testCase{
 			ServiceCIDR:                        utils.Pointer("10.200.0.0/16"),
 			DisableRBAC:                        utils.Pointer(false),
 			SecurePort:                         utils.Pointer(6443),
-			K8sDqlitePort:                      utils.Pointer(9090),
-			DatastoreType:                      utils.Pointer("k8s-dqlite"),
+			DatastoreType:                      utils.Pointer("etcd"),
 			ExtraSANs:                          []string{"custom.kubernetes"},
 			ExtraNodeConfigFiles:               map[string]string{"extra-node-config-file.yaml": "test-file-content"},
 			ExtraNodeKubeAPIServerArgs:         map[string]*string{"--extra-kube-apiserver-arg": utils.Pointer("extra-kube-apiserver-value")},
@@ -82,13 +82,12 @@ var testCases = []testCase{
 			ExtraNodeKubeProxyArgs:             map[string]*string{"--extra-kube-proxy-arg": utils.Pointer("extra-kube-proxy-value")},
 			ExtraNodeKubeletArgs:               map[string]*string{"--extra-kubelet-arg": utils.Pointer("extra-kubelet-value")},
 			ExtraNodeContainerdArgs:            map[string]*string{"--extra-containerd-arg": utils.Pointer("extra-containerd-value")},
-			ExtraNodeK8sDqliteArgs:             map[string]*string{"--extra-k8s-dqlite-arg": utils.Pointer("extra-k8s-dqlite-value")},
 		},
 	},
 	{
 		name:       "SomeConfig",
 		yamlConfig: bootstrapConfigSome,
-		expectedConfig: apiv1.BootstrapConfig{
+		expectedConfig: apiv2.BootstrapConfig{
 			PodCIDR:     utils.Pointer("10.100.0.0/16"),
 			ServiceCIDR: utils.Pointer("10.152.200.0/24"),
 		},
@@ -152,6 +151,6 @@ func TestGetConfigFromYaml_Stdin(t *testing.T) {
 	config, err := getConfigFromYaml(env, "-")
 	g.Expect(err).ToNot(HaveOccurred())
 
-	expectedConfig := apiv1.BootstrapConfig{SecurePort: utils.Pointer(5000)}
+	expectedConfig := apiv2.BootstrapConfig{SecurePort: utils.Pointer(5000)}
 	g.Expect(config).To(Equal(expectedConfig))
 }

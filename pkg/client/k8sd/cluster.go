@@ -6,11 +6,12 @@ import (
 	"time"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
 )
 
-func (c *k8sd) BootstrapCluster(ctx context.Context, request apiv1.BootstrapClusterRequest) (apiv1.BootstrapClusterResponse, error) {
+func (c *k8sd) BootstrapCluster(ctx context.Context, request apiv2.BootstrapClusterRequest) (apiv2.BootstrapClusterResponse, error) {
 	if err := c.app.Ready(ctx); err != nil {
-		return apiv1.BootstrapClusterResponse{}, fmt.Errorf("k8sd is not ready: %w", err)
+		return apiv2.BootstrapClusterResponse{}, fmt.Errorf("k8sd is not ready: %w", err)
 	}
 
 	// NOTE(neoaggelos): microcluster adds an arbitrary 30 second timeout in case no context deadline is set.
@@ -18,7 +19,7 @@ func (c *k8sd) BootstrapCluster(ctx context.Context, request apiv1.BootstrapClus
 	ctx, cancel := context.WithTimeout(ctx, request.Timeout+30*time.Second)
 	defer cancel()
 
-	return query(ctx, c, "POST", apiv1.BootstrapClusterRPC, request, &apiv1.BootstrapClusterResponse{})
+	return query(ctx, c, "POST", apiv1.BootstrapClusterRPC, request, &apiv2.BootstrapClusterResponse{})
 }
 
 func (c *k8sd) JoinCluster(ctx context.Context, request apiv1.JoinClusterRequest) error {

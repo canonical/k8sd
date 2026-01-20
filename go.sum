@@ -38,8 +38,8 @@ github.com/canonical/go-dqlite/v2 v2.0.1 h1:C5A+MioYkjew5rG8apjVYwGYIpKKkkC1FlnL
 github.com/canonical/go-dqlite/v2 v2.0.1/go.mod h1:IaIC8u4Z1UmPjuAqPzA2r83YMaMHRLoKZdHKI5uHCJI=
 github.com/canonical/go-dqlite/v3 v3.0.3 h1:JkdMD+f21yuPcS+r6gzO57lBkU5U76xmWyk8uT/eruI=
 github.com/canonical/go-dqlite/v3 v3.0.3/go.mod h1:6O+E6MiYesijRUOECyywp16iT+N4QOrvjDWWiMJ/xF0=
-github.com/canonical/k8s-snap-api v1.2.0 h1:bFddXgrRiMlmwxGh/n12pZYpPzDIr9av5IK8K4D+fss=
-github.com/canonical/k8s-snap-api v1.2.0/go.mod h1:AKPg4cCH8qPUkuojVHBpmX5z+Mc9WuyEJ8fgpKymMCI=
+github.com/canonical/k8s-snap-api v1.2.1-0.20260120144633-e8f253992d39 h1:vDViCAImDRJROjd+XEAoK2ffHGegFmIxEpvdjBNoy2Q=
+github.com/canonical/k8s-snap-api v1.2.1-0.20260120144633-e8f253992d39/go.mod h1:AKPg4cCH8qPUkuojVHBpmX5z+Mc9WuyEJ8fgpKymMCI=
 github.com/canonical/lxd v0.0.0-20260115083613-b39fc6efb943 h1:/sEOjEr3/8e2EPsJ2CDRwSu9EW1SHiXtgPcauKFSdEA=
 github.com/canonical/lxd v0.0.0-20260115083613-b39fc6efb943/go.mod h1:uUlvW6INYMPR3gOwFSgdeeYWIPm/R89R3xkmdKbtz2Y=
 github.com/canonical/microcluster/v2 v2.2.2 h1:aeec4I9xXkcIAGrSQo+nNvdoH/cD6kq6lYxesYKuBdE=

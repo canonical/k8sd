@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	"gopkg.in/yaml.v2"
@@ -14,11 +15,11 @@ import (
 
 type runCommand func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
 
-func verifyBootstrapConfig(bootstrapConfig apiv1.BootstrapConfig) error {
+func verifyBootstrapConfig(bootstrapConfig apiv2.BootstrapConfig) error {
 	return verifyBootstrapConfigWithRunCommand(bootstrapConfig, nil)
 }
 
-func verifyBootstrapConfigWithRunCommand(bootstrapConfig apiv1.BootstrapConfig, run runCommand) error {
+func verifyBootstrapConfigWithRunCommand(bootstrapConfig apiv2.BootstrapConfig, run runCommand) error {
 	cfg, err := types.ClusterConfigFromBootstrapConfig(bootstrapConfig)
 	if err != nil {
 		return err
@@ -60,7 +61,7 @@ func verifyJoinConfigWithRunCommand(joinConfigString, token string, run runComma
 		return verifyConfig(cfg, svcConfigs, joinConfig.ContainerdBaseDir, false, run)
 	}
 
-	var joinConfig apiv1.ControlPlaneJoinConfig
+	var joinConfig apiv2.ControlPlaneJoinConfig
 	if err := yaml.UnmarshalStrict([]byte(joinConfigString), &joinConfig); err != nil {
 		return fmt.Errorf("failed to unmarshal control plane join config: %w", err)
 	}

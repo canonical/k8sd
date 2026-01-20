@@ -4,9 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
@@ -24,7 +22,7 @@ import (
 )
 
 // postClusterRemove handles requests to remove a node from the cluster.
-// It will remove the node from etcd/k8s-dqlite, microcluster and from Kubernetes.
+// It will remove the node from etcd, microcluster and from Kubernetes.
 // If force is true, the node is removed on a best-effort basis even if it is not reachable.
 func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.Response {
 	snap := e.provider.Snap()
@@ -103,10 +101,6 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 
 func removeNodeFromDatastore(ctx context.Context, s state.State, snap snap.Snap, nodeName string, clusterConfig types.ClusterConfig) error {
 	switch clusterConfig.Datastore.GetType() {
-	case "k8s-dqlite":
-		if err := removeNodeFromK8sDqlite(ctx, s, snap, nodeName, clusterConfig); err != nil {
-			return fmt.Errorf("failed to remove node from k8s-dqlite cluster: %w", err)
-		}
 	case "etcd":
 		if err := removeNodeFromEtcd(ctx, snap, s, clusterConfig, nodeName); err != nil {
 			return fmt.Errorf("failed to remove node from etcd cluster: %w", err)
@@ -116,99 +110,6 @@ func removeNodeFromDatastore(ctx context.Context, s state.State, snap snap.Snap,
 	default:
 	}
 
-	return nil
-}
-
-func removeNodeFromK8sDqlite(ctx context.Context, s state.State, snap snap.Snap, nodeName string, clusterConfig types.ClusterConfig) error {
-	log := log.FromContext(ctx).WithValues("remove", "k8s-dqlite")
-
-	client, err := snap.K8sDqliteClient(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create k8s-dqlite client: %w", err)
-	}
-	log.Info("Removing node from k8s-dqlite cluster")
-
-	k8sClient, err := snap.KubernetesClient("")
-	if err != nil {
-		return fmt.Errorf("failed to create k8s client: %w", err)
-	}
-
-	var nodeAddress string
-
-	// k8s-dqlite does not have the concept of names, hence we need to check
-	// in other places to resolve the nodeName to an address.
-	// Since those could be diverged, we need to check multiple sources.
-	// It first tries to get the node name from Kubernetes, then from microcluster database, and fails otherwise.
-	node, err := k8sClient.GetNode(ctx, nodeName)
-	if err != nil {
-		log.Error(err, "Failed to get node from Kubernetes, falling back to microcluster database")
-	} else {
-		members, err := client.ListMembers(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list k8s-dqlite members: %w", err)
-		}
-
-		log.WithValues("kubernetes-members", node.Status.Addresses, "k8s-dqlite-members", members).Info("Matching Kubernetes node addresses with k8s-dqlite members")
-		for _, addr := range node.Status.Addresses {
-			for _, member := range members {
-				host, _, err := net.SplitHostPort(member.Address)
-				if err != nil {
-					log.Error(err, "Failed to split host and port from k8s-dqlite member address", "address", member.Address)
-					continue
-				}
-				if addr.Address == host {
-					nodeAddress = addr.Address
-					log.Info("Resolved node address from Kubernetes and matched with k8s-dqlite member", "address", nodeAddress)
-					break
-				}
-			}
-			if nodeAddress != "" {
-				break
-			}
-		}
-
-		if nodeAddress == "" {
-			log.Error(fmt.Errorf("no match"), "Could not match Kubernetes node addresses with k8s-dqlite members")
-		}
-	}
-
-	// Fall back to microcluster database if not found
-	if nodeAddress == "" {
-		err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
-			member, err := cluster.GetCoreClusterMember(ctx, tx, nodeName)
-			if err != nil {
-				return err
-			}
-			nodeAddress = member.Address
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("failed to resolve node address from microcluster database: %w", err)
-		}
-		log.Info("Resolved node address from microcluster database", "address", nodeAddress)
-	}
-
-	if nodeAddress == "" {
-		return fmt.Errorf("failed to resolve node address for node %q", nodeName)
-	}
-
-	// Remove port if present in the address
-	if strings.Contains(nodeAddress, ":") {
-		host, _, err := net.SplitHostPort(nodeAddress)
-		if err != nil {
-			return fmt.Errorf("failed to split host and port from node address: %w", err)
-		}
-		if host != "" {
-			nodeAddress = host
-		}
-	}
-
-	nodeAddress = net.JoinHostPort(nodeAddress, fmt.Sprintf("%d", clusterConfig.Datastore.GetK8sDqlitePort()))
-
-	log.Info("Removing node from k8s-dqlite using address", "address", nodeAddress)
-	if err := client.RemoveNodeByAddress(ctx, nodeAddress); err != nil {
-		return fmt.Errorf("failed to remove node from k8s-dqlite cluster: %w", err)
-	}
 	return nil
 }
 

@@ -26,9 +26,6 @@ func (c *ClusterConfig) SetDefaults() {
 	if c.Datastore.GetType() == "" {
 		c.Datastore.Type = utils.Pointer("etcd")
 	}
-	if c.Datastore.GetK8sDqlitePort() == 0 {
-		c.Datastore.K8sDqlitePort = utils.Pointer(9000)
-	}
 	if c.Datastore.GetEtcdPort() == 0 {
 		c.Datastore.EtcdPort = utils.Pointer(2379)
 	}

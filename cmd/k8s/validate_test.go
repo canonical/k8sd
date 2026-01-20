@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
@@ -22,7 +23,7 @@ func TestValidateConfig(t *testing.T) {
 		g.Expect(err).To(Not(HaveOccurred()))
 		defer os.RemoveAll(containerdBaseDir)
 
-		bootstrapConfig := apiv1.BootstrapConfig{
+		bootstrapConfig := apiv2.BootstrapConfig{
 			ContainerdBaseDir: containerdBaseDir,
 		}
 
@@ -34,7 +35,7 @@ func TestValidateConfig(t *testing.T) {
 			g := NewWithT(t)
 			// Open a port which will be checked (kubelet).
 			port := "9999"
-			bootstrapConfig := apiv1.BootstrapConfig{
+			bootstrapConfig := apiv2.BootstrapConfig{
 				ContainerdBaseDir:    containerdBaseDir,
 				ExtraNodeKubeletArgs: map[string]*string{"--port": &port},
 			}
@@ -97,7 +98,7 @@ func TestValidateConfig(t *testing.T) {
 		t.Run("control plane node", func(t *testing.T) {
 			g := NewWithT(t)
 
-			joinConfig := &apiv1.ControlPlaneJoinConfig{
+			joinConfig := &apiv2.ControlPlaneJoinConfig{
 				ContainerdBaseDir: containerdBaseDir,
 			}
 			joinConfigBytes, err := yaml.Marshal(joinConfig)

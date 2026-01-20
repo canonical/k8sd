@@ -4,12 +4,13 @@ import (
 	"context"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
 )
 
 // ClusterClient implements methods for managing the cluster members.
 type ClusterClient interface {
 	// BootstrapCluster initializes a new cluster using the provided configuration.
-	BootstrapCluster(context.Context, apiv1.BootstrapClusterRequest) (apiv1.BootstrapClusterResponse, error)
+	BootstrapCluster(context.Context, apiv2.BootstrapClusterRequest) (apiv2.BootstrapClusterResponse, error)
 	// GetJoinToken generates a token for nodes to join the cluster.
 	GetJoinToken(context.Context, apiv1.GetJoinTokenRequest) (apiv1.GetJoinTokenResponse, error)
 	// JoinCluster joins an existing cluster.

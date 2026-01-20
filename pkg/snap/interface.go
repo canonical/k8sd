@@ -3,7 +3,6 @@ package snap
 import (
 	"context"
 
-	"github.com/canonical/k8sd/pkg/client/dqlite"
 	"github.com/canonical/k8sd/pkg/client/etcd"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/client/k8sd"
@@ -61,9 +60,8 @@ type Snap interface {
 	K8sBinDir() string            //  /snap/k8s/current/bin
 	K8sInspectScriptPath() string //  /snap/k8s/current/k8s/scripts/inspect.sh
 
-	K8sdStateDir() string      // /var/snap/k8s/common/var/lib/k8sd/state
-	K8sDqliteStateDir() string // /var/snap/k8s/common/var/lib/k8s-dqlite
-	EtcdDir() string           // /var/snap/k8s/common/var/lib/etcd
+	K8sdStateDir() string // /var/snap/k8s/common/var/lib/k8sd/state
+	EtcdDir() string      // /var/snap/k8s/common/var/lib/etcd
 
 	ServiceArgumentsDir() string   // /var/snap/k8s/common/args
 	ServiceExtraConfigDir() string // /var/snap/k8s/common/args/conf.d
@@ -77,8 +75,6 @@ type Snap interface {
 	KubernetesNodeClient(namespace string) (*kubernetes.Client, error) // node kubernetes client
 
 	HelmClient() helm.Client // admin helm client
-
-	K8sDqliteClient(ctx context.Context) (*dqlite.Client, error) // go-dqlite client for k8s-dqlite
 
 	EtcdClient(endpoints []string) (*etcd.Client, error) // client for the managed etcd cluster
 

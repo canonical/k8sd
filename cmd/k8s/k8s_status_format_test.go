@@ -23,7 +23,7 @@ func TestClusterStatusFormat(t *testing.T) {
 					{Name: "node2", DatastoreRole: apiv1.DatastoreRoleVoter, Address: "192.168.0.2", ClusterRole: apiv1.ClusterRoleControlPlane},
 					{Name: "node3", DatastoreRole: apiv1.DatastoreRoleStandBy, Address: "192.168.0.3", ClusterRole: apiv1.ClusterRoleControlPlane},
 				},
-				Datastore:    apiv1.Datastore{Type: "k8s-dqlite"},
+				Datastore:    apiv1.Datastore{Type: "etcd"},
 				Network:      apiv1.FeatureStatus{Message: "enabled"},
 				DNS:          apiv1.FeatureStatus{Message: "enabled at 192.168.0.10"},
 				Ingress:      apiv1.FeatureStatus{Message: "enabled"},
@@ -34,7 +34,7 @@ func TestClusterStatusFormat(t *testing.T) {
 			expectedOutput: `cluster status:           ready
 control plane nodes:      192.168.0.1 (voter), 192.168.0.2 (voter), 192.168.0.3 (stand-by)
 high availability:        no
-datastore:                k8s-dqlite
+datastore:                etcd
 network:                  enabled
 dns:                      enabled at 192.168.0.10
 ingress:                  enabled

@@ -25,7 +25,6 @@ func setKubeAPIServerMock(s *mock.Snap, dir string) {
 		KubernetesPKIDir:      filepath.Join(dir, "kubernetes-pki"),
 		ServiceArgumentsDir:   filepath.Join(dir, "args"),
 		ServiceExtraConfigDir: filepath.Join(dir, "args/conf.d"),
-		K8sDqliteStateDir:     filepath.Join(dir, "k8s-dqlite"),
 	}
 }
 
@@ -37,7 +36,7 @@ func TestKubeAPIServer(t *testing.T) {
 		s := mustSetupSnapAndDirectories(t, setKubeAPIServerMock)
 
 		// Call the KubeAPIServer setup function with mock arguments
-		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", true, types.Datastore{Type: utils.Pointer("k8s-dqlite")}, "Node,RBAC", nil)).To(Succeed())
+		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", true, types.Datastore{Type: utils.Pointer("etcd")}, "Node,RBAC", nil)).To(Succeed())
 
 		// Ensure the kube-apiserver arguments file has the expected arguments and values
 		tests := []struct {
@@ -67,7 +66,7 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--tls-cipher-suites", expectedVal: apiserverTLSCipherSuites},
 			{key: "--tls-min-version", expectedVal: "VersionTLS12"},
 			{key: "--tls-private-key-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver.key")},
-			{key: "--etcd-servers", expectedVal: fmt.Sprintf("unix://%s", filepath.Join(s.Mock.K8sDqliteStateDir, "k8s-dqlite.sock"))},
+			{key: "--etcd-servers", expectedVal: fmt.Sprintf("unix://%s", "etcd")},
 			{key: "--request-timeout", expectedVal: "300s"},
 			{key: "--requestheader-client-ca-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "front-proxy-ca.crt")},
 			{key: "--requestheader-allowed-names", expectedVal: "front-proxy-client"},
@@ -99,7 +98,7 @@ func TestKubeAPIServer(t *testing.T) {
 		s := mustSetupSnapAndDirectories(t, setKubeAPIServerMock)
 
 		// Call the KubeAPIServer setup function with mock arguments
-		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", false, types.Datastore{Type: utils.Pointer("k8s-dqlite")}, "Node,RBAC", nil)).To(Succeed())
+		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", false, types.Datastore{Type: utils.Pointer("etcd")}, "Node,RBAC", nil)).To(Succeed())
 
 		// Ensure the kube-apiserver arguments file has the expected arguments and values
 		tests := []struct {
@@ -130,7 +129,7 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--tls-cipher-suites", expectedVal: apiserverTLSCipherSuites},
 			{key: "--tls-min-version", expectedVal: "VersionTLS12"},
 			{key: "--tls-private-key-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver.key")},
-			{key: "--etcd-servers", expectedVal: fmt.Sprintf("unix://%s", filepath.Join(s.Mock.K8sDqliteStateDir, "k8s-dqlite.sock"))},
+			{key: "--etcd-servers", expectedVal: "etcd"},
 		}
 		for _, tc := range tests {
 			t.Run(tc.key, func(t *testing.T) {
@@ -159,7 +158,7 @@ func TestKubeAPIServer(t *testing.T) {
 			"--my-extra-arg":     utils.Pointer("my-extra-val"),
 		}
 		// Call the KubeAPIServer setup function with mock arguments
-		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", true, types.Datastore{Type: utils.Pointer("k8s-dqlite")}, "Node,RBAC", extraArgs)).To(Succeed())
+		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", true, types.Datastore{Type: utils.Pointer("etcd")}, "Node,RBAC", extraArgs)).To(Succeed())
 
 		// Ensure the kube-apiserver arguments file has the expected arguments and values
 		tests := []struct {
@@ -188,7 +187,7 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--tls-cipher-suites", expectedVal: apiserverTLSCipherSuites},
 			{key: "--tls-min-version", expectedVal: "VersionTLS12"},
 			{key: "--tls-private-key-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver.key")},
-			{key: "--etcd-servers", expectedVal: fmt.Sprintf("unix://%s", filepath.Join(s.Mock.K8sDqliteStateDir, "k8s-dqlite.sock"))},
+			{key: "--etcd-servers", expectedVal: "etcd"},
 			{key: "--request-timeout", expectedVal: "300s"},
 			{key: "--requestheader-client-ca-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "front-proxy-ca.crt")},
 			{key: "--requestheader-allowed-names", expectedVal: "front-proxy-client"},
@@ -262,7 +261,7 @@ func TestKubeAPIServer(t *testing.T) {
 		s := mustSetupSnapAndDirectories(t, setKubeletMock)
 		s.Mock.Hostname = "dev"
 
-		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("2001:db8::"), "fd98::/108", "https://auth-webhook.url", false, types.Datastore{Type: utils.Pointer("k8s-dqlite")}, "Node,RBAC", nil)).To(Succeed())
+		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("2001:db8::"), "fd98::/108", "https://auth-webhook.url", false, types.Datastore{Type: utils.Pointer("etcd")}, "Node,RBAC", nil)).To(Succeed())
 
 		tests := []struct {
 			key         string

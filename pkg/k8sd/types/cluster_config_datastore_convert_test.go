@@ -36,7 +36,7 @@ func TestDatastoreConfigFromUserFacing(t *testing.T) {
 		{
 			name: "Invalid datastore config type",
 			userFacingConfig: apiv1.UserFacingDatastoreConfig{
-				Type:       utils.Pointer("k8s-dqlite"),
+				Type:       utils.Pointer("etcd"),
 				Servers:    utils.Pointer([]string{"server1", "server2"}),
 				CACert:     utils.Pointer("ca_cert"),
 				ClientCert: utils.Pointer("client_cert"),

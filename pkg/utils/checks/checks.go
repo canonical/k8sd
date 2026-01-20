@@ -42,8 +42,6 @@ func CheckK8sServicePorts(config types.ClusterConfig, serviceConfigs types.K8sSe
 		case "etcd":
 			ports["etcd"] = strconv.Itoa(config.Datastore.GetEtcdPort())
 			ports["etcd-peer"] = strconv.Itoa(config.Datastore.GetEtcdPeerPort())
-		case "k8s-dqlite":
-			ports["k8s-dqlite"] = strconv.Itoa(config.Datastore.GetK8sDqlitePort())
 		}
 
 	} else {

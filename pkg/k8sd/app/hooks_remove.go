@@ -106,10 +106,6 @@ func (a *App) onPreRemove(ctx context.Context, s state.State, force bool) (rerr 
 		log.Error(err, "failed to cleanup etcd state directory")
 	}
 
-	log.Info("Cleaning up k8s-dqlite directory")
-	if err := os.RemoveAll(snap.K8sDqliteStateDir()); err != nil {
-		log.Error(err, "failed to cleanup k8s-dqlite state directory")
-	}
 	for _, dir := range []string{snap.ServiceArgumentsDir()} {
 		log.WithValues("directory", dir).Info("Cleaning up config files", dir)
 		if err := os.RemoveAll(dir); err != nil {

@@ -4,14 +4,15 @@ import (
 	"context"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
 	"github.com/canonical/k8sd/pkg/client/k8sd"
 )
 
 // Mock is a mock implementation of k8sd.Client.
 type Mock struct {
 	// k8sd.ClusterClient
-	BootstrapClusterCalledWith apiv1.BootstrapClusterRequest
-	BootstrapClusterResponse   apiv1.BootstrapClusterResponse
+	BootstrapClusterCalledWith apiv2.BootstrapClusterRequest
+	BootstrapClusterResponse   apiv2.BootstrapClusterResponse
 	BootstrapClusterErr        error
 	GetJoinTokenCalledWith     apiv1.GetJoinTokenRequest
 	GetJoinTokenResponse       apiv1.GetJoinTokenResponse
@@ -59,7 +60,7 @@ type Mock struct {
 	SetClusterAPIAuthTokenErr        error
 }
 
-func (m *Mock) BootstrapCluster(_ context.Context, request apiv1.BootstrapClusterRequest) (apiv1.BootstrapClusterResponse, error) {
+func (m *Mock) BootstrapCluster(_ context.Context, request apiv2.BootstrapClusterRequest) (apiv2.BootstrapClusterResponse, error) {
 	m.BootstrapClusterCalledWith = request
 	return m.BootstrapClusterResponse, m.BootstrapClusterErr
 }
