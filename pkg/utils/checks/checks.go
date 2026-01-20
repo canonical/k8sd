@@ -38,8 +38,7 @@ func CheckK8sServicePorts(config types.ClusterConfig, serviceConfigs types.K8sSe
 		ports["kube-scheduler"] = serviceConfigs.GetKubeSchedulerPort()
 		ports["kube-controller-manager"] = serviceConfigs.GetKubeControllerManagerPort()
 
-		switch config.Datastore.GetType() {
-		case "etcd":
+		if config.Datastore.GetType() == "etcd" {
 			ports["etcd"] = strconv.Itoa(config.Datastore.GetEtcdPort())
 			ports["etcd-peer"] = strconv.Itoa(config.Datastore.GetEtcdPeerPort())
 		}
