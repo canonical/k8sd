@@ -1,7 +1,6 @@
 package setup_test
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -36,7 +35,7 @@ func TestKubeAPIServer(t *testing.T) {
 		s := mustSetupSnapAndDirectories(t, setKubeAPIServerMock)
 
 		// Call the KubeAPIServer setup function with mock arguments
-		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", true, types.Datastore{Type: utils.Pointer("etcd")}, "Node,RBAC", nil)).To(Succeed())
+		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", true, types.Datastore{Type: utils.Pointer("etcd"), EtcdPort: utils.Pointer(2379)}, "Node,RBAC", nil)).To(Succeed())
 
 		// Ensure the kube-apiserver arguments file has the expected arguments and values
 		tests := []struct {
@@ -54,8 +53,6 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--kubelet-client-certificate", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver-kubelet-client.crt")},
 			{key: "--kubelet-client-key", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver-kubelet-client.key")},
 			{key: "--kubelet-preferred-address-types", expectedVal: "InternalIP,Hostname,InternalDNS,ExternalDNS,ExternalIP"},
-			{key: "--feature-gates", expectedVal: "DetectCacheInconsistency=false,ListFromCacheSnapshot=false,SizeBasedListCostEstimate=false"},
-			{key: "--etcd-healthcheck-timeout", expectedVal: "4s"},
 			{key: "--profiling", expectedVal: "false"},
 			{key: "--secure-port", expectedVal: "6443"},
 			{key: "--service-account-issuer", expectedVal: "https://kubernetes.default.svc"},
@@ -66,7 +63,7 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--tls-cipher-suites", expectedVal: apiserverTLSCipherSuites},
 			{key: "--tls-min-version", expectedVal: "VersionTLS12"},
 			{key: "--tls-private-key-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver.key")},
-			{key: "--etcd-servers", expectedVal: fmt.Sprintf("unix://%s", "etcd")},
+			{key: "--etcd-servers", expectedVal: "https://127.0.0.1:2379"},
 			{key: "--request-timeout", expectedVal: "300s"},
 			{key: "--requestheader-client-ca-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "front-proxy-ca.crt")},
 			{key: "--requestheader-allowed-names", expectedVal: "front-proxy-client"},
@@ -98,7 +95,7 @@ func TestKubeAPIServer(t *testing.T) {
 		s := mustSetupSnapAndDirectories(t, setKubeAPIServerMock)
 
 		// Call the KubeAPIServer setup function with mock arguments
-		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", false, types.Datastore{Type: utils.Pointer("etcd")}, "Node,RBAC", nil)).To(Succeed())
+		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", false, types.Datastore{Type: utils.Pointer("etcd"), EtcdPort: utils.Pointer(2379)}, "Node,RBAC", nil)).To(Succeed())
 
 		// Ensure the kube-apiserver arguments file has the expected arguments and values
 		tests := []struct {
@@ -116,8 +113,6 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--kubelet-client-certificate", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver-kubelet-client.crt")},
 			{key: "--kubelet-client-key", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver-kubelet-client.key")},
 			{key: "--kubelet-preferred-address-types", expectedVal: "InternalIP,Hostname,InternalDNS,ExternalDNS,ExternalIP"},
-			{key: "--feature-gates", expectedVal: "DetectCacheInconsistency=false,ListFromCacheSnapshot=false,SizeBasedListCostEstimate=false"},
-			{key: "--etcd-healthcheck-timeout", expectedVal: "4s"},
 			{key: "--profiling", expectedVal: "false"},
 			{key: "--request-timeout", expectedVal: "300s"},
 			{key: "--secure-port", expectedVal: "6443"},
@@ -129,7 +124,7 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--tls-cipher-suites", expectedVal: apiserverTLSCipherSuites},
 			{key: "--tls-min-version", expectedVal: "VersionTLS12"},
 			{key: "--tls-private-key-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver.key")},
-			{key: "--etcd-servers", expectedVal: "etcd"},
+			{key: "--etcd-servers", expectedVal: "https://127.0.0.1:2379"},
 		}
 		for _, tc := range tests {
 			t.Run(tc.key, func(t *testing.T) {
@@ -158,7 +153,7 @@ func TestKubeAPIServer(t *testing.T) {
 			"--my-extra-arg":     utils.Pointer("my-extra-val"),
 		}
 		// Call the KubeAPIServer setup function with mock arguments
-		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", true, types.Datastore{Type: utils.Pointer("etcd")}, "Node,RBAC", extraArgs)).To(Succeed())
+		g.Expect(setup.KubeAPIServer(s, 6443, net.ParseIP("192.168.0.1"), "10.0.0.0/24", "https://auth-webhook.url", true, types.Datastore{Type: utils.Pointer("etcd"), EtcdPort: utils.Pointer(2379)}, "Node,RBAC", extraArgs)).To(Succeed())
 
 		// Ensure the kube-apiserver arguments file has the expected arguments and values
 		tests := []struct {
@@ -175,8 +170,6 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--kubelet-client-certificate", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver-kubelet-client.crt")},
 			{key: "--kubelet-client-key", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver-kubelet-client.key")},
 			{key: "--kubelet-preferred-address-types", expectedVal: "InternalIP,Hostname,InternalDNS,ExternalDNS,ExternalIP"},
-			{key: "--etcd-healthcheck-timeout", expectedVal: "4s"},
-			{key: "--feature-gates", expectedVal: "DetectCacheInconsistency=false,ListFromCacheSnapshot=false,SizeBasedListCostEstimate=false"},
 			{key: "--profiling", expectedVal: "false"},
 			{key: "--secure-port", expectedVal: "1337"},
 			{key: "--service-account-issuer", expectedVal: "https://kubernetes.default.svc"},
@@ -187,7 +180,7 @@ func TestKubeAPIServer(t *testing.T) {
 			{key: "--tls-cipher-suites", expectedVal: apiserverTLSCipherSuites},
 			{key: "--tls-min-version", expectedVal: "VersionTLS12"},
 			{key: "--tls-private-key-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "apiserver.key")},
-			{key: "--etcd-servers", expectedVal: "etcd"},
+			{key: "--etcd-servers", expectedVal: "https://127.0.0.1:2379"},
 			{key: "--request-timeout", expectedVal: "300s"},
 			{key: "--requestheader-client-ca-file", expectedVal: filepath.Join(s.Mock.KubernetesPKIDir, "front-proxy-ca.crt")},
 			{key: "--requestheader-allowed-names", expectedVal: "front-proxy-client"},
