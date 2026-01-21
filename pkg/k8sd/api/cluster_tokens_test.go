@@ -38,7 +38,9 @@ func (m *MockProvider) NotifyFeatureController(network, gateway, ingress, loadBa
 }
 
 func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
-	// Setup
+	// This method tests that when a request is made to create a join token
+	// with a node name that already exists in the cluster, an appropriate
+	// error is returned.
 	mockSnap := &snapmock.Snap{}
 
 	// Create fake K8s client with existing node
@@ -53,7 +55,6 @@ func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
 	}
 
 	// Configure mockSnap to return our fake k8s client
-	// The manual mock implementation in pkg/snap/mock uses the Mock struct field
 	mockSnap.Mock.KubernetesClient = k8sClient
 
 	mockProvider := &MockProvider{
@@ -73,9 +74,7 @@ func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
 	bodyBytes, _ := json.Marshal(reqBody)
 	req, _ := http.NewRequest("POST", "/cluster/tokens", bytes.NewReader(bodyBytes))
 
-	// Execute
-	// Passing nil for state.State strictly because the duplicate node check
-	// happens before state is used.
+	// We pass in nil for the state here because the error will happen before it's used
 	resp := endpoints.postClusterJoinTokens(nil, req)
 
 	// Verify response
@@ -89,7 +88,6 @@ func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
 		t.Errorf("Expected status 500, got %d", w.Code)
 	}
 
-	// Check error message in body
 	var respBody map[string]interface{}
 	err = json.Unmarshal(w.Body.Bytes(), &respBody)
 	if err != nil {
