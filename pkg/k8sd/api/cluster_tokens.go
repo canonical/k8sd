@@ -15,6 +15,7 @@ import (
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/microcluster"
 	"github.com/canonical/microcluster/v2/state"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
@@ -33,8 +34,12 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	if err != nil {
 		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
-	if _, err := k8sClient.GetNode(r.Context(), hostname); err == nil {
-		return response.InternalError(fmt.Errorf("A node with the same name %q is already part of the cluster", hostname))
+
+	_, err = k8sClient.GetNode(r.Context(), hostname)
+	if err == nil {
+		return response.BadRequest(fmt.Errorf("a node with the same name %q is already part of the cluster", hostname))
+	} else if !apierrors.IsNotFound(err) {
+		return response.InternalError(fmt.Errorf("failed to check whether node name is available %q: %w", hostname, err))
 	}
 
 	var token string

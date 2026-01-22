@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,9 +15,13 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/microcluster/v2/microcluster"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 // MockProvider is a manual mock implementation of the Provider interface.
@@ -37,65 +42,135 @@ func (m *MockProvider) NotifyUpdateNodeConfigController() {}
 func (m *MockProvider) NotifyFeatureController(network, gateway, ingress, loadBalancer, localStorage, metricsServer, dns bool) {
 }
 
-func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
-	// This method tests that when a request is made to create a join token
-	// with a node name that already exists in the cluster, an appropriate
-	// error is returned.
+func newEndpointsWithK8sClientHelper(startingNode *corev1.Node) *Endpoints {
+	// Create mock Snap with a fake K8s client containing the specified starting node.
 	mockSnap := &snapmock.Snap{}
-
-	// Create fake K8s client with existing node
-	existingNode := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "duplicate-node",
-		},
-	}
-	fakeClientset := fake.NewSimpleClientset(existingNode)
+	fakeClientset := fake.NewSimpleClientset(startingNode)
 	k8sClient := &kubernetes.Client{
 		Interface: fakeClientset,
 	}
-
-	// Configure mockSnap to return our fake k8s client
 	mockSnap.Mock.KubernetesClient = k8sClient
 
-	mockProvider := &MockProvider{
-		mockSnap: mockSnap,
-	}
+	mockProvider := &MockProvider{mockSnap: mockSnap}
 
-	endpoints := &Endpoints{
+	return &Endpoints{
 		context:  context.Background(),
 		provider: mockProvider,
 	}
+}
+
+func postJoinTokenRequest(t *testing.T, endpoints *Endpoints, reqBody apiv1.GetJoinTokenRequest) (*httptest.ResponseRecorder, []byte) {
+	// Sends a POST request to create a join token with the specified request body, returning the response.
+	g := NewWithT(t)
+
+	bodyBytes, err := json.Marshal(reqBody)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	req, err := http.NewRequest("POST", "/cluster/tokens", bytes.NewReader(bodyBytes))
+	g.Expect(err).ToNot(HaveOccurred())
+
+	resp := endpoints.postClusterJoinTokens(nil, req)
+
+	w := httptest.NewRecorder()
+	err = resp.Render(w, req)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	return w, w.Body.Bytes()
+}
+
+func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
+
+	// This method tests that when a request is made to create a join token
+	// with a node name that already exists in the cluster, an appropriate
+	// error is returned.
+
+	// Create fake K8s client with existing node
+	g := NewWithT(t)
+	shared_name := "duplicate-node"
+	existingNode := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: shared_name,
+		},
+	}
+	endpoints := newEndpointsWithK8sClientHelper(existingNode)
 
 	// Request with duplicate name
 	reqBody := apiv1.GetJoinTokenRequest{
-		Name: "duplicate-node",
+		Name: shared_name,
 		TTL:  time.Hour,
 	}
-	bodyBytes, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", "/cluster/tokens", bytes.NewReader(bodyBytes))
-
-	// We pass in nil for the state here because the error will happen before it's used
-	resp := endpoints.postClusterJoinTokens(nil, req)
-
-	// Verify response
-	w := httptest.NewRecorder()
-	err := resp.Render(w, req)
-	if err != nil {
-		t.Fatalf("Render failed: %v", err)
-	}
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("Expected status 500, got %d", w.Code)
-	}
+	w, respBytes := postJoinTokenRequest(t, endpoints, reqBody)
+	g.Expect(w.Code).To(Equal(http.StatusBadRequest))
 
 	var respBody map[string]interface{}
-	err = json.Unmarshal(w.Body.Bytes(), &respBody)
-	if err != nil {
-		t.Fatalf("Failed to parse response body: %v", err)
-	}
+	err := json.Unmarshal(respBytes, &respBody)
+	g.Expect(err).ToNot(HaveOccurred())
 
-	expectedError := "A node with the same name \"duplicate-node\" is already part of the cluster"
-	if respBody["error"] != expectedError {
-		t.Errorf("Expected error %q, got %q", expectedError, respBody["error"])
+	expectedError := "a node with the same name \"" + shared_name + "\" is already part of the cluster"
+	g.Expect(respBody["error"]).To(Equal(expectedError))
+}
+
+func TestPostClusterJoinTokens_Success_With_UniqueNames(t *testing.T) {
+	//Tests that a join token is successfully created when a unique node name is provided.
+	g := NewWithT(t)
+
+	// Create fake K8s client without any existing nodes
+	existingNode := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "unique-node-1",
+		},
 	}
+	endpoints := newEndpointsWithK8sClientHelper(existingNode)
+
+	// Request with unique name
+	reqBody := apiv1.GetJoinTokenRequest{
+		Name: "unique-node-2",
+		TTL:  time.Hour,
+	}
+	w, respBytes := postJoinTokenRequest(t, endpoints, reqBody)
+	g.Expect(w.Code).To(Equal(http.StatusOK))
+
+	var respBody apiv1.GetJoinTokenResponse
+	err := json.Unmarshal(respBytes, &respBody)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	g.Expect(respBody.EncodedToken).ToNot(BeEmpty())
+}
+
+func TestPostClusterJoinTokens_CatchAPIErrors(t *testing.T) {
+	// This method tests that when the K8s client throws a
+	// mock api error, we properly catch and return it.
+
+	g := NewWithT(t)
+
+	// Create fake K8s client and inject an error for GET nodes RPC.
+	fakeClientset := fake.NewSimpleClientset()
+	fakeClientset.PrependReactor("get", "nodes", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		_, ok := action.(k8stesting.GetAction)
+		if ok {
+			return true, nil, apierrors.NewInternalError(fmt.Errorf("mock API error"))
+		}
+		return false, nil, nil
+	})
+
+	k8sClient := &kubernetes.Client{Interface: fakeClientset}
+
+	mockSnap := &snapmock.Snap{}
+	mockSnap.Mock.KubernetesClient = k8sClient
+	endpoints := &Endpoints{context: context.Background(), provider: &MockProvider{mockSnap: mockSnap}}
+
+	// Request with any name
+	reqBody := apiv1.GetJoinTokenRequest{
+		Name: "any-node",
+		TTL:  time.Hour,
+	}
+	w, respBytes := postJoinTokenRequest(t, endpoints, reqBody)
+	g.Expect(w.Code).To(Equal(http.StatusInternalServerError))
+
+	var respBody map[string]interface{}
+	err := json.Unmarshal(respBytes, &respBody)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	g.Expect(respBody["error"]).To(ContainSubstring("failed to check whether node name is available \"any-node\":"))
+	g.Expect(respBody["error"]).To(ContainSubstring("mock API error"))
 }
