@@ -78,8 +78,7 @@ func postJoinTokenRequest(t *testing.T, endpoints *Endpoints, reqBody apiv1.GetJ
 	return w, w.Body.Bytes()
 }
 
-func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
-
+func TestPostClusterJoinTokens_Duplicate_Node(t *testing.T) {
 	// This method tests that when a request is made to create a join token
 	// with a node name that already exists in the cluster, an appropriate
 	// error is returned.
@@ -110,7 +109,7 @@ func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
 	g.Expect(respBody["error"]).To(Equal(expectedError))
 }
 
-func TestPostClusterJoinTokens_Success_With_UniqueNames(t *testing.T) {
+func TestPostClusterJoinTokens_Success_With_Unique_Names(t *testing.T) {
 	// Tests that a join token is successfully created when a unique node name is provided.
 	g := NewWithT(t)
 
@@ -156,7 +155,7 @@ func TestPostClusterJoinTokens_Success_With_UniqueNames(t *testing.T) {
 	g.Expect(respBody.Metadata.EncodedToken).To(Equal("dummy-token"))
 }
 
-func TestPostClusterJoinTokens_CatchAPIErrors(t *testing.T) {
+func TestPostClusterJoinTokens_Catch_API_Errors(t *testing.T) {
 	// This method tests that when the K8s client throws a
 	// mock api error, we properly catch and return it.
 
