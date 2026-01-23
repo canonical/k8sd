@@ -53,7 +53,7 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	if req.Worker {
 		token, err = getOrCreateWorkerToken(r.Context(), s, hostname, ttl)
 	} else {
-		token, err = getOrCreateJoinToken(r.Context(), e.provider.MicroCluster(), hostname, ttl)
+		token, err = getOrCreateJoinTokenFn(r.Context(), e.provider.MicroCluster(), hostname, ttl)
 	}
 	if err != nil {
 		return response.InternalError(fmt.Errorf("failed to create token: %w", err))
@@ -61,6 +61,10 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 
 	return response.SyncResponse(true, &apiv1.GetJoinTokenResponse{EncodedToken: token})
 }
+
+// getOrCreateJoinTokenFn exists to allow tests to stub out microcluster join-token
+// creation without having to spin up a real microcluster instance.
+var getOrCreateJoinTokenFn = getOrCreateJoinToken
 
 func getOrCreateJoinToken(ctx context.Context, m *microcluster.MicroCluster, tokenName string, ttl time.Duration) (string, error) {
 	log := log.FromContext(ctx)

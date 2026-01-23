@@ -127,14 +127,33 @@ func TestPostClusterJoinTokens_Success_With_UniqueNames(t *testing.T) {
 		Name: "unique-node-2",
 		TTL:  time.Hour,
 	}
+
+	original := getOrCreateJoinTokenFn
+	t.Cleanup(func() {
+		getOrCreateJoinTokenFn = original
+	})
+	getOrCreateJoinTokenFn = func(ctx context.Context, m *microcluster.MicroCluster, tokenName string, ttl time.Duration) (string, error) {
+		// In these unit tests, the Provider's MicroCluster is nil; we stub the join-token
+		// creation to avoid spinning up a real microcluster instance.
+		g.Expect(m).To(BeNil())
+		g.Expect(tokenName).To(Equal(reqBody.Name))
+		g.Expect(ttl).To(Equal(reqBody.TTL))
+		return "dummy-token", nil
+	}
+
 	w, respBytes := postJoinTokenRequest(t, endpoints, reqBody)
 	g.Expect(w.Code).To(Equal(http.StatusOK))
 
-	var respBody apiv1.GetJoinTokenResponse
+	// struct so we unmarshal just the relevant part of the response
+	type syncResponseEnvelope struct {
+		Metadata apiv1.GetJoinTokenResponse `json:"metadata"`
+	}
+
+	var respBody syncResponseEnvelope
 	err := json.Unmarshal(respBytes, &respBody)
 	g.Expect(err).ToNot(HaveOccurred())
 
-	g.Expect(respBody.EncodedToken).ToNot(BeEmpty())
+	g.Expect(respBody.Metadata.EncodedToken).To(Equal("dummy-token"))
 }
 
 func TestPostClusterJoinTokens_CatchAPIErrors(t *testing.T) {
