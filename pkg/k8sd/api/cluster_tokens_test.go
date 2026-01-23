@@ -111,7 +111,7 @@ func TestPostClusterJoinTokens_DuplicateNode(t *testing.T) {
 }
 
 func TestPostClusterJoinTokens_Success_With_UniqueNames(t *testing.T) {
-	//Tests that a join token is successfully created when a unique node name is provided.
+	// Tests that a join token is successfully created when a unique node name is provided.
 	g := NewWithT(t)
 
 	// Create fake K8s client without any existing nodes
