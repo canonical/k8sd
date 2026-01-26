@@ -276,11 +276,17 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedT
 		return fmt.Errorf("failed to mark node as worker: %w", err)
 	}
 
+	// Write local state file for worker node
+	localState := snaputil.NewWorkerLocalState()
+	if err := snaputil.WriteLocalState(snap, localState); err != nil {
+		return fmt.Errorf("failed to write local state: %w", err)
+	}
+
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	log.Info("Starting worker services")
 	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-		if err := snaputil.StartWorkerServices(ctx, snap); err != nil {
+		if err := snaputil.StartEnabledServices(ctx, snap, localState); err != nil {
 			return fmt.Errorf("failed to start worker services: %w", err)
 		}
 		return nil
@@ -520,11 +526,17 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootst
 		return fmt.Errorf("failed to set snapd configuration from k8sd: %w", err)
 	}
 
+	// Write local state file for control-plane node
+	localState := snaputil.NewControlPlaneLocalState(cfg.Datastore.GetType())
+	if err := snaputil.WriteLocalState(snap, localState); err != nil {
+		return fmt.Errorf("failed to write local state: %w", err)
+	}
+
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	log.Info("Starting control-plane services")
 	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-		if err := startControlPlaneServices(ctx, snap, cfg.Datastore.GetType()); err != nil {
+		if err := snaputil.StartEnabledServices(ctx, snap, localState); err != nil {
 			return fmt.Errorf("failed to start services: %w", err)
 		}
 		return nil
