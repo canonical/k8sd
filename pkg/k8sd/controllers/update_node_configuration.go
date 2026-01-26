@@ -95,10 +95,11 @@ func (c *UpdateNodeConfigurationController) reconcile(ctx context.Context, clien
 		return fmt.Errorf("failed to load cluster RSA key: %w", err)
 	}
 
-	cmData, err := config.Kubelet.ToConfigMap(key)
+	cmData, err := types.ClusterConfigToConfigMap(config, key)
 	if err != nil {
-		return fmt.Errorf("failed to format kubelet configmap data: %w", err)
+		return fmt.Errorf("failed to format node configmap data: %w", err)
 	}
+
 	if _, err := client.UpdateConfigMap(ctx, "kube-system", "k8sd-config", cmData); err != nil {
 		return fmt.Errorf("failed to update node config: %w", err)
 	}

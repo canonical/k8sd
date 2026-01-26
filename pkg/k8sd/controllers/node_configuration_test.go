@@ -179,13 +179,16 @@ func TestConfigPropagation(t *testing.T) {
 		},
 	}
 
+	tmpDir := t.TempDir()
+
 	clientset := fake.NewSimpleClientset()
 	watcher := watch.NewFake()
 	clientset.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(watcher, nil))
 
 	s := &mock.Snap{
 		Mock: mock.Mock{
-			ServiceArgumentsDir:  filepath.Join(t.TempDir(), "args"),
+			ServiceArgumentsDir:  filepath.Join(tmpDir, "args"),
+			LockFilesDir:         tmpDir,
 			UID:                  os.Getuid(),
 			GID:                  os.Getgid(),
 			KubernetesNodeClient: &kubernetes.Client{Interface: clientset},
@@ -193,6 +196,9 @@ func TestConfigPropagation(t *testing.T) {
 	}
 
 	g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
+
+	initialState := snaputil.NewControlPlaneLocalState("etcd")
+	g.Expect(snaputil.WriteLocalState(s, initialState)).To(Succeed())
 
 	ctrl := controllers.NewNodeConfigurationController(s, func() {})
 
@@ -208,10 +214,11 @@ func TestConfigPropagation(t *testing.T) {
 			g := NewWithT(t)
 
 			if tc.privKey != nil {
-				kubelet, err := types.KubeletFromConfigMap(tc.configmap.Data, nil)
+				// Create ClusterConfig from test configmap data for signing
+				config, err := types.ConfigMapToClusterConfig(tc.configmap.Data, nil)
 				g.Expect(err).To(Not(HaveOccurred()))
 
-				tc.configmap.Data, err = kubelet.ToConfigMap(tc.privKey)
+				tc.configmap.Data, err = types.ClusterConfigToConfigMap(config, tc.privKey)
 				g.Expect(err).To(Not(HaveOccurred()))
 			}
 
@@ -238,4 +245,132 @@ func TestConfigPropagation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKubeProxyFree(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	g := NewWithT(t)
+
+	tmpDir := t.TempDir()
+
+	clientset := fake.NewSimpleClientset()
+	watcher := watch.NewFake()
+	clientset.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(watcher, nil))
+
+	s := &mock.Snap{
+		Mock: mock.Mock{
+			ServiceArgumentsDir:  filepath.Join(tmpDir, "args"),
+			LockFilesDir:         tmpDir,
+			UID:                  os.Getuid(),
+			GID:                  os.Getgid(),
+			KubernetesNodeClient: &kubernetes.Client{Interface: clientset},
+		},
+	}
+
+	g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
+
+	// Write initial local state with kube-proxy enabled
+	initialState := snaputil.NewControlPlaneLocalState("k8s-dqlite")
+	g.Expect(initialState.Services[snaputil.ServiceKubeProxy].Enabled).To(BeTrue())
+	err := snaputil.WriteLocalState(s, initialState)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	ctrl := controllers.NewNodeConfigurationController(s, func() {})
+
+	keyCh := make(chan *rsa.PublicKey)
+
+	go ctrl.Run(ctx, func(ctx context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil })
+	defer watcher.Stop()
+
+	t.Run("DisableKubeProxy", func(t *testing.T) {
+		g := NewWithT(t)
+		s.StopServicesCalledWith = nil
+
+		// Send configmap with kube-proxy-free enabled
+		configmap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data: map[string]string{
+				"kube-proxy-free": "true",
+			},
+		}
+
+		watcher.Add(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+
+		// Verify kube-proxy was stopped
+		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+
+		// Verify local state was updated
+		localState, err := snaputil.ReadLocalState(s)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(localState.Services[snaputil.ServiceKubeProxy].Enabled).To(BeFalse())
+	})
+
+	t.Run("EnableKubeProxy", func(t *testing.T) {
+		g := NewWithT(t)
+		s.StartServicesCalledWith = nil
+
+		// Send configmap with kube-proxy-free disabled
+		configmap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data: map[string]string{
+				"kube-proxy-free": "false",
+			},
+		}
+
+		watcher.Add(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+
+		// Verify kube-proxy was started
+		g.Expect(s.StartServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StartServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+
+		// Verify local state was updated
+		localState, err := snaputil.ReadLocalState(s)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(localState.Services[snaputil.ServiceKubeProxy].Enabled).To(BeTrue())
+	})
+
+	t.Run("NoChangeWhenStateMatches", func(t *testing.T) {
+		g := NewWithT(t)
+		s.StartServicesCalledWith = nil
+		s.StopServicesCalledWith = nil
+
+		// Local state already has kube-proxy enabled (from previous test)
+		// Send configmap with kube-proxy-free disabled (matching current state)
+		configmap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data: map[string]string{
+				"kube-proxy-free": "false",
+			},
+		}
+
+		watcher.Add(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+
+		// Verify no service operations were performed
+		g.Expect(s.StartServicesCalledWith).To(BeEmpty())
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
+	})
 }

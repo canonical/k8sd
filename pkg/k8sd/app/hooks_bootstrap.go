@@ -278,6 +278,12 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedT
 
 	// Write local state file for worker node
 	localState := snaputil.NewWorkerLocalState()
+
+	// Disable kube-proxy in local state if kube-proxy-free mode is enabled
+	if response.KubeProxyFree {
+		localState.SetServiceEnabled(snaputil.ServiceKubeProxy, false)
+	}
+
 	if err := snaputil.WriteLocalState(snap, localState); err != nil {
 		return fmt.Errorf("failed to write local state: %w", err)
 	}
@@ -528,6 +534,12 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootst
 
 	// Write local state file for control-plane node
 	localState := snaputil.NewControlPlaneLocalState(cfg.Datastore.GetType())
+
+	// Disable kube-proxy in local state if kube-proxy-free mode is enabled
+	if cfg.Network.GetKubeProxyFree() {
+		localState.SetServiceEnabled(snaputil.ServiceKubeProxy, false)
+	}
+
 	if err := snaputil.WriteLocalState(snap, localState); err != nil {
 		return fmt.Errorf("failed to write local state: %w", err)
 	}
