@@ -122,7 +122,8 @@ func ClusterConfigFromUserFacing(u apiv1.UserFacingClusterConfig) (ClusterConfig
 			CloudProvider: u.CloudProvider,
 		},
 		Network: Network{
-			Enabled: u.Network.Enabled,
+			Enabled:       u.Network.Enabled,
+			KubeProxyFree: u.Network.KubeProxyFree,
 		},
 		DNS: DNS{
 			Enabled:             u.DNS.Enabled,
@@ -164,7 +165,8 @@ func ClusterConfigFromUserFacing(u apiv1.UserFacingClusterConfig) (ClusterConfig
 func (c ClusterConfig) ToUserFacing() apiv1.UserFacingClusterConfig {
 	return apiv1.UserFacingClusterConfig{
 		Network: apiv1.NetworkConfig{
-			Enabled: c.Network.Enabled,
+			Enabled:       c.Network.Enabled,
+			KubeProxyFree: c.Network.KubeProxyFree,
 		},
 		DNS: apiv1.DNSConfig{
 			Enabled:             c.DNS.Enabled,

@@ -164,6 +164,7 @@ func Test_updateConfigMapstructure(t *testing.T) {
 		generateMapstructureTestCasesBool("local-storage.enabled", "LocalStorage.Enabled"),
 		generateMapstructureTestCasesBool("metrics-server.enabled", "MetricsServer.Enabled"),
 		generateMapstructureTestCasesBool("network.enabled", "Network.Enabled"),
+		generateMapstructureTestCasesBool("network.kube-proxy-free", "Network.KubeProxyFree"),
 
 		generateMapstructureTestCasesString("cloud-provider", "CloudProvider"),
 		generateMapstructureTestCasesString("dns.cluster-domain", "DNS.ClusterDomain"),

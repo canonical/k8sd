@@ -165,35 +165,57 @@ func (a *App) ensureRunningServices(ctx context.Context) error {
 		return nil
 	}
 
+	// Try to read local state file first
+	localState, err := snaputil.ReadLocalState(a.snap)
+	if err == nil {
+		// Local state file exists, use it to start services
+		log.Info("Starting services from local state file")
+		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+			return snaputil.StartEnabledServices(ctx, a.snap, localState)
+		}); err != nil {
+			return fmt.Errorf("failed to start services from local state: %w", err)
+		}
+		log.Info("Successfully started services from local state file")
+		return nil
+	}
+
+	// Legacy fallback: local state file doesn't exist, use old behavior
+	log.Info("Local state file not found, using legacy service detection")
+
 	isWorker, err := snaputil.IsWorker(a.snap)
 	if err != nil {
 		return fmt.Errorf("failed to determine if the node is a worker: %w", err)
 	}
 
-	// Start services
+	// Determine local state based on node type
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	if isWorker {
-		log.Info("Starting worker services")
-		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-			return snaputil.StartWorkerServices(ctx, a.snap)
-		}); err != nil {
-			return fmt.Errorf("failed to start worker services after retry: %w", err)
-		}
+		log.Info("Creating local state for worker node (legacy)")
+		localState = snaputil.NewWorkerLocalState()
 	} else {
-		log.Info("Retrieving cluster configuration")
+		log.Info("Retrieving cluster configuration (legacy)")
 
 		cfg, err := client.GetClusterConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to retrieve cluster configuration: %w", err)
 		}
 
-		log.Info("Starting control-plane services")
+		log.Info("Creating local state for control-plane node (legacy)")
+		localState = snaputil.NewControlPlaneLocalState(cfg.Datastore.GetType())
+	}
 
-		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-			return startControlPlaneServices(ctx, a.snap, cfg.Datastore.GetType())
-		}); err != nil {
-			return fmt.Errorf("failed to start control-plane services: %w", err)
-		}
+	// Write local state file BEFORE starting services (migration)
+	log.Info("Writing local state file for migration")
+	if err := snaputil.WriteLocalState(a.snap, localState); err != nil {
+		log.Error(err, "Failed to write local state file during migration")
+	}
+
+	// Start services using local state
+	log.Info("Starting services from local state (legacy migration)")
+	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+		return snaputil.StartEnabledServices(ctx, a.snap, localState)
+	}); err != nil {
+		return fmt.Errorf("failed to start services after retry: %w", err)
 	}
 
 	log.Info("Successfully started services")
