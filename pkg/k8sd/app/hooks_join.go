@@ -362,11 +362,17 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		return fmt.Errorf("failed to set snapd configuration from k8sd: %w", err)
 	}
 
+	// Write local state file for control-plane node
+	localState := snaputil.NewControlPlaneLocalState(cfg.Datastore.GetType())
+	if err := snaputil.WriteLocalState(snap, localState); err != nil {
+		return fmt.Errorf("failed to write local state: %w", err)
+	}
+
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	log.Info("Starting control-plane services")
 	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-		if err := startControlPlaneServices(ctx, snap, cfg.Datastore.GetType()); err != nil {
+		if err := snaputil.StartEnabledServices(ctx, snap, localState); err != nil {
 			return fmt.Errorf("failed to start services: %w", err)
 		}
 		return nil

@@ -79,7 +79,7 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 			}
 
 			log.Info("Stopping all services except k8sd")
-			if err := snaputil.StopK8sServices(ctx, snap, "--no-wait"); err != nil {
+			if err := snaputil.StopAllK8sServices(ctx, snap, "--no-wait"); err != nil {
 				log.Error(err, "failed to stop k8s services")
 			}
 
@@ -117,6 +117,11 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Error(err, "failed to unmark node as worker")
 		}
+	}
+
+	log.Info("Removing local state file")
+	if err := snaputil.DeleteLocalState(snap); err != nil {
+		log.Error(err, "failed to delete local state file")
 	}
 
 	log.Info("Remove hook completed ")
