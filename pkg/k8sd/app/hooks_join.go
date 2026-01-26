@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	upgradesv1alpha "github.com/canonical/k8s-snap-api/api/v1alpha"
+	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"

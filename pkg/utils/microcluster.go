@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"gopkg.in/yaml.v2"
 )
 
@@ -75,7 +74,7 @@ func MicroclusterControlPlaneJoinConfigFromMap(m map[string]string) (apiv2.Contr
 	return config, nil
 }
 
-// MicroclusterMapWithWorkerJoinConfig adds (a JSON formatted) apiv1.WorkerJoinConfig to the config struct.
+// MicroclusterMapWithWorkerJoinConfig adds (a JSON formatted) apiv2.WorkerJoinConfig to the config struct.
 func MicroclusterMapWithWorkerJoinConfig(m map[string]string, token string, workerJoinConfigJSON string) map[string]string {
 	if m == nil {
 		m = make(map[string]string)
@@ -85,11 +84,11 @@ func MicroclusterMapWithWorkerJoinConfig(m map[string]string, token string, work
 	return m
 }
 
-// MicroclusterWorkerJoinConfigFromMap returns an apiv1.WorkerJoinConfig from the config struct.
-func MicroclusterWorkerJoinConfigFromMap(m map[string]string) (apiv1.WorkerJoinConfig, error) {
-	var config apiv1.WorkerJoinConfig
+// MicroclusterWorkerJoinConfigFromMap returns an apiv2.WorkerJoinConfig from the config struct.
+func MicroclusterWorkerJoinConfigFromMap(m map[string]string) (apiv2.WorkerJoinConfig, error) {
+	var config apiv2.WorkerJoinConfig
 	if err := yaml.UnmarshalStrict([]byte(m["workerJoinConfig"]), &config); err != nil {
-		return apiv1.WorkerJoinConfig{}, fmt.Errorf("failed to unmarshal worker join config: %w", err)
+		return apiv2.WorkerJoinConfig{}, fmt.Errorf("failed to unmarshal worker join config: %w", err)
 	}
 	return config, nil
 }

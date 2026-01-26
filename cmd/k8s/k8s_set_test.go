@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
@@ -187,7 +187,7 @@ func Test_updateConfigMapstructure(t *testing.T) {
 			t.Run(tc.val, func(t *testing.T) {
 				g := NewWithT(t)
 
-				var cfg apiv1.UserFacingClusterConfig
+				var cfg apiv2.UserFacingClusterConfig
 				err := updateConfigMapstructure(&cfg, tc.val)
 				if tc.expectErr {
 					g.Expect(err).To(HaveOccurred())

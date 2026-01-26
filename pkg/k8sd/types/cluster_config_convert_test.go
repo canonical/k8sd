@@ -3,8 +3,7 @@ package types_test
 import (
 	"testing"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
@@ -98,34 +97,34 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 		{
 			name: "Full",
 			bootstrap: apiv2.BootstrapConfig{
-				ClusterConfig: apiv1.UserFacingClusterConfig{
+				ClusterConfig: apiv2.UserFacingClusterConfig{
 					Annotations: map[string]string{
 						"key": "value",
 					},
-					Network: apiv1.NetworkConfig{
+					Network: apiv2.NetworkConfig{
 						Enabled: utils.Pointer(true),
 					},
-					DNS: apiv1.DNSConfig{
+					DNS: apiv2.DNSConfig{
 						Enabled:       utils.Pointer(true),
 						ClusterDomain: utils.Pointer("cluster.local"),
 					},
-					Ingress: apiv1.IngressConfig{
+					Ingress: apiv2.IngressConfig{
 						Enabled: utils.Pointer(true),
 					},
-					LoadBalancer: apiv1.LoadBalancerConfig{
+					LoadBalancer: apiv2.LoadBalancerConfig{
 						Enabled: utils.Pointer(true),
 						L2Mode:  utils.Pointer(true),
 						CIDRs:   utils.Pointer([]string{"10.0.0.0/24", "10.1.0.10-10.1.0.20"}),
 					},
-					LocalStorage: apiv1.LocalStorageConfig{
+					LocalStorage: apiv2.LocalStorageConfig{
 						Enabled:   utils.Pointer(true),
 						LocalPath: utils.Pointer("/storage/path"),
 						Default:   utils.Pointer(false),
 					},
-					Gateway: apiv1.GatewayConfig{
+					Gateway: apiv2.GatewayConfig{
 						Enabled: utils.Pointer(true),
 					},
-					MetricsServer: apiv1.MetricsServerConfig{
+					MetricsServer: apiv2.MetricsServerConfig{
 						Enabled: utils.Pointer(true),
 					},
 					CloudProvider: utils.Pointer("external"),

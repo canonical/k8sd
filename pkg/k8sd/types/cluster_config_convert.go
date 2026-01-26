@@ -3,8 +3,7 @@ package types
 import (
 	"fmt"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
 )
 
@@ -79,7 +78,7 @@ func ClusterConfigFromBootstrapConfig(b apiv2.BootstrapConfig) (ClusterConfig, e
 }
 
 // ClusterConfigFromUserFacing converts UserFacingClusterConfig from public API into a ClusterConfig.
-func ClusterConfigFromUserFacing(u apiv1.UserFacingClusterConfig) (ClusterConfig, error) {
+func ClusterConfigFromUserFacing(u apiv2.UserFacingClusterConfig) (ClusterConfig, error) {
 	cidrs, ipRanges, err := loadBalancerCIDRsFromAPI(u.LoadBalancer.CIDRs)
 	if err != nil {
 		return ClusterConfig{}, fmt.Errorf("invalid load-balancer.cidrs: %w", err)
@@ -132,23 +131,23 @@ func ClusterConfigFromUserFacing(u apiv1.UserFacingClusterConfig) (ClusterConfig
 }
 
 // ToUserFacing converts a ClusterConfig to a UserFacingClusterConfig from the public API.
-func (c ClusterConfig) ToUserFacing() apiv1.UserFacingClusterConfig {
-	return apiv1.UserFacingClusterConfig{
-		Network: apiv1.NetworkConfig{
+func (c ClusterConfig) ToUserFacing() apiv2.UserFacingClusterConfig {
+	return apiv2.UserFacingClusterConfig{
+		Network: apiv2.NetworkConfig{
 			Enabled: c.Network.Enabled,
 		},
-		DNS: apiv1.DNSConfig{
+		DNS: apiv2.DNSConfig{
 			Enabled:             c.DNS.Enabled,
 			ClusterDomain:       c.Kubelet.ClusterDomain,
 			ServiceIP:           c.Kubelet.ClusterDNS,
 			UpstreamNameservers: c.DNS.UpstreamNameservers,
 		},
-		Ingress: apiv1.IngressConfig{
+		Ingress: apiv2.IngressConfig{
 			Enabled:             c.Ingress.Enabled,
 			DefaultTLSSecret:    c.Ingress.DefaultTLSSecret,
 			EnableProxyProtocol: c.Ingress.EnableProxyProtocol,
 		},
-		LoadBalancer: apiv1.LoadBalancerConfig{
+		LoadBalancer: apiv2.LoadBalancerConfig{
 			Enabled:        c.LoadBalancer.Enabled,
 			CIDRs:          loadBalancerCIDRsToAPI(c.LoadBalancer.CIDRs, c.LoadBalancer.IPRanges),
 			L2Mode:         c.LoadBalancer.L2Mode,
@@ -159,16 +158,16 @@ func (c ClusterConfig) ToUserFacing() apiv1.UserFacingClusterConfig {
 			BGPPeerASN:     c.LoadBalancer.BGPPeerASN,
 			BGPPeerPort:    c.LoadBalancer.BGPPeerPort,
 		},
-		LocalStorage: apiv1.LocalStorageConfig{
+		LocalStorage: apiv2.LocalStorageConfig{
 			Enabled:       c.LocalStorage.Enabled,
 			LocalPath:     c.LocalStorage.LocalPath,
 			ReclaimPolicy: c.LocalStorage.ReclaimPolicy,
 			Default:       c.LocalStorage.Default,
 		},
-		MetricsServer: apiv1.MetricsServerConfig{
+		MetricsServer: apiv2.MetricsServerConfig{
 			Enabled: c.MetricsServer.Enabled,
 		},
-		Gateway: apiv1.GatewayConfig{
+		Gateway: apiv2.GatewayConfig{
 			Enabled: c.Gateway.Enabled,
 		},
 		CloudProvider: c.Kubelet.CloudProvider,

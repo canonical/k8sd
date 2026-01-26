@@ -6,8 +6,7 @@ import (
 	"os"
 	"os/exec"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	"gopkg.in/yaml.v2"
@@ -48,7 +47,7 @@ func verifyJoinConfigWithRunCommand(joinConfigString, token string, run runComma
 	internalToken := types.InternalWorkerNodeToken{}
 	if internalToken.Decode(token) == nil {
 		// worker token.
-		var joinConfig apiv1.WorkerJoinConfig
+		var joinConfig apiv2.WorkerJoinConfig
 		if err := yaml.UnmarshalStrict([]byte(joinConfigString), &joinConfig); err != nil {
 			return fmt.Errorf("failed to unmarshal worker join config: %w", err)
 		}

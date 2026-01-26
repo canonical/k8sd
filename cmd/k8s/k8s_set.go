@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/utils"
@@ -15,7 +15,7 @@ import (
 )
 
 type SetResult struct {
-	ClusterConfig apiv1.UserFacingClusterConfig `json:"cluster-config" yaml:"cluster-config"`
+	ClusterConfig apiv2.UserFacingClusterConfig `json:"cluster-config" yaml:"cluster-config"`
 }
 
 func (s SetResult) String() string {
@@ -34,7 +34,7 @@ func newSetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		Args:   cmdutil.MinimumNArgs(env, 1),
 		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat)),
 		Run: func(cmd *cobra.Command, args []string) {
-			config := apiv1.UserFacingClusterConfig{}
+			config := apiv2.UserFacingClusterConfig{}
 
 			if opts.timeout < minTimeout {
 				cmd.PrintErrf("Timeout %v is less than minimum of %v. Using the minimum %v instead.\n", opts.timeout, minTimeout, minTimeout)
@@ -58,7 +58,7 @@ func newSetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), opts.timeout)
 			cobra.OnFinalize(cancel)
 
-			if err := client.SetClusterConfig(ctx, apiv1.SetClusterConfigRequest{Config: config}); err != nil {
+			if err := client.SetClusterConfig(ctx, apiv2.SetClusterConfigRequest{Config: config}); err != nil {
 				cmd.PrintErrf("Error: Failed to apply requested cluster configuration changes.\n\nThe error was: %v\n", err)
 				env.Exit(1)
 				return
@@ -102,7 +102,7 @@ var knownSetKeys = map[string]struct{}{
 	fmt.Sprintf("%s.enabled", features.Network):               {},
 }
 
-func updateConfigMapstructure(config *apiv1.UserFacingClusterConfig, arg string) error {
+func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string) error {
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		TagName:          "json",
 		WeaklyTypedInput: true,

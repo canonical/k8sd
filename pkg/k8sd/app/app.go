@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/api"
 	"github.com/canonical/k8sd/pkg/k8sd/controllers"
 	"github.com/canonical/k8sd/pkg/k8sd/controllers/upgrade"
@@ -270,7 +270,7 @@ func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
 	}
 
 	err := a.cluster.Start(ctx, microcluster.DaemonArgs{
-		Version:                 string(apiv1.K8sdAPIVersion),
+		Version:                 string(apiv2.K8sdAPIVersion),
 		Verbose:                 a.config.Verbose,
 		Debug:                   a.config.Debug,
 		Hooks:                   hooks,

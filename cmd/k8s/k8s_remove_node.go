@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/spf13/cobra"
 )
@@ -54,7 +54,7 @@ func newRemoveNodeCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			name := args[0]
 
 			cmd.PrintErrf("Removing %q from the Kubernetes cluster. This may take a few seconds, please wait.\n", name)
-			if err := client.RemoveNode(cmd.Context(), apiv1.RemoveNodeRequest{Name: name, Force: opts.force, Timeout: opts.timeout}); err != nil {
+			if err := client.RemoveNode(cmd.Context(), apiv2.RemoveNodeRequest{Name: name, Force: opts.force, Timeout: opts.timeout}); err != nil {
 				cmd.PrintErrf("Error: Failed to remove node %q from the cluster.\n\nThe error was: %v\n", name, err)
 				env.Exit(1)
 				return

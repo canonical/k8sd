@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/state"

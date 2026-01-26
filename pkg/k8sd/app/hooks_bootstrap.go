@@ -13,8 +13,7 @@ import (
 	"strings"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
@@ -54,7 +53,7 @@ func (a *App) onBootstrap(ctx context.Context, s state.State, initConfig map[str
 	return a.onBootstrapControlPlane(ctx, s, bootstrapConfig)
 }
 
-func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedToken string, joinConfig apiv1.WorkerJoinConfig) (rerr error) {
+func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedToken string, joinConfig apiv2.WorkerJoinConfig) (rerr error) {
 	snap := a.Snap()
 
 	log := log.FromContext(ctx).WithValues("hook", "join")
@@ -114,10 +113,10 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedT
 
 	type wrappedResponse struct {
 		Error    string                          `json:"error"`
-		Metadata apiv1.GetWorkerJoinInfoResponse `json:"metadata"`
+		Metadata apiv2.GetWorkerJoinInfoResponse `json:"metadata"`
 	}
 
-	requestBody, err := json.Marshal(apiv1.GetWorkerJoinInfoRequest{Address: nodeIP.String()})
+	requestBody, err := json.Marshal(apiv2.GetWorkerJoinInfoRequest{Address: nodeIP.String()})
 	if err != nil {
 		return fmt.Errorf("failed to prepare worker info request: %w", err)
 	}

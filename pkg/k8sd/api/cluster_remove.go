@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
@@ -27,7 +27,7 @@ import (
 func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.Response {
 	snap := e.provider.Snap()
 
-	req := apiv1.RemoveNodeRequest{}
+	req := apiv2.RemoveNodeRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -96,7 +96,7 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 		}
 	}
 
-	return response.SyncResponse(true, &apiv1.RemoveNodeResponse{})
+	return response.SyncResponse(true, &apiv2.RemoveNodeResponse{})
 }
 
 func removeNodeFromDatastore(ctx context.Context, s state.State, snap snap.Snap, nodeName string, clusterConfig types.ClusterConfig) error {

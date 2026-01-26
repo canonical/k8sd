@@ -4,8 +4,7 @@ import (
 	"os"
 	"path"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/docgen"
 	"github.com/spf13/cobra"
@@ -55,7 +54,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			outPath = path.Join(opts.outputDir, "worker_join_config.md")
-			err = docgen.MarkdownFromJsonStructToFile(apiv1.WorkerJoinConfig{}, outPath, opts.projectDir)
+			err = docgen.MarkdownFromJsonStructToFile(apiv2.WorkerJoinConfig{}, outPath, opts.projectDir)
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to generate markdown documentation for worker join configuration\n\n")
 				cmd.PrintErrf("Error: %v", err)
@@ -64,7 +63,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			outPath = path.Join(opts.outputDir, "refresh_certificates_request.md")
-			err = docgen.MarkdownFromJsonStructToFile(apiv1.RefreshCertificatesUpdateRequest{}, outPath, opts.projectDir)
+			err = docgen.MarkdownFromJsonStructToFile(apiv2.RefreshCertificatesUpdateRequest{}, outPath, opts.projectDir)
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to generate markdown documentation for refresh certificates request\n\n")
 				cmd.PrintErrf("Error: %v", err)

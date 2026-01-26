@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations/cilium"
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
 	"github.com/canonical/k8sd/pkg/k8sd/features/cilium"

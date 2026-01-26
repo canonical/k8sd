@@ -3,7 +3,7 @@ package cilium
 import (
 	"testing"
 
-	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations/cilium"
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
 	. "github.com/onsi/gomega"
 )
 

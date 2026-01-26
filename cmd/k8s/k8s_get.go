@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/spf13/cobra"
@@ -57,7 +57,7 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 			config := response.Config
 
-			config.MetricsServer = apiv1.MetricsServerConfig{}
+			config.MetricsServer = apiv2.MetricsServerConfig{}
 			config.CloudProvider = nil
 			config.Annotations = nil
 

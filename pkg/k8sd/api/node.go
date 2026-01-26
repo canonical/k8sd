@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/api/impl"
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
@@ -28,7 +28,7 @@ func (e *Endpoints) getNodeStatus(s state.State, r *http.Request) response.Respo
 		return response.InternalError(fmt.Errorf("failed to get node taints: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv1.NodeStatusResponse{
+	return response.SyncResponse(true, &apiv2.NodeStatusResponse{
 		NodeStatus: status,
 		Taints:     taints,
 	})

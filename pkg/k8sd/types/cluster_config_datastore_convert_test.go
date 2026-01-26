@@ -3,7 +3,7 @@ package types_test
 import (
 	"testing"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
@@ -12,13 +12,13 @@ import (
 func TestDatastoreConfigFromUserFacing(t *testing.T) {
 	testCases := []struct {
 		name             string
-		userFacingConfig apiv1.UserFacingDatastoreConfig
+		userFacingConfig apiv2.UserFacingDatastoreConfig
 		expectedConfig   types.Datastore
 		expectedError    bool
 	}{
 		{
 			name: "Valid external datastore config",
-			userFacingConfig: apiv1.UserFacingDatastoreConfig{
+			userFacingConfig: apiv2.UserFacingDatastoreConfig{
 				Type:       utils.Pointer("external"),
 				Servers:    utils.Pointer([]string{"server1", "server2"}),
 				CACert:     utils.Pointer("ca_cert"),
@@ -35,7 +35,7 @@ func TestDatastoreConfigFromUserFacing(t *testing.T) {
 		},
 		{
 			name: "Invalid datastore config type",
-			userFacingConfig: apiv1.UserFacingDatastoreConfig{
+			userFacingConfig: apiv2.UserFacingDatastoreConfig{
 				Type:       utils.Pointer("etcd"),
 				Servers:    utils.Pointer([]string{"server1", "server2"}),
 				CACert:     utils.Pointer("ca_cert"),
@@ -66,7 +66,7 @@ func TestDatastoreToUserFacing(t *testing.T) {
 	testCases := []struct {
 		name                     string
 		datastoreConfig          types.Datastore
-		expectedUserFacingConfig apiv1.UserFacingDatastoreConfig
+		expectedUserFacingConfig apiv2.UserFacingDatastoreConfig
 	}{
 		{
 			name: "Valid datastore to user-facing config",
@@ -77,7 +77,7 @@ func TestDatastoreToUserFacing(t *testing.T) {
 				ExternalClientCert: utils.Pointer("client_cert"),
 				ExternalClientKey:  utils.Pointer("client_key"),
 			},
-			expectedUserFacingConfig: apiv1.UserFacingDatastoreConfig{
+			expectedUserFacingConfig: apiv2.UserFacingDatastoreConfig{
 				Type:       utils.Pointer("external"),
 				Servers:    utils.Pointer([]string{"server1", "server2"}),
 				CACert:     utils.Pointer("ca_cert"),

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"os"
 
-	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations"
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"

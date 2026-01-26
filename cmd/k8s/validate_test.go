@@ -7,8 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
@@ -78,7 +77,7 @@ func TestValidateConfig(t *testing.T) {
 		t.Run("worker node", func(t *testing.T) {
 			g := NewWithT(t)
 
-			joinConfig := &apiv1.WorkerJoinConfig{
+			joinConfig := &apiv2.WorkerJoinConfig{
 				ContainerdBaseDir: containerdBaseDir,
 			}
 			joinConfigBytes, err := yaml.Marshal(joinConfig)

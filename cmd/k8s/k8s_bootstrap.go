@@ -11,8 +11,7 @@ import (
 	"time"
 	"unicode"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-	apiv2 "github.com/canonical/k8s-snap-api/api/v2"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/client/snapd"
 	"github.com/canonical/k8sd/pkg/config"
@@ -23,7 +22,7 @@ import (
 )
 
 type BootstrapResult struct {
-	Node apiv1.NodeStatus `json:"node" yaml:"node"`
+	Node apiv2.NodeStatus `json:"node" yaml:"node"`
 }
 
 func (b BootstrapResult) String() string {
@@ -128,17 +127,17 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			default:
 				// Default bootstrap configuration
 				bootstrapConfig = apiv2.BootstrapConfig{
-					ClusterConfig: apiv1.UserFacingClusterConfig{
-						Network: apiv1.NetworkConfig{
+					ClusterConfig: apiv2.UserFacingClusterConfig{
+						Network: apiv2.NetworkConfig{
 							Enabled: utils.Pointer(true),
 						},
-						DNS: apiv1.DNSConfig{
+						DNS: apiv2.DNSConfig{
 							Enabled: utils.Pointer(true),
 						},
-						Gateway: apiv1.GatewayConfig{
+						Gateway: apiv2.GatewayConfig{
 							Enabled: utils.Pointer(true),
 						},
-						LocalStorage: apiv1.LocalStorageConfig{
+						LocalStorage: apiv2.LocalStorageConfig{
 							Enabled: utils.Pointer(true),
 						},
 					},
@@ -165,7 +164,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 
-			outputFormatter.Print(BootstrapResult{Node: apiv1.NodeStatus(response)})
+			outputFormatter.Print(BootstrapResult{Node: apiv2.NodeStatus(response)})
 		},
 	}
 

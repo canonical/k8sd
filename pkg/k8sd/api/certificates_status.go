@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -82,7 +82,7 @@ func getCertsStatusControlPlane(s state.State, r *http.Request, snap snap.Snap) 
 		return response.InternalError(fmt.Errorf("failed to read kubeconfig certificates: %w", err))
 	}
 
-	var certificates []apiv1.CertificateStatus
+	var certificates []apiv2.CertificateStatus
 	certificates = append(certificates, nodeCerts...)
 	certificates = append(certificates, kubeConfigCerts...)
 
@@ -95,7 +95,7 @@ func getCertsStatusControlPlane(s state.State, r *http.Request, snap snap.Snap) 
 	}
 
 	updateExternallyManaged(authorities, certificates)
-	return response.SyncResponse(true, apiv1.CertificatesStatusResponse{
+	return response.SyncResponse(true, apiv2.CertificatesStatusResponse{
 		Certificates:           certificates,
 		CertificateAuthorities: authorities,
 	})
@@ -114,7 +114,7 @@ func getCertsStatusWorker(s state.State, r *http.Request, snap snap.Snap) respon
 		return response.InternalError(fmt.Errorf("failed to read kubeconfig certificates: %w", err))
 	}
 
-	var certificates []apiv1.CertificateStatus
+	var certificates []apiv2.CertificateStatus
 	certificates = append(certificates, nodeCerts...)
 	certificates = append(certificates, kubeConfigCerts...)
 
@@ -124,17 +124,17 @@ func getCertsStatusWorker(s state.State, r *http.Request, snap snap.Snap) respon
 		cert.ExternallyManaged = true
 	}
 
-	return response.SyncResponse(true, apiv1.CertificatesStatusResponse{
+	return response.SyncResponse(true, apiv2.CertificatesStatusResponse{
 		Certificates:           certificates,
-		CertificateAuthorities: []apiv1.CertificateAuthorityStatus{},
+		CertificateAuthorities: []apiv2.CertificateAuthorityStatus{},
 	})
 }
 
 // readKubeconfigCertificates reads the client certificates from kubeconfig
 // files located in the specified directory. It returns a slice of
 // CertificateStatus for each valid kubeconfig file.
-func readKubeconfigCertificates(kubeconfigDir string, configs []string) ([]apiv1.CertificateStatus, error) {
-	certificates := make([]apiv1.CertificateStatus, 0, len(configs))
+func readKubeconfigCertificates(kubeconfigDir string, configs []string) ([]apiv2.CertificateStatus, error) {
+	certificates := make([]apiv2.CertificateStatus, 0, len(configs))
 
 	for _, config := range configs {
 		kubeConfig, err := clientcmd.LoadFromFile(filepath.Join(kubeconfigDir, config))
@@ -156,7 +156,7 @@ func readKubeconfigCertificates(kubeconfigDir string, configs []string) ([]apiv1
 			return nil, fmt.Errorf("failed to load certificate data from kubeconfig %s: %w", config, err)
 		}
 
-		certificates = append(certificates, apiv1.CertificateStatus{
+		certificates = append(certificates, apiv2.CertificateStatus{
 			Name:                 config,
 			Expires:              cert.NotAfter.Format(time.RFC3339),
 			CertificateAuthority: cert.Issuer.CommonName,
@@ -167,15 +167,15 @@ func readKubeconfigCertificates(kubeconfigDir string, configs []string) ([]apiv1
 
 // readCertificateAuthorities loads certificate authority information from the
 // given cluster configuration.
-func readCertificateAuthorities(clusterConfig *types.ClusterConfig) ([]apiv1.CertificateAuthorityStatus, error) {
-	cas := make([]apiv1.CertificateAuthorityStatus, 0, 3)
+func readCertificateAuthorities(clusterConfig *types.ClusterConfig) ([]apiv2.CertificateAuthorityStatus, error) {
+	cas := make([]apiv2.CertificateAuthorityStatus, 0, 3)
 
 	loadAndAppend := func(certPath, keyPath, name string) error {
 		cert, key, err := pkiutil.LoadCertificate(certPath, keyPath)
 		if err != nil {
 			return fmt.Errorf("failed to load %s: %w", name, err)
 		}
-		cas = append(cas, apiv1.CertificateAuthorityStatus{
+		cas = append(cas, apiv2.CertificateAuthorityStatus{
 			Name:              cert.Subject.CommonName,
 			Expires:           cert.NotAfter.Format(time.RFC3339),
 			ExternallyManaged: key == nil,
@@ -207,14 +207,14 @@ func readCertificateAuthorities(clusterConfig *types.ClusterConfig) ([]apiv1.Cer
 // certificate name, it reads the certificate and key pair using
 // loadCertificatePairFromDir, then builds a CertificateStatus that includes
 // the certificate's expiration date and issuer information.
-func loadCertificateStatusesFromDir(baseDir string, certNames []string) ([]apiv1.CertificateStatus, error) {
-	var certs []apiv1.CertificateStatus
+func loadCertificateStatusesFromDir(baseDir string, certNames []string) ([]apiv2.CertificateStatus, error) {
+	var certs []apiv2.CertificateStatus
 	for _, certName := range certNames {
 		cert, _, err := pkiutil.LoadCertificatePairFromDir(baseDir, certName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to extract information from certificate %s: %w", certName, err)
 		}
-		certs = append(certs, apiv1.CertificateStatus{
+		certs = append(certs, apiv2.CertificateStatus{
 			Name:                 certName,
 			Expires:              cert.NotAfter.Format(time.RFC3339),
 			CertificateAuthority: cert.Issuer.CommonName,
@@ -227,7 +227,7 @@ func loadCertificateStatusesFromDir(baseDir string, certNames []string) ([]apiv1
 // certificate in the provided slice. It matches each certificate's
 // CertificateAuthority against the list of certificate authorities and,
 // if a match is found, uses the authority's ExternallyManaged value.
-func updateExternallyManaged(authorities []apiv1.CertificateAuthorityStatus, certificates []apiv1.CertificateStatus) {
+func updateExternallyManaged(authorities []apiv2.CertificateAuthorityStatus, certificates []apiv2.CertificateStatus) {
 	for i := range certificates {
 		cert := &certificates[i]
 		for _, authority := range authorities {

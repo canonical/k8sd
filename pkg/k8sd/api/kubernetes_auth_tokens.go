@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/utils"
@@ -17,7 +17,7 @@ import (
 )
 
 func (e *Endpoints) postKubernetesAuthTokens(s state.State, r *http.Request) response.Response {
-	request := apiv1.GenerateKubernetesAuthTokenRequest{}
+	request := apiv2.GenerateKubernetesAuthTokenRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -27,11 +27,11 @@ func (e *Endpoints) postKubernetesAuthTokens(s state.State, r *http.Request) res
 		return response.InternalError(err)
 	}
 
-	return response.SyncResponse(true, apiv1.GenerateKubernetesAuthTokenResponse{Token: token})
+	return response.SyncResponse(true, apiv2.GenerateKubernetesAuthTokenResponse{Token: token})
 }
 
 func (e *Endpoints) deleteKubernetesAuthTokens(s state.State, r *http.Request) response.Response {
-	request := apiv1.RevokeKubernetesAuthTokenRequest{}
+	request := apiv2.RevokeKubernetesAuthTokenRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -47,7 +47,7 @@ func (e *Endpoints) deleteKubernetesAuthTokens(s state.State, r *http.Request) r
 // postKubernetesAuthWebhook is used by kube-apiserver to handle TokenReview objects.
 // Note that we do not use the normal response.SyncResponse here, because it breaks the response format that kube-apiserver expects.
 func (e *Endpoints) postKubernetesAuthWebhook(s state.State, r *http.Request) response.Response {
-	review := apiv1.TokenReview{
+	review := apiv2.TokenReview{
 		APIVersion: "authentication.k8s.io/v1",
 		Kind:       "TokenReview",
 	}
@@ -56,7 +56,7 @@ func (e *Endpoints) postKubernetesAuthWebhook(s state.State, r *http.Request) re
 		return utils.JSONResponse(http.StatusBadRequest, review)
 	}
 	// reset anything the client might be passing over in the status already
-	review.Status = apiv1.TokenReviewStatus{}
+	review.Status = apiv2.TokenReviewStatus{}
 
 	// handle APIVersion and Kind
 	var apiVersionErr, kindErr error
@@ -89,10 +89,10 @@ func (e *Endpoints) postKubernetesAuthWebhook(s state.State, r *http.Request) re
 		return utils.JSONResponse(http.StatusUnauthorized, review)
 	}
 
-	review.Status = apiv1.TokenReviewStatus{
+	review.Status = apiv2.TokenReviewStatus{
 		Audiences:     review.Spec.Audiences,
 		Authenticated: true,
-		User: apiv1.TokenReviewStatusUserInfo{
+		User: apiv2.TokenReviewStatusUserInfo{
 			UID:      username,
 			Username: username,
 			Groups:   groups,

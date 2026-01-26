@@ -3,7 +3,7 @@ package types
 import (
 	"fmt"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 )
 
 // RefreshOpts controls the target version of the snap during a refresh.
@@ -16,7 +16,7 @@ type RefreshOpts struct {
 	Revision string `json:"revision"`
 }
 
-func RefreshOptsFromAPI(req apiv1.SnapRefreshRequest) (RefreshOpts, error) {
+func RefreshOptsFromAPI(req apiv2.SnapRefreshRequest) (RefreshOpts, error) {
 	optsMap := map[string]string{
 		"localPath": req.LocalPath,
 		"channel":   req.Channel,
