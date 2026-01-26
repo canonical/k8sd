@@ -36,7 +36,8 @@ var testCases = []testCase{
 		expectedConfig: apiv1.BootstrapConfig{
 			ClusterConfig: apiv1.UserFacingClusterConfig{
 				Network: apiv1.NetworkConfig{
-					Enabled: utils.Pointer(true),
+					Enabled:       utils.Pointer(true),
+					KubeProxyFree: utils.Pointer(true),
 				},
 				DNS: apiv1.DNSConfig{
 					Enabled:       utils.Pointer(true),
