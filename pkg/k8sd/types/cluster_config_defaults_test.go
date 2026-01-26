@@ -15,9 +15,10 @@ func TestSetDefaults(t *testing.T) {
 	// Set defaults
 	expectedConfig := types.ClusterConfig{
 		Network: types.Network{
-			Enabled:     utils.Pointer(false),
-			PodCIDR:     utils.Pointer("10.1.0.0/16"),
-			ServiceCIDR: utils.Pointer("10.152.183.0/24"),
+			Enabled:       utils.Pointer(false),
+			PodCIDR:       utils.Pointer("10.1.0.0/16"),
+			ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
+			KubeProxyFree: utils.Pointer(false),
 		},
 		APIServer: types.APIServer{
 			SecurePort:        utils.Pointer(6443),

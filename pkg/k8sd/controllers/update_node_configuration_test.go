@@ -73,7 +73,7 @@ func TestUpdateNodeConfigurationController(t *testing.T) {
 			defer cancel()
 
 			configProvider := &configProvider{config: tc.expectedConfig}
-			kubeletConfigMap, err := tc.initialConfig.Kubelet.ToConfigMap(nil)
+			nodeConfigMap, err := types.ClusterConfigToConfigMap(tc.initialConfig, nil)
 			g.Expect(err).ToNot(HaveOccurred())
 
 			configMap := &corev1.ConfigMap{
@@ -81,7 +81,7 @@ func TestUpdateNodeConfigurationController(t *testing.T) {
 					Name:      "k8sd-config",
 					Namespace: "kube-system",
 				},
-				Data: kubeletConfigMap,
+				Data: nodeConfigMap,
 			}
 			clientset := fake.NewSimpleClientset(configMap)
 
@@ -123,7 +123,7 @@ func TestUpdateNodeConfigurationController(t *testing.T) {
 				priv = privKey
 			}
 
-			expectedConfigMap, err := tc.expectedConfig.Kubelet.ToConfigMap(priv)
+			expectedConfigMap, err := types.ClusterConfigToConfigMap(tc.expectedConfig, priv)
 			g.Expect(err).ToNot(HaveOccurred())
 			if tc.expectedFailure {
 				g.Expect(result.Data).ToNot(Equal(expectedConfigMap))

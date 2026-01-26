@@ -100,6 +100,7 @@ var knownSetKeys = map[string]struct{}{
 	fmt.Sprintf("%s.reclaim-policy", features.LocalStorage):   {},
 	fmt.Sprintf("%s.enabled", features.MetricsServer):         {},
 	fmt.Sprintf("%s.enabled", features.Network):               {},
+	fmt.Sprintf("%s.kube-proxy-free", features.Network):       {},
 }
 
 func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string) error {

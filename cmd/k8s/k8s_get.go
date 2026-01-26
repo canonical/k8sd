@@ -84,6 +84,8 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				output = config.LoadBalancer
 			case fmt.Sprintf("%s.enabled", features.Network):
 				output = config.Network.GetEnabled()
+			case fmt.Sprintf("%s.kube-proxy-free", features.Network):
+				output = config.Network.GetKubeProxyFree()
 			case fmt.Sprintf("%s.enabled", features.DNS):
 				output = config.DNS.GetEnabled()
 			case fmt.Sprintf("%s.upstream-nameservers", features.DNS):
