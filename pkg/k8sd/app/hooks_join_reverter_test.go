@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -155,4 +156,69 @@ func TestRegisterK8sNodeDeletionReverter_Success(t *testing.T) {
 	// Node should still exist
 	_, err := clientset.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 	g.Expect(err).NotTo(HaveOccurred(), "node should remain when join succeeds")
+}
+
+// TestRegisterEtcdMemberReverter_ClientCreationFailure tests error handling when EtcdClient creation fails.
+func TestRegisterEtcdMemberReverter_ClientCreationFailure(t *testing.T) {
+	g := NewWithT(t)
+
+	tmpDir := t.TempDir()
+	etcdDir := filepath.Join(tmpDir, "etcd")
+	g.Expect(os.MkdirAll(etcdDir, 0755)).To(Succeed())
+
+	testFile := filepath.Join(etcdDir, "member/snap/db")
+	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0755)).To(Succeed())
+	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0644)).To(Succeed())
+
+	// 3 endpoints - should attempt etcd operations but client creation fails
+	endpoints := []string{"https://node1:2379", "https://node2:2379", "https://node3:2379"}
+	nodeName := "node2"
+
+	// Mock snap that returns an error from EtcdClient
+	mockSnap := &snapmock.Snap{
+		Mock: snapmock.Mock{
+			EtcdDir:       etcdDir,
+			EtcdClientErr: fmt.Errorf("failed to create etcd client"),
+		},
+	}
+	reverter := revert.New()
+
+	app.RegisterEtcdMemberReverter(logr.Discard(), mockSnap, nodeName, endpoints, reverter)
+
+	// Trigger reverter
+	reverter.Fail()
+
+	// Verify directory was NOT cleaned up when client creation fails
+	g.Expect(etcdDir).To(BeAnExistingFile(), "etcd directory should NOT be removed when client creation fails")
+}
+
+// TestRegisterEtcdMemberReverter_Success tests the reverter doesn't run on success.
+func TestRegisterEtcdMemberReverter_Success(t *testing.T) {
+	g := NewWithT(t)
+
+	tmpDir := t.TempDir()
+	etcdDir := filepath.Join(tmpDir, "etcd")
+	g.Expect(os.MkdirAll(etcdDir, 0755)).To(Succeed())
+
+	testFile := filepath.Join(etcdDir, "member/snap/db")
+	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0755)).To(Succeed())
+	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0644)).To(Succeed())
+
+	endpoints := []string{"https://node1:2379", "https://node2:2379", "https://node3:2379"}
+
+	mockSnap := &snapmock.Snap{
+		Mock: snapmock.Mock{
+			EtcdDir: etcdDir,
+		},
+	}
+	reverter := revert.New()
+	defer reverter.Fail()
+
+	app.RegisterEtcdMemberReverter(logr.Discard(), mockSnap, "node2", endpoints, reverter)
+
+	// Mark as successful (no cleanup should happen)
+	reverter.Success()
+
+	// Verify directory still exists
+	g.Expect(testFile).To(BeAnExistingFile(), "etcd directory should remain when join succeeds")
 }
