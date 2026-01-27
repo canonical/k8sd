@@ -82,6 +82,22 @@ func TestRegisterK8sDqliteReverter_Success(t *testing.T) {
 	g.Expect(testFile).To(BeAnExistingFile())
 }
 
+// RegisterEtcdMemberReverter Tests
+//
+// These tests cover the RegisterEtcdMemberReverter function which handles cleanup
+// of etcd state when a node join fails. The function has the following behavior:
+//
+// 1. With <3 endpoints: Skips cleanup to avoid quorum loss (tested)
+// 2. With >=3 endpoints but EtcdClient creation fails: Preserves directory (tested)
+// 3. With >=3 endpoints and successful RemoveNodeByName: Removes directory (not testable without integration)
+// 4. With >=3 endpoints but RemoveNodeByName fails: Preserves directory (not testable without integration)
+// 5. On successful join: Reverter doesn't run (tested)
+//
+// Note: Full testing of RemoveNodeByName success/failure scenarios requires either
+// integration testing with a real etcd cluster or refactoring to use interfaces for
+// dependency injection. The current implementation uses etcd.Client which embeds
+// *clientv3.Client, making it difficult to mock without integration testing.
+
 // TestRegisterEtcdMemberReverter_NotEnoughEndpoints tests that cleanup is skipped when <3 endpoints.
 func TestRegisterEtcdMemberReverter_NotEnoughEndpoints(t *testing.T) {
 	g := NewWithT(t)
@@ -212,7 +228,6 @@ func TestRegisterEtcdMemberReverter_Success(t *testing.T) {
 		},
 	}
 	reverter := revert.New()
-	defer reverter.Fail()
 
 	app.RegisterEtcdMemberReverter(logr.Discard(), mockSnap, "node2", endpoints, reverter)
 
