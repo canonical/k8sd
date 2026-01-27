@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 )
 
-type ClusterStatus apiv1.ClusterStatus
+type ClusterStatus apiv2.ClusterStatus
 
 // TICS -COV_GO_SUPPRESSED_ERROR
 // we are just formatting the output for the k8s status command, it is ok to ignore failures from result.WriteString()
@@ -15,7 +15,7 @@ type ClusterStatus apiv1.ClusterStatus
 func (c ClusterStatus) isHA() bool {
 	voters := 0
 	for _, member := range c.Members {
-		if member.DatastoreRole == apiv1.DatastoreRoleVoter {
+		if member.DatastoreRole == apiv2.DatastoreRoleVoter {
 			voters++
 		}
 	}

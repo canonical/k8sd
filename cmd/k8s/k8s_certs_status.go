@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/util/duration"
@@ -42,7 +42,7 @@ func newCertsStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 
-			status, err := client.CertificatesStatus(ctx, apiv1.CertificatesStatusRequest{})
+			status, err := client.CertificatesStatus(ctx, apiv2.CertificatesStatusRequest{})
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to retrieve certificate status.\n\nError: %v\n", err)
 				env.Exit(1)
@@ -64,7 +64,7 @@ func newCertsStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 // writer in a tabulated format. The output includes the certificate name, expiration date,
 // residual time until expiration, associated certificate authority, and whether the certificate
 // is externally managed.
-func printCertificatesStatus(writer io.Writer, status apiv1.CertificatesStatusResponse) error {
+func printCertificatesStatus(writer io.Writer, status apiv2.CertificatesStatusResponse) error {
 	yesNo := func(b bool) string {
 		if b {
 			return "yes"

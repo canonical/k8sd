@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations/cilium"
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 )
 

@@ -2,7 +2,6 @@ package controllers_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +12,6 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
-	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,7 +20,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 )
 
-func setupTestEnv(t *testing.T) (*mock.Snap, *watch.FakeWatcher, string, string, string) {
+func setupTestEnv(t *testing.T) (*mock.Snap, *watch.FakeWatcher, string, string) {
 	clientset := fake.NewSimpleClientset()
 	watcher := watch.NewFake()
 	clientset.PrependWatchReactor("nodes", k8stesting.DefaultWatchReactor(watcher, nil))
@@ -30,7 +28,6 @@ func setupTestEnv(t *testing.T) (*mock.Snap, *watch.FakeWatcher, string, string,
 	s := &mock.Snap{
 		Mock: mock.Mock{
 			K8sdStateDir:         filepath.Join(t.TempDir(), "k8sd"),
-			K8sDqliteStateDir:    filepath.Join(t.TempDir(), "k8s-dqlite"),
 			UID:                  os.Getuid(),
 			GID:                  os.Getgid(),
 			KubernetesNodeClient: &kubernetes.Client{Interface: clientset},
@@ -40,155 +37,21 @@ func setupTestEnv(t *testing.T) (*mock.Snap, *watch.FakeWatcher, string, string,
 	g := NewWithT(t)
 	g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
 
-	k8sDqliteStateDir := s.K8sDqliteStateDir()
 	k8sdDbDir := filepath.Join(s.K8sdStateDir(), "database")
-	g.Expect(os.MkdirAll(k8sDqliteStateDir, 0o700)).To(Succeed())
 	g.Expect(os.MkdirAll(k8sdDbDir, 0o700)).To(Succeed())
 
 	nodeName := "test-node-name"
-	return s, watcher, k8sDqliteStateDir, k8sdDbDir, nodeName
+	return s, watcher, k8sdDbDir, nodeName
 }
 
 func TestAvailabilityZoneLabel(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	g := NewWithT(t)
-
-	t.Run("Ensure failure domain is set with k8s-dqlite datastore", func(t *testing.T) {
-		tests := []struct {
-			name string
-			// Availability zone label
-			availabilityZone string
-			// The first 8 bytes of the sha-256 hash of the AZ or 0 if unset.
-			expFailureDomain uint64
-			// Does the $stateDir/failure-domain file exist?
-			fileExists bool
-			// The already existing failure domain setting.
-			existingFailureDomain uint64
-			// Do we expect a service restart?
-			expRestart bool
-		}{
-			{
-				name:             "AZ set, file missing",
-				availabilityZone: "testAZ",
-				expFailureDomain: 7130520900010879344,
-				fileExists:       false,
-				expRestart:       true,
-			},
-			{
-				name:                  "No change - file missing",
-				availabilityZone:      "",
-				expFailureDomain:      0,
-				existingFailureDomain: 0,
-				fileExists:            false,
-				expRestart:            false,
-			},
-			{
-				name:                  "No change, AZ unset - file exists",
-				availabilityZone:      "",
-				expFailureDomain:      0,
-				existingFailureDomain: 0,
-				fileExists:            true,
-				expRestart:            false,
-			},
-			{
-				name:                  "No change, AZ set - file exists",
-				availabilityZone:      "testAZ",
-				expFailureDomain:      7130520900010879344,
-				existingFailureDomain: 7130520900010879344,
-				fileExists:            true,
-				expRestart:            false,
-			},
-			{
-				name:                  "AZ changed, file exists",
-				availabilityZone:      "testAZ",
-				expFailureDomain:      7130520900010879344,
-				existingFailureDomain: 101,
-				fileExists:            true,
-				expRestart:            true,
-			},
-		}
-
-		s, watcher, k8sDqliteStateDir, k8sdDbDir, nodeName := setupTestEnv(t)
-		ctrl := controllers.NewNodeLabelController(
-			s,
-			func() {},
-			func(context.Context) (string, error) { return nodeName, nil },
-		)
-
-		go ctrl.Run(ctx, func(context.Context) (string, error) { return "k8s-dqlite", nil })
-		defer watcher.Stop()
-
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				s.RestartServicesCalledWith = nil
-
-				k8sDqliteFailureDomainFile := snaputil.GetDqliteFailureDomainFile(k8sDqliteStateDir)
-				k8sdFailureDomainFile := snaputil.GetDqliteFailureDomainFile(k8sdDbDir)
-
-				if tc.fileExists {
-					existingFailureDomainStr := fmt.Sprintf("%v", tc.existingFailureDomain)
-					// For simplicity, we'll assume matching dqlite failure domains
-					err := os.WriteFile(k8sDqliteFailureDomainFile, []byte(existingFailureDomainStr), 0o644)
-					g.Expect(err).ToNot(HaveOccurred())
-					err = os.WriteFile(k8sdFailureDomainFile, []byte(existingFailureDomainStr), 0o644)
-					g.Expect(err).ToNot(HaveOccurred())
-				} else {
-					exists, err := utils.FileExists(k8sDqliteFailureDomainFile)
-					g.Expect(err).ToNot(HaveOccurred())
-					if exists {
-						g.Expect(os.Remove(k8sDqliteFailureDomainFile)).To(Succeed())
-					}
-					exists, err = utils.FileExists(k8sdFailureDomainFile)
-					g.Expect(err).ToNot(HaveOccurred())
-					if exists {
-						g.Expect(os.Remove(k8sdFailureDomainFile)).To(Succeed())
-					}
-				}
-
-				node := &corev1.Node{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: nodeName,
-						Labels: map[string]string{
-							"topology.kubernetes.io/zone": tc.availabilityZone,
-						},
-					},
-				}
-				watcher.Add(node)
-
-				select {
-				case <-ctrl.ReconciledCh():
-				case <-time.After(channelSendTimeout):
-					g.Fail("Time out while waiting for the reconcile to complete")
-				}
-
-				k8sdFailureDomain, err := snaputil.GetDqliteFailureDomain(k8sdDbDir)
-				g.Expect(err).ToNot(HaveOccurred())
-				k8sdDqliteFailureDomain, err := snaputil.GetDqliteFailureDomain(k8sDqliteStateDir)
-				g.Expect(err).ToNot(HaveOccurred())
-
-				g.Expect(k8sdFailureDomain).To(Equal(k8sdDqliteFailureDomain))
-				g.Expect(k8sdFailureDomain).To(Equal(tc.expFailureDomain))
-
-				if tc.expRestart {
-					g.Expect(s.RestartServicesCalledWith).To(ContainElement([]string{"k8sd"}))
-					// Only expect k8s-dqlite restart if the datastore type is k8s-dqlite
-					g.Expect(s.RestartServicesCalledWith).To(ContainElement([]string{"k8s-dqlite"}))
-				} else {
-					g.Expect(s.RestartServicesCalledWith).To(BeEmpty())
-				}
-			})
-		}
-	})
-
 	t.Run("Ensure failure domain is only set for k8sd with etcd datastore", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		g := NewWithT(t)
 
-		s, watcher, _, k8sdDbDir, nodeName := setupTestEnv(t)
+		s, watcher, k8sdDbDir, nodeName := setupTestEnv(t)
 		ctrl := controllers.NewNodeLabelController(
 			s,
 			func() {},
@@ -221,6 +84,5 @@ func TestAvailabilityZoneLabel(t *testing.T) {
 		g.Expect(k8sdFailureDomain).To(Equal(expFailureDomain))
 
 		g.Expect(s.RestartServicesCalledWith).To(ContainElement([]string{"k8sd"}))
-		g.Expect(s.RestartServicesCalledWith).ToNot(ContainElement([]string{"k8s-dqlite"}))
 	})
 }

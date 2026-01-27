@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/spf13/cobra"
@@ -89,7 +89,7 @@ func newRefreshCertsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 
-			plan, err := client.RefreshCertificatesPlan(ctx, apiv1.RefreshCertificatesPlanRequest{
+			plan, err := client.RefreshCertificatesPlan(ctx, apiv2.RefreshCertificatesPlanRequest{
 				Certificates: opts.certificates,
 			})
 			if err != nil {
@@ -105,7 +105,7 @@ func newRefreshCertsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				}
 			}
 
-			runRequest := apiv1.RefreshCertificatesRunRequest{
+			runRequest := apiv2.RefreshCertificatesRunRequest{
 				Certificates:      opts.certificates,
 				Seed:              plan.Seed,
 				ExpirationSeconds: ttl,
@@ -126,8 +126,8 @@ func newRefreshCertsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	}
 
 	certificateOpts := fmt.Sprintf("Worker nodes: %s\nControl Plane nodes: %s",
-		formatCertificatesList(apiv1.ClusterRoleWorker),
-		formatCertificatesList(apiv1.ClusterRoleControlPlane),
+		formatCertificatesList(apiv2.ClusterRoleWorker),
+		formatCertificatesList(apiv2.ClusterRoleControlPlane),
 	)
 	cmd.Flags().StringSliceVar(&opts.certificates, "certificates", []string{}, fmt.Sprintf("List of certificates to renew in the cluster (must be used with --expires-in). Defaults to all certificates.\nAllowed values:\n%s", certificateOpts))
 	cmd.Flags().StringVar(&opts.externalCerts, "external-certificates", "", "path to a YAML file containing external certificate data in PEM format. If the cluster was bootstrapped with external certificates, the certificates will be updated. Use '-' to read from stdin.")
@@ -140,8 +140,8 @@ func newRefreshCertsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 
 // formatCertificatesList returns a comma separated string of the certificates
 // names for a specific cluster role.
-func formatCertificatesList(nodeRole apiv1.ClusterRole) string {
-	certs, found := apiv1.CertificatesByRole[nodeRole]
+func formatCertificatesList(nodeRole apiv2.ClusterRole) string {
+	certs, found := apiv2.CertificatesByRole[nodeRole]
 	if !found {
 		return ""
 	}
@@ -154,25 +154,25 @@ func formatCertificatesList(nodeRole apiv1.ClusterRole) string {
 	return strings.Join(parts, ", ")
 }
 
-func getCertificatesFromYAML(env cmdutil.ExecutionEnvironment, filePath string) (apiv1.RefreshCertificatesUpdateRequest, error) {
+func getCertificatesFromYAML(env cmdutil.ExecutionEnvironment, filePath string) (apiv2.RefreshCertificatesUpdateRequest, error) {
 	var b []byte
 	var err error
 
 	if filePath == "-" {
 		b, err = io.ReadAll(env.Stdin)
 		if err != nil {
-			return apiv1.RefreshCertificatesUpdateRequest{}, fmt.Errorf("failed to read certificates from stdin: %w", err)
+			return apiv2.RefreshCertificatesUpdateRequest{}, fmt.Errorf("failed to read certificates from stdin: %w", err)
 		}
 	} else {
 		b, err = os.ReadFile(filePath)
 		if err != nil {
-			return apiv1.RefreshCertificatesUpdateRequest{}, fmt.Errorf("failed to read file: %w", err)
+			return apiv2.RefreshCertificatesUpdateRequest{}, fmt.Errorf("failed to read file: %w", err)
 		}
 	}
 
-	var config apiv1.RefreshCertificatesUpdateRequest
+	var config apiv2.RefreshCertificatesUpdateRequest
 	if err := yaml.UnmarshalStrict(b, &config); err != nil {
-		return apiv1.RefreshCertificatesUpdateRequest{}, fmt.Errorf("failed to parse YAML certificates file: %w", err)
+		return apiv2.RefreshCertificatesUpdateRequest{}, fmt.Errorf("failed to parse YAML certificates file: %w", err)
 	}
 
 	return config, nil

@@ -33,7 +33,6 @@ var (
 		"kube-scheduler",
 		"kube-proxy",
 		"kubelet",
-		"k8s-dqlite",
 		"etcd",
 		"k8s-apiserver-proxy",
 	}
@@ -66,14 +65,6 @@ func StartControlPlaneServices(ctx context.Context, snap snap.Snap, extraSnapArg
 	return nil
 }
 
-// StartK8sDqliteServices starts the k8s-dqlite datastore service.
-func StartK8sDqliteServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
-	if err := snap.StartServices(ctx, []string{"k8s-dqlite"}, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to start service %v: %w", "k8s-dqlite", err)
-	}
-	return nil
-}
-
 // StartEtcdServices starts the etcd datastore service.
 func StartEtcdServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
 	if err := snap.StartServices(ctx, []string{"etcd"}, extraSnapArgs...); err != nil {
@@ -96,15 +87,6 @@ func StopWorkerServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...st
 func StopControlPlaneServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
 	if err := snap.StopServices(ctx, controlPlaneK8sServices, extraSnapArgs...); err != nil {
 		return fmt.Errorf("failed to stop service %v: %w", controlPlaneK8sServices, err)
-	}
-	return nil
-}
-
-// StopK8sDqliteServices stops the control plane services.
-// StopK8sDqliteServices will return on the first failing service.
-func StopK8sDqliteServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
-	if err := snap.StopServices(ctx, []string{"k8s-dqlite"}, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to stop service %v: %w", "k8s-dqlite", err)
 	}
 	return nil
 }

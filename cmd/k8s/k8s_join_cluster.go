@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/config"
 	"github.com/canonical/k8sd/pkg/utils"
@@ -108,7 +108,7 @@ func newJoinClusterCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			cmd.PrintErrln("Joining the cluster. This may take a few seconds, please wait.")
-			if err := client.JoinCluster(cmd.Context(), apiv1.JoinClusterRequest{
+			if err := client.JoinCluster(cmd.Context(), apiv2.JoinClusterRequest{
 				Name:    opts.name,
 				Address: address,
 				Token:   token,

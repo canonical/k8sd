@@ -13,10 +13,6 @@ import (
 func startControlPlaneServices(ctx context.Context, snap snap.Snap, datastore string) error {
 	// Start services
 	switch datastore {
-	case "k8s-dqlite":
-		if err := snaputil.StartK8sDqliteServices(ctx, snap); err != nil {
-			return fmt.Errorf("failed to start k8s-dqlite services: %w", err)
-		}
 	case "etcd":
 		if err := snaputil.StartEtcdServices(ctx, snap); err != nil {
 			return fmt.Errorf("failed to start etcd services: %w", err)

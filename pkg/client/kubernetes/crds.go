@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	apicrds "github.com/canonical/k8s-snap-api/crds"
+	apicrds "github.com/canonical/k8s-snap-api/v2/crds"
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"

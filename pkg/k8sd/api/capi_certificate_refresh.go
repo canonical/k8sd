@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/state"
@@ -29,7 +29,7 @@ import (
 func (e *Endpoints) postApproveWorkerCSR(s state.State, r *http.Request) response.Response {
 	snap := e.provider.Snap()
 
-	req := apiv1.ClusterAPIApproveWorkerCSRRequest{}
+	req := apiv2.ClusterAPIApproveWorkerCSRRequest{}
 
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
@@ -83,5 +83,5 @@ func (e *Endpoints) postApproveWorkerCSR(s state.State, r *http.Request) respons
 		return response.InternalError(fmt.Errorf("failed to approve worker node CSR: %w", err))
 	}
 
-	return response.SyncResponse(true, apiv1.ClusterAPIApproveWorkerCSRResponse{})
+	return response.SyncResponse(true, apiv2.ClusterAPIApproveWorkerCSRResponse{})
 }

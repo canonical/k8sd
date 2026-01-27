@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 	"github.com/canonical/lxd/lxd/response"
@@ -44,7 +44,7 @@ func (e *Endpoints) postCertificatesExpiry(s state.State, r *http.Request) respo
 		}
 	}
 
-	return response.SyncResponse(true, &apiv1.CertificatesExpiryResponse{
+	return response.SyncResponse(true, &apiv2.CertificatesExpiryResponse{
 		ExpiryDate: earliestExpiry.Format(time.RFC3339),
 	})
 }

@@ -76,9 +76,8 @@ func (c *NodeLabelController) reconcileFailureDomain(ctx context.Context, node *
 	azLabel, azFound := node.Labels["topology.kubernetes.io/zone"]
 	var failureDomain uint64
 	if azFound && azLabel != "" {
-		// k8s-dqlite expects the failure domain (availability zone) to be an uint64
-		// value defined in $dbStateDir/failure-domain. Both k8s-snap Dqlite databases
-		// need to be updated (k8sd and k8s-dqlite).
+		// dqlite expects the failure domain (availability zone) to be an uint64
+		// value defined in $dbStateDir/failure-domain.
 		failureDomain = snaputil.NodeLabelToDqliteFailureDomain(azLabel)
 	} else {
 		failureDomain = 0
@@ -129,29 +128,7 @@ func (c *NodeLabelController) reconcileVersionAnnotation(ctx context.Context, cl
 func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, failureDomain uint64, availabilityZone string, getDatastoreType func(ctx context.Context) (string, error)) error {
 	log := log.FromContext(ctx)
 
-	// We need to update both k8s-snap Dqlite databases (k8sd and k8s-dqlite).
 	k8sdDbStateDir := filepath.Join(c.snap.K8sdStateDir(), "database")
-
-	datastoreType, err := getDatastoreType(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get datastore type: %w", err)
-	}
-	if datastoreType == "k8s-dqlite" {
-		k8sDqliteStateDir := c.snap.K8sDqliteStateDir()
-
-		modified, err := snaputil.UpdateDqliteFailureDomain(failureDomain, k8sDqliteStateDir)
-		if err != nil {
-			return fmt.Errorf("failed to update k8s-dqlite failure domain: %w", err)
-		}
-
-		if modified {
-			log.Info("Updated k8s-dqlite failure domain", "failure domain", failureDomain, "availability zone", availabilityZone)
-			if err = c.snap.RestartServices(ctx, []string{"k8s-dqlite"}); err != nil {
-				return fmt.Errorf("failed to restart k8s-dqlite to apply failure domain: %w", err)
-			}
-		}
-	}
-
 	modified, err := snaputil.UpdateDqliteFailureDomain(failureDomain, k8sdDbStateDir)
 	if err != nil {
 		return fmt.Errorf("failed to update k8sd failure domain: %w", err)

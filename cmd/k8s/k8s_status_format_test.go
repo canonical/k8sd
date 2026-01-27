@@ -3,7 +3,7 @@ package k8s_test
 import (
 	"testing"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/cmd/k8s"
 	. "github.com/onsi/gomega"
 )
@@ -11,30 +11,30 @@ import (
 func TestClusterStatusFormat(t *testing.T) {
 	testCases := []struct {
 		name           string
-		clusterStatus  apiv1.ClusterStatus
+		clusterStatus  apiv2.ClusterStatus
 		expectedOutput string
 	}{
 		{
 			name: "Cluster ready, HA formed, nodes exist",
-			clusterStatus: apiv1.ClusterStatus{
+			clusterStatus: apiv2.ClusterStatus{
 				Ready: true,
-				Members: []apiv1.NodeStatus{
-					{Name: "node1", DatastoreRole: apiv1.DatastoreRoleVoter, Address: "192.168.0.1", ClusterRole: apiv1.ClusterRoleControlPlane},
-					{Name: "node2", DatastoreRole: apiv1.DatastoreRoleVoter, Address: "192.168.0.2", ClusterRole: apiv1.ClusterRoleControlPlane},
-					{Name: "node3", DatastoreRole: apiv1.DatastoreRoleStandBy, Address: "192.168.0.3", ClusterRole: apiv1.ClusterRoleControlPlane},
+				Members: []apiv2.NodeStatus{
+					{Name: "node1", DatastoreRole: apiv2.DatastoreRoleVoter, Address: "192.168.0.1", ClusterRole: apiv2.ClusterRoleControlPlane},
+					{Name: "node2", DatastoreRole: apiv2.DatastoreRoleVoter, Address: "192.168.0.2", ClusterRole: apiv2.ClusterRoleControlPlane},
+					{Name: "node3", DatastoreRole: apiv2.DatastoreRoleStandBy, Address: "192.168.0.3", ClusterRole: apiv2.ClusterRoleControlPlane},
 				},
-				Datastore:    apiv1.Datastore{Type: "k8s-dqlite"},
-				Network:      apiv1.FeatureStatus{Message: "enabled"},
-				DNS:          apiv1.FeatureStatus{Message: "enabled at 192.168.0.10"},
-				Ingress:      apiv1.FeatureStatus{Message: "enabled"},
-				LoadBalancer: apiv1.FeatureStatus{Message: "enabled, L2 mode"},
-				LocalStorage: apiv1.FeatureStatus{Message: "enabled at /var/snap/k8s/common/rawfile-storage"},
-				Gateway:      apiv1.FeatureStatus{Message: "enabled"},
+				Datastore:    apiv2.Datastore{Type: "etcd"},
+				Network:      apiv2.FeatureStatus{Message: "enabled"},
+				DNS:          apiv2.FeatureStatus{Message: "enabled at 192.168.0.10"},
+				Ingress:      apiv2.FeatureStatus{Message: "enabled"},
+				LoadBalancer: apiv2.FeatureStatus{Message: "enabled, L2 mode"},
+				LocalStorage: apiv2.FeatureStatus{Message: "enabled at /var/snap/k8s/common/rawfile-storage"},
+				Gateway:      apiv2.FeatureStatus{Message: "enabled"},
 			},
 			expectedOutput: `cluster status:           ready
 control plane nodes:      192.168.0.1 (voter), 192.168.0.2 (voter), 192.168.0.3 (stand-by)
 high availability:        no
-datastore:                k8s-dqlite
+datastore:                etcd
 network:                  enabled
 dns:                      enabled at 192.168.0.10
 ingress:                  enabled
@@ -44,14 +44,14 @@ gateway                   enabled`,
 		},
 		{
 			name: "External Datastore",
-			clusterStatus: apiv1.ClusterStatus{
+			clusterStatus: apiv2.ClusterStatus{
 				Ready: true,
-				Members: []apiv1.NodeStatus{
-					{Name: "node1", DatastoreRole: apiv1.DatastoreRoleVoter, Address: "192.168.0.1", ClusterRole: apiv1.ClusterRoleControlPlane},
+				Members: []apiv2.NodeStatus{
+					{Name: "node1", DatastoreRole: apiv2.DatastoreRoleVoter, Address: "192.168.0.1", ClusterRole: apiv2.ClusterRoleControlPlane},
 				},
-				Datastore: apiv1.Datastore{Type: "external", Servers: []string{"etcd-url1", "etcd-url2"}},
-				Network:   apiv1.FeatureStatus{Message: "enabled"},
-				DNS:       apiv1.FeatureStatus{Message: "enabled at 192.168.0.10"},
+				Datastore: apiv2.Datastore{Type: "external", Servers: []string{"etcd-url1", "etcd-url2"}},
+				Network:   apiv2.FeatureStatus{Message: "enabled"},
+				DNS:       apiv2.FeatureStatus{Message: "enabled at 192.168.0.10"},
 			},
 			expectedOutput: `cluster status:           ready
 control plane nodes:      192.168.0.1 (voter)
@@ -66,11 +66,11 @@ gateway                   disabled`,
 		},
 		{
 			name: "Cluster not ready, HA not formed, no nodes",
-			clusterStatus: apiv1.ClusterStatus{
+			clusterStatus: apiv2.ClusterStatus{
 				Ready:     false,
-				Members:   []apiv1.NodeStatus{},
-				Config:    apiv1.UserFacingClusterConfig{},
-				Datastore: apiv1.Datastore{},
+				Members:   []apiv2.NodeStatus{},
+				Config:    apiv2.UserFacingClusterConfig{},
+				Datastore: apiv2.Datastore{},
 			},
 			expectedOutput: `cluster status:           not ready
 control plane nodes:      none

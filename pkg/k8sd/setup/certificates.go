@@ -82,16 +82,6 @@ func EnsureExtDatastorePKI(snap snap.Snap, certificates *pki.ExternalDatastorePK
 	})
 }
 
-// EnsureK8sDqlitePKI ensures the k8s dqlite PKI files are present
-// and have the correct content, permissions and ownership.
-// It returns true if one or more files were updated and any error that occurred.
-func EnsureK8sDqlitePKI(snap snap.Snap, certificates *pki.K8sDqlitePKI) (bool, error) {
-	return ensureFiles(snap.UID(), snap.GID(), 0o600, map[string]string{
-		filepath.Join(snap.K8sDqliteStateDir(), "cluster.crt"): certificates.K8sDqliteCert,
-		filepath.Join(snap.K8sDqliteStateDir(), "cluster.key"): certificates.K8sDqliteKey,
-	})
-}
-
 // EnsureControlPlanePKI ensures the control plane PKI files are present
 // and have the correct content, permissions and ownership.
 // It returns true if one or more files were updated and any error that occurred.

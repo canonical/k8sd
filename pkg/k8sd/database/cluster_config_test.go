@@ -82,10 +82,6 @@ func TestClusterConfig(t *testing.T) {
 					CAKey:             utils.Pointer("CA KEY DATA"),
 					ServiceAccountKey: utils.Pointer("SA KEY DATA"),
 				},
-				Datastore: types.Datastore{
-					K8sDqliteCert: utils.Pointer("CERT DATA"),
-					K8sDqliteKey:  utils.Pointer("KEY DATA"),
-				},
 				Kubelet: types.Kubelet{
 					ClusterDNS: utils.Pointer("10.152.183.10"),
 				},
@@ -96,10 +92,6 @@ func TestClusterConfig(t *testing.T) {
 				returnedConfig, err := database.SetClusterConfig(context.Background(), tx, types.ClusterConfig{
 					Kubelet: types.Kubelet{
 						ClusterDNS: utils.Pointer("10.152.183.10"),
-					},
-					Datastore: types.Datastore{
-						K8sDqliteCert: utils.Pointer("CERT DATA"),
-						K8sDqliteKey:  utils.Pointer("KEY DATA"),
 					},
 					Certificates: types.Certificates{
 						ServiceAccountKey: utils.Pointer("SA KEY DATA"),

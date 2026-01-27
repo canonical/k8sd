@@ -1,8 +1,6 @@
 package types
 
-import (
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
-)
+import apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 
 // RefreshStatus represents the status of a snap refresh operation.
 // This is a partial struct derived from the Change struct used by the snapd API.
@@ -15,8 +13,8 @@ type RefreshStatus struct {
 	Err string `json:"err,omitempty"`
 }
 
-func (r RefreshStatus) ToAPI() apiv1.SnapRefreshStatusResponse {
-	return apiv1.SnapRefreshStatusResponse{
+func (r RefreshStatus) ToAPI() apiv2.SnapRefreshStatusResponse {
+	return apiv2.SnapRefreshStatusResponse{
 		Status:       r.Status,
 		Completed:    r.Ready,
 		ErrorMessage: r.Err,

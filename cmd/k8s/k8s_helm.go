@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +32,7 @@ func newHelmCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				cmd.PrintErrln("Error: The node is not part of a Kubernetes cluster. You can bootstrap a new cluster with:\n\n  sudo k8s bootstrap")
 				env.Exit(1)
 				return
-			} else if response.NodeStatus.ClusterRole == apiv1.ClusterRoleWorker {
+			} else if response.NodeStatus.ClusterRole == apiv2.ClusterRoleWorker {
 				cmd.PrintErrln("Error: k8s helm commands are not allowed on worker nodes.")
 				env.Exit(1)
 				return

@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	upgradesv1alpha "github.com/canonical/k8s-snap-api/api/v1alpha"
+	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
@@ -79,22 +79,6 @@ func (a *App) onPostJoin(ctx context.Context, s state.State, initConfig map[stri
 	extraIPs, extraNames := utils.SplitIPAndDNSSANs(joinConfig.ExtraSANS)
 
 	switch cfg.Datastore.GetType() {
-	case "k8s-dqlite":
-		// NOTE: Default certificate expiration is set to 20 years.
-		certificates := pki.NewK8sDqlitePKI(pki.K8sDqlitePKIOpts{
-			Hostname:  s.Name(),
-			IPSANs:    []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
-			NotBefore: notBefore,
-			NotAfter:  notBefore.AddDate(20, 0, 0),
-		})
-		certificates.K8sDqliteCert = cfg.Datastore.GetK8sDqliteCert()
-		certificates.K8sDqliteKey = cfg.Datastore.GetK8sDqliteKey()
-		if err := certificates.CompleteCertificates(); err != nil {
-			return fmt.Errorf("failed to initialize k8s-dqlite certificates: %w", err)
-		}
-		if _, err := setup.EnsureK8sDqlitePKI(snap, certificates); err != nil {
-			return fmt.Errorf("failed to write k8s-dqlite certificates: %w", err)
-		}
 	case "etcd":
 		certificates := pki.NewEtcdPKI(pki.EtcdPKIOpts{
 			Hostname:  s.Name(),
@@ -205,31 +189,6 @@ func (a *App) onPostJoin(ctx context.Context, s state.State, initConfig map[stri
 
 	// Configure datastore
 	switch cfg.Datastore.GetType() {
-	case "k8s-dqlite":
-		// TODO(neoaggelos): use cluster.GetInternalClusterMembers() instead
-		leader, err := s.Leader()
-		if err != nil {
-			return fmt.Errorf("failed to get microcluster leader: %w", err)
-		}
-		members, err := leader.GetClusterMembers(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get microcluster members: %w", err)
-		}
-		cluster := make([]string, len(members))
-		for _, member := range members {
-			var address string
-			if member.Address.Addr().Is6() {
-				address = fmt.Sprintf("[%s]", member.Address.Addr())
-			} else {
-				address = member.Address.Addr().String()
-			}
-			cluster = append(cluster, fmt.Sprintf("%s:%d", address, cfg.Datastore.GetK8sDqlitePort()))
-		}
-
-		address := fmt.Sprintf("%s:%d", utils.ToIPString(nodeIP), cfg.Datastore.GetK8sDqlitePort())
-		if err := setup.K8sDqlite(snap, address, cluster, joinConfig.ExtraNodeK8sDqliteArgs); err != nil {
-			return fmt.Errorf("failed to configure k8s-dqlite with address=%s cluster=%v: %w", address, cluster, err)
-		}
 	case "etcd":
 		leader, err := s.Leader()
 		if err != nil {

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
@@ -36,7 +36,7 @@ func (e *Endpoints) postRefreshCertsUpdate(s state.State, r *http.Request) respo
 func refreshCertsUpdateControlPlane(s state.State, r *http.Request, snap snap.Snap) response.Response {
 	log := log.FromContext(r.Context())
 
-	req := apiv1.RefreshCertificatesUpdateRequest{}
+	req := apiv2.RefreshCertificatesUpdateRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -115,14 +115,14 @@ func refreshCertsUpdateControlPlane(s state.State, r *http.Request, snap snap.Sn
 	}
 	readyCh := nodeutil.StartAsyncRestart(log, restartFn)
 
-	return utils.SyncManualResponseWithSignal(r, readyCh, apiv1.RefreshCertificatesUpdateResponse{})
+	return utils.SyncManualResponseWithSignal(r, readyCh, apiv2.RefreshCertificatesUpdateResponse{})
 }
 
 // refreshCertsUpdateWorker updates the external certificates for a worker node.
 func refreshCertsUpdateWorker(s state.State, r *http.Request, snap snap.Snap) response.Response {
 	log := log.FromContext(r.Context())
 
-	req := apiv1.RefreshCertificatesUpdateRequest{}
+	req := apiv2.RefreshCertificatesUpdateRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -173,5 +173,5 @@ func refreshCertsUpdateWorker(s state.State, r *http.Request, snap snap.Snap) re
 
 	readyCh := nodeutil.StartAsyncRestart(log, restartFn)
 
-	return utils.SyncManualResponseWithSignal(r, readyCh, apiv1.RefreshCertificatesUpdateResponse{})
+	return utils.SyncManualResponseWithSignal(r, readyCh, apiv2.RefreshCertificatesUpdateResponse{})
 }

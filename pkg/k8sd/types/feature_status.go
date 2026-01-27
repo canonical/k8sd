@@ -3,7 +3,7 @@ package types
 import (
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 )
 
 // FeatureStatus encapsulates the deployment status of a feature.
@@ -18,8 +18,8 @@ type FeatureStatus struct {
 	UpdatedAt time.Time
 }
 
-func (f FeatureStatus) ToAPI() apiv1.FeatureStatus {
-	return apiv1.FeatureStatus{
+func (f FeatureStatus) ToAPI() apiv2.FeatureStatus {
+	return apiv2.FeatureStatus{
 		Enabled:   f.Enabled,
 		Message:   f.Message,
 		Version:   f.Version,
@@ -27,7 +27,7 @@ func (f FeatureStatus) ToAPI() apiv1.FeatureStatus {
 	}
 }
 
-func FeatureStatusFromAPI(apiFS apiv1.FeatureStatus) FeatureStatus {
+func FeatureStatusFromAPI(apiFS apiv2.FeatureStatus) FeatureStatus {
 	return FeatureStatus{
 		Enabled:   apiFS.Enabled,
 		Message:   apiFS.Message,

@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/client/snapd"
 	"github.com/canonical/k8sd/pkg/config"
@@ -22,7 +22,7 @@ import (
 )
 
 type BootstrapResult struct {
-	Node apiv1.NodeStatus `json:"node" yaml:"node"`
+	Node apiv2.NodeStatus `json:"node" yaml:"node"`
 }
 
 func (b BootstrapResult) String() string {
@@ -113,7 +113,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 
-			var bootstrapConfig apiv1.BootstrapConfig
+			var bootstrapConfig apiv2.BootstrapConfig
 			switch {
 			case opts.interactive:
 				bootstrapConfig = getConfigInteractively(env.Stdin, env.Stdout, env.Stderr)
@@ -126,18 +126,18 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				}
 			default:
 				// Default bootstrap configuration
-				bootstrapConfig = apiv1.BootstrapConfig{
-					ClusterConfig: apiv1.UserFacingClusterConfig{
-						Network: apiv1.NetworkConfig{
+				bootstrapConfig = apiv2.BootstrapConfig{
+					ClusterConfig: apiv2.UserFacingClusterConfig{
+						Network: apiv2.NetworkConfig{
 							Enabled: utils.Pointer(true),
 						},
-						DNS: apiv1.DNSConfig{
+						DNS: apiv2.DNSConfig{
 							Enabled: utils.Pointer(true),
 						},
-						Gateway: apiv1.GatewayConfig{
+						Gateway: apiv2.GatewayConfig{
 							Enabled: utils.Pointer(true),
 						},
-						LocalStorage: apiv1.LocalStorageConfig{
+						LocalStorage: apiv2.LocalStorageConfig{
 							Enabled: utils.Pointer(true),
 						},
 					},
@@ -152,7 +152,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 
 			cmd.PrintErrln("Bootstrapping the cluster. This may take a few seconds, please wait.")
 
-			response, err := client.BootstrapCluster(cmd.Context(), apiv1.BootstrapClusterRequest{
+			response, err := client.BootstrapCluster(cmd.Context(), apiv2.BootstrapClusterRequest{
 				Name:    opts.name,
 				Address: address,
 				Config:  bootstrapConfig,
@@ -164,7 +164,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 
-			outputFormatter.Print(BootstrapResult{Node: apiv1.NodeStatus(response)})
+			outputFormatter.Print(BootstrapResult{Node: apiv2.NodeStatus(response)})
 		},
 	}
 
@@ -178,32 +178,32 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	return cmd
 }
 
-func getConfigFromYaml(env cmdutil.ExecutionEnvironment, filePath string) (apiv1.BootstrapConfig, error) {
+func getConfigFromYaml(env cmdutil.ExecutionEnvironment, filePath string) (apiv2.BootstrapConfig, error) {
 	var b []byte
 	var err error
 
 	if filePath == "-" {
 		b, err = io.ReadAll(env.Stdin)
 		if err != nil {
-			return apiv1.BootstrapConfig{}, fmt.Errorf("failed to read config from stdin: %w", err)
+			return apiv2.BootstrapConfig{}, fmt.Errorf("failed to read config from stdin: %w", err)
 		}
 	} else {
 		b, err = os.ReadFile(filePath)
 		if err != nil {
-			return apiv1.BootstrapConfig{}, fmt.Errorf("failed to read file: %w", err)
+			return apiv2.BootstrapConfig{}, fmt.Errorf("failed to read file: %w", err)
 		}
 	}
 
-	var config apiv1.BootstrapConfig
+	var config apiv2.BootstrapConfig
 	if err := yaml.UnmarshalStrict(b, &config); err != nil {
-		return apiv1.BootstrapConfig{}, fmt.Errorf("failed to parse YAML config file: %w", err)
+		return apiv2.BootstrapConfig{}, fmt.Errorf("failed to parse YAML config file: %w", err)
 	}
 
 	return config, nil
 }
 
-func getConfigInteractively(stdin io.Reader, stdout io.Writer, stderr io.Writer) apiv1.BootstrapConfig {
-	config := apiv1.BootstrapConfig{}
+func getConfigInteractively(stdin io.Reader, stdout io.Writer, stderr io.Writer) apiv2.BootstrapConfig {
+	config := apiv2.BootstrapConfig{}
 
 	components := askQuestion(
 		stdin, stdout, stderr,

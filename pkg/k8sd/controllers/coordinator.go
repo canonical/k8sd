@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations"
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/controllers/csrsigning"
 	"github.com/canonical/k8sd/pkg/k8sd/controllers/dnsrebalancer"

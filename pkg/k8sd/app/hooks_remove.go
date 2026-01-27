@@ -6,7 +6,7 @@ import (
 	"errors"
 	"os"
 
-	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations"
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
@@ -106,10 +106,6 @@ func (a *App) onPreRemove(ctx context.Context, s state.State, force bool) (rerr 
 		log.Error(err, "failed to cleanup etcd state directory")
 	}
 
-	log.Info("Cleaning up k8s-dqlite directory")
-	if err := os.RemoveAll(snap.K8sDqliteStateDir()); err != nil {
-		log.Error(err, "failed to cleanup k8s-dqlite state directory")
-	}
 	for _, dir := range []string{snap.ServiceArgumentsDir()} {
 		log.WithValues("directory", dir).Info("Cleaning up config files", dir)
 		if err := os.RemoveAll(dir); err != nil {

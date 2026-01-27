@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/lxd/response"
@@ -16,7 +16,7 @@ import (
 )
 
 func (e *Endpoints) postClusterJoin(s state.State, r *http.Request) response.Response {
-	req := apiv1.JoinClusterRequest{}
+	req := apiv2.JoinClusterRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -77,5 +77,5 @@ func (e *Endpoints) postClusterJoin(s state.State, r *http.Request) response.Res
 		}
 	}
 
-	return response.SyncResponse(true, &apiv1.JoinClusterResponse{})
+	return response.SyncResponse(true, &apiv2.JoinClusterResponse{})
 }

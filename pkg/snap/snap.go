@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/canonical/k8sd/pkg/client/dqlite"
 	"github.com/canonical/k8sd/pkg/client/etcd"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/client/k8sd"
@@ -298,10 +297,6 @@ func (s *snap) K8sdStateDir() string {
 	return filepath.Join(s.snapCommonDir, "var", "lib", "k8sd", "state")
 }
 
-func (s *snap) K8sDqliteStateDir() string {
-	return filepath.Join(s.snapCommonDir, "var", "lib", "k8s-dqlite")
-}
-
 func (s *snap) EtcdDir() string {
 	return filepath.Join(s.snapCommonDir, "var", "lib", "etcd")
 }
@@ -402,18 +397,6 @@ func (s *snap) HelmClient() helm.Client {
 		5*time.Minute,
 		10,
 	)
-}
-
-func (s *snap) K8sDqliteClient(ctx context.Context) (*dqlite.Client, error) {
-	client, err := dqlite.NewClient(ctx, dqlite.ClientOpts{
-		ClusterYAML: filepath.Join(s.snapCommonDir, "var", "lib", "k8s-dqlite", "cluster.yaml"),
-		ClusterCert: filepath.Join(s.snapCommonDir, "var", "lib", "k8s-dqlite", "cluster.crt"),
-		ClusterKey:  filepath.Join(s.snapCommonDir, "var", "lib", "k8s-dqlite", "cluster.key"),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create default k8s-dqlite client: %w", err)
-	}
-	return client, nil
 }
 
 func (s *snap) EtcdClient(endpoints []string) (*etcd.Client, error) {

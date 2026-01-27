@@ -3,11 +3,11 @@ package types
 import (
 	"fmt"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 )
 
 // DatastoreConfigFromUserFacing converts UserFacingDatastoreConfig from public API into a Datastore config.
-func DatastoreConfigFromUserFacing(u apiv1.UserFacingDatastoreConfig) (Datastore, error) {
+func DatastoreConfigFromUserFacing(u apiv2.UserFacingDatastoreConfig) (Datastore, error) {
 	// Changing the datastore configuration is opt-in. We expect the caller to explicitly set the "external" type.
 	// The nil check is required to ensure we only fail if the DatastoreConfig is expected to change.
 	if u.Type != nil && u.GetType() != "external" {
@@ -24,8 +24,8 @@ func DatastoreConfigFromUserFacing(u apiv1.UserFacingDatastoreConfig) (Datastore
 }
 
 // ToUserFacing converts a Datastore to a UserFacingDatastoreConfig from the public API.
-func (c Datastore) ToUserFacing() apiv1.UserFacingDatastoreConfig {
-	return apiv1.UserFacingDatastoreConfig{
+func (c Datastore) ToUserFacing() apiv2.UserFacingDatastoreConfig {
+	return apiv2.UserFacingDatastoreConfig{
 		Type:       c.Type,
 		Servers:    c.ExternalServers,
 		CACert:     c.ExternalCACert,
