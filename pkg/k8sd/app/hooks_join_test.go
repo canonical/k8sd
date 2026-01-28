@@ -1,4 +1,4 @@
-package app_test
+package app
 
 import (
 	"context"
@@ -8,10 +8,8 @@ import (
 	"testing"
 
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
-	"github.com/canonical/k8sd/pkg/k8sd/app"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/lxd/shared/revert"
-	"github.com/go-logr/logr"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -42,7 +40,7 @@ func TestRegisterEtcdMemberReverter_NotEnoughEndpoints(t *testing.T) {
 	}
 	reverter := revert.New()
 
-	app.RegisterEtcdMemberReverter(logr.Discard(), mockSnap, "node2", endpoints, reverter)
+	registerEtcdMemberReverter(mockSnap, "node2", endpoints, reverter)
 
 	// Trigger reverter
 	reverter.Fail()
@@ -75,7 +73,7 @@ func TestRegisterEtcdMemberReverter_ClientCreationFailure(t *testing.T) {
 	}
 	reverter := revert.New()
 
-	app.RegisterEtcdMemberReverter(logr.Discard(), mockSnap, nodeName, endpoints, reverter)
+	registerEtcdMemberReverter(mockSnap, nodeName, endpoints, reverter)
 
 	// Trigger reverter
 	reverter.Fail()
@@ -95,7 +93,7 @@ func TestRegisterK8sNodeDeletionReverter_FailDeletesNode(t *testing.T) {
 	k8sClient := &kubernetes.Client{Interface: clientset}
 
 	reverter := revert.New()
-	app.RegisterK8sNodeDeletionReverter(logr.Discard(), k8sClient, nodeName, reverter)
+	registerK8sNodeDeletionReverter(k8sClient, nodeName, reverter)
 
 	// Simulate join failure
 	reverter.Fail()
@@ -118,7 +116,7 @@ func TestRegisterK8sNodeDeletionReverter_Success(t *testing.T) {
 	reverter := revert.New()
 	defer reverter.Fail()
 
-	app.RegisterK8sNodeDeletionReverter(logr.Discard(), k8sClient, nodeName, reverter)
+	registerK8sNodeDeletionReverter(k8sClient, nodeName, reverter)
 
 	// Mark as successful join (reverts should not run)
 	reverter.Success()
