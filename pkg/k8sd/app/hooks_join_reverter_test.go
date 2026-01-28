@@ -25,11 +25,11 @@ func TestRegisterEtcdMemberReverter_NotEnoughEndpoints(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	etcdDir := filepath.Join(tmpDir, "etcd")
-	g.Expect(os.MkdirAll(etcdDir, 0755)).To(Succeed())
+	g.Expect(os.MkdirAll(etcdDir, 0o755)).To(Succeed())
 
 	testFile := filepath.Join(etcdDir, "member/snap/db")
-	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0755)).To(Succeed())
-	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0644)).To(Succeed())
+	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
+	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
 
 	// Only 2 endpoints - RegisterEtcdMemberReverter skips etcd operations when <3
 	endpoints := []string{"https://node1:2379", "https://node2:2379"}
@@ -57,12 +57,11 @@ func TestRegisterEtcdMemberReverter_ClientCreationFailure(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	etcdDir := filepath.Join(tmpDir, "etcd")
-	g.Expect(os.MkdirAll(etcdDir, 0755)).To(Succeed())
+	g.Expect(os.MkdirAll(etcdDir, 0o755)).To(Succeed())
 
 	testFile := filepath.Join(etcdDir, "member/snap/db")
-	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0755)).To(Succeed())
-	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0644)).To(Succeed())
-
+	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
+	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
 	// 3 endpoints - should attempt etcd operations but client creation fails
 	endpoints := []string{"https://node1:2379", "https://node2:2379", "https://node3:2379"}
 	nodeName := "node2"
