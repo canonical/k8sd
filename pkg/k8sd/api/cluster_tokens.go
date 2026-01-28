@@ -15,6 +15,7 @@ import (
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/microcluster"
 	"github.com/canonical/microcluster/v2/state"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
@@ -28,6 +29,19 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 		return response.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
 	}
 
+	// Verify that the node name is not already in use by an existing node
+	k8sClient, err := e.provider.Snap().KubernetesClient("")
+	if err != nil {
+		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
+	}
+
+	_, err = k8sClient.GetNode(r.Context(), hostname)
+	if err == nil {
+		return response.BadRequest(fmt.Errorf("a node with the same name %q is already part of the cluster", hostname))
+	} else if !apierrors.IsNotFound(err) {
+		return response.InternalError(fmt.Errorf("failed to check whether node name is available %q: %w", hostname, err))
+	}
+
 	var token string
 
 	ttl := req.TTL
@@ -39,7 +53,7 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	if req.Worker {
 		token, err = getOrCreateWorkerToken(r.Context(), s, hostname, ttl)
 	} else {
-		token, err = getOrCreateJoinToken(r.Context(), e.provider.MicroCluster(), hostname, ttl)
+		token, err = getOrCreateJoinTokenFn(r.Context(), e.provider.MicroCluster(), hostname, ttl)
 	}
 	if err != nil {
 		return response.InternalError(fmt.Errorf("failed to create token: %w", err))
@@ -47,6 +61,10 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 
 	return response.SyncResponse(true, &apiv2.GetJoinTokenResponse{EncodedToken: token})
 }
+
+// getOrCreateJoinTokenFn exists to allow tests to stub out microcluster join-token
+// creation without having to spin up a real microcluster instance.
+var getOrCreateJoinTokenFn = getOrCreateJoinToken
 
 func getOrCreateJoinToken(ctx context.Context, m *microcluster.MicroCluster, tokenName string, ttl time.Duration) (string, error) {
 	log := log.FromContext(ctx)
