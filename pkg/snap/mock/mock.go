@@ -57,6 +57,7 @@ type Mock struct {
 	KubernetesNodeClient        *kubernetes.Client
 	HelmClient                  helm.Client
 	EtcdClient                  *etcd.Client
+	EtcdClientErr               error
 	K8sdClient                  k8sd.Client
 	SnapctlGet                  map[string][]byte
 }
@@ -294,7 +295,7 @@ func (s *Snap) HelmClient() helm.Client {
 }
 
 func (s *Snap) EtcdClient(endpoints []string) (*etcd.Client, error) {
-	return s.Mock.EtcdClient, nil
+	return s.Mock.EtcdClient, s.Mock.EtcdClientErr
 }
 
 func (s *Snap) K8sdClient(address string) (k8sd.Client, error) {
