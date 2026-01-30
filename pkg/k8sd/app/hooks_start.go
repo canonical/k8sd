@@ -15,7 +15,7 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 func (a *App) onStart(ctx context.Context, s state.State) error {

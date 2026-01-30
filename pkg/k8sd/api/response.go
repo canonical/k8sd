@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/canonical/lxd/lxd/response"
+	"github.com/canonical/microcluster/v3/microcluster/rest/response"
 )
 
 const (

@@ -12,9 +12,9 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/microcluster"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster"
+	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
@@ -84,7 +84,7 @@ func getOrCreateWorkerToken(ctx context.Context, s state.State, nodeName string,
 		return "", fmt.Errorf("database transaction failed: %w", err)
 	}
 
-	remoteAddresses := s.Remotes().Addresses()
+	remoteAddresses := s.Truststore().RemoteAddresses()
 	addresses := make([]string, 0, len(remoteAddresses))
 	for _, addrPort := range remoteAddresses {
 		addresses = append(addresses, addrPort.String())

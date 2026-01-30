@@ -8,7 +8,7 @@ import (
 
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
-	"github.com/canonical/microcluster/v2/cluster"
+	"github.com/canonical/microcluster/v3/microcluster/db"
 )
 
 var featureStatusStmts = map[string]int{
@@ -18,7 +18,7 @@ var featureStatusStmts = map[string]int{
 
 // SetFeatureStatus updates the status of the given feature.
 func SetFeatureStatus(ctx context.Context, tx *sql.Tx, name types.FeatureName, status types.FeatureStatus) error {
-	upsertTxStmt, err := cluster.Stmt(tx, featureStatusStmts["upsert"])
+	upsertTxStmt, err := db.Stmt(tx, featureStatusStmts["upsert"])
 	if err != nil {
 		return fmt.Errorf("failed to prepare upsert statement: %w", err)
 	}
@@ -38,7 +38,7 @@ func SetFeatureStatus(ctx context.Context, tx *sql.Tx, name types.FeatureName, s
 
 // GetFeatureStatuses returns a map of feature names to their status.
 func GetFeatureStatuses(ctx context.Context, tx *sql.Tx) (map[types.FeatureName]types.FeatureStatus, error) {
-	selectTxStmt, err := cluster.Stmt(tx, featureStatusStmts["select"])
+	selectTxStmt, err := db.Stmt(tx, featureStatusStmts["select"])
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare select statement: %w", err)
 	}

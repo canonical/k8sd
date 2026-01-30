@@ -18,7 +18,7 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
 	"github.com/canonical/k8sd/pkg/version"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 // postRefreshHook is executed after the node is ready after a `snap refresh` operation
