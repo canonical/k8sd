@@ -34,9 +34,6 @@ jobs:
         run: |
           go get -u ./...
           go mod tidy
-          cd $GITHUB_WORKSPACE/tools
-          go get -u ./...
-          go mod tidy
 
       - name: Create pull request
         if: github.event_name != 'pull_request'
