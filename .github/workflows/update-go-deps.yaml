@@ -23,7 +23,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: main
-          ssh-key: ${{ secrets.BOT_SSH_KEY }}
+          token: ${{ secrets.BOT_TOKEN }}
+          persist-credentials: false
 
       - name: Install Go
         uses: actions/setup-go@v5
