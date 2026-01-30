@@ -8,6 +8,7 @@ import (
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
@@ -15,6 +16,7 @@ import (
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/microcluster"
 	"github.com/canonical/microcluster/v2/state"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
@@ -26,6 +28,15 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	hostname, err := utils.CleanHostname(req.Name)
 	if err != nil {
 		return response.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
+	}
+
+	// Verify that the node name is not already in use by an existing node
+	k8sClient, err := e.provider.Snap().KubernetesClient("")
+	if err != nil {
+		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
+	}
+	if resp := checkNodeNameAvailable(r.Context(), k8sClient, hostname); resp != nil {
+		return resp
 	}
 
 	var token string
@@ -46,6 +57,17 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	}
 
 	return response.SyncResponse(true, &apiv2.GetJoinTokenResponse{EncodedToken: token})
+}
+
+func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, nodeName string) response.Response {
+	// Check if a node with the given name already exists in the cluster.
+	_, err := k8sClient.GetNode(ctx, nodeName)
+	if err == nil {
+		return response.BadRequest(fmt.Errorf("a node with the same name %q is already part of the cluster", nodeName))
+	} else if !apierrors.IsNotFound(err) {
+		return response.InternalError(fmt.Errorf("failed to check whether node name is available %q: %w", nodeName, err))
+	}
+	return nil
 }
 
 func getOrCreateJoinToken(ctx context.Context, m *microcluster.MicroCluster, tokenName string, ttl time.Duration) (string, error) {
