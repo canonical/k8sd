@@ -102,7 +102,8 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 						"key": "value",
 					},
 					Network: apiv2.NetworkConfig{
-						Enabled: utils.Pointer(true),
+						Enabled:       utils.Pointer(true),
+						KubeProxyFree: utils.Pointer(true),
 					},
 					DNS: apiv2.DNSConfig{
 						Enabled:       utils.Pointer(true),
@@ -153,9 +154,10 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 					CloudProvider: utils.Pointer("external"),
 				},
 				Network: types.Network{
-					Enabled:     utils.Pointer(true),
-					PodCIDR:     utils.Pointer("10.100.0.0/16"),
-					ServiceCIDR: utils.Pointer("10.200.0.0/16"),
+					Enabled:       utils.Pointer(true),
+					PodCIDR:       utils.Pointer("10.100.0.0/16"),
+					ServiceCIDR:   utils.Pointer("10.200.0.0/16"),
+					KubeProxyFree: utils.Pointer(true),
 				},
 				DNS: types.DNS{
 					Enabled: utils.Pointer(true),

@@ -122,8 +122,9 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s state.State, apiserver 
 
 	ciliumNodePortValues := map[string]any{
 		"enabled": true,
-		// kube-proxy also binds to the same port for health checks so we need to disable it
-		"enableHealthCheck": false,
+		// With kube-proxy replacement enabled, we can safely enable the health check
+		// since kube-proxy won't be running and won't conflict with the health check port
+		"enableHealthCheck": true,
 	}
 
 	if config.directRoutingDevice != "" {
@@ -185,7 +186,9 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s state.State, apiserver 
 		"envoy": map[string]any{
 			"enabled": false, // 1.16+ installs envoy as a standalone daemonset by default if not explicitly disabled
 		},
-		// https://docs.cilium.io/en/v1.15/network/kubernetes/kubeproxy-free/#kube-proxy-hybrid-modes
+		// Enable kube-proxy replacement mode so that Cilium handles all kube-proxy functionality
+		// https://docs.cilium.io/en/v1.15/network/kubernetes/kubeproxy-free/
+		"kubeProxyReplacement":     true,
 		"nodePort":                 ciliumNodePortValues,
 		"disableEnvoyVersionCheck": true,
 		// socketLB requires an endpoint to the apiserver that's not managed by the kube-proxy

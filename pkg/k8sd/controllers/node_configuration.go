@@ -10,6 +10,7 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/snap/util/cleanup"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	v1 "k8s.io/api/core/v1"
 )
@@ -73,9 +74,9 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 	if err != nil {
 		return fmt.Errorf("failed to load the RSA public key: %w", err)
 	}
-	config, err := types.KubeletFromConfigMap(configMap.Data, key)
+	nodeConfig, err := types.ConfigMapToClusterConfig(configMap.Data, key)
 	if err != nil {
-		return fmt.Errorf("failed to parse configmap data to kubelet config: %w", err)
+		return fmt.Errorf("failed to parse configmap data to cluster config: %w", err)
 	}
 
 	updateArgs := make(map[string]string)
@@ -85,9 +86,9 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 		val *string
 		arg string
 	}{
-		{arg: "--cloud-provider", val: config.CloudProvider},
-		{arg: "--cluster-dns", val: config.ClusterDNS},
-		{arg: "--cluster-domain", val: config.ClusterDomain},
+		{arg: "--cloud-provider", val: nodeConfig.Kubelet.CloudProvider},
+		{arg: "--cluster-dns", val: nodeConfig.Kubelet.ClusterDNS},
+		{arg: "--cluster-domain", val: nodeConfig.Kubelet.ClusterDomain},
 	} {
 		switch {
 		case loop.val == nil:
@@ -116,6 +117,31 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 		}); err != nil {
 			return fmt.Errorf("failed after retry: %w", err)
 		}
+	}
+
+	kubeProxyEnabled := !nodeConfig.Network.GetKubeProxyFree()
+	if kubeProxyEnabled {
+		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+			return c.snap.StartServices(ctx, []string{"kube-proxy"})
+		}); err != nil {
+			return fmt.Errorf("failed to start kube-proxy: %w", err)
+		}
+	} else {
+		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+			return c.snap.StopServices(ctx, []string{"kube-proxy"})
+		}); err != nil {
+			return fmt.Errorf("failed to stop kube-proxy: %w", err)
+		}
+		cleanup.RemoveKubeProxyRules(ctx, c.snap)
+	}
+
+	localState, err := snaputil.ReadLocalState(c.snap)
+	if err != nil {
+		return fmt.Errorf("failed to read local state: %w", err)
+	}
+	localState.SetServiceEnabled(snaputil.ServiceKubeProxy, kubeProxyEnabled)
+	if err := snaputil.WriteLocalState(c.snap, localState); err != nil {
+		return fmt.Errorf("failed to update local state: %w", err)
 	}
 
 	return nil

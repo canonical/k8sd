@@ -25,6 +25,7 @@ func generateMergeClusterConfigTestCases[T any](field string, changeAllowed bool
 	for _, cfg := range []*types.ClusterConfig{&cfgNil, &cfgZero, &cfgOne, &cfgTwo} {
 		cfg.Network.PodCIDR = utils.Pointer("10.1.0.0/16")
 		cfg.Network.ServiceCIDR = utils.Pointer("10.152.183.0/24")
+		cfg.Network.KubeProxyFree = utils.Pointer(true)
 	}
 
 	update(&cfgZero, zero)
@@ -406,6 +407,56 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 				},
 			},
 			expectErr: true,
+		},
+		{
+			name: "Network/KubeProxyFreeValidation",
+			new: types.ClusterConfig{
+				Network: types.Network{
+					Enabled:       utils.Pointer(true),
+					PodCIDR:       utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
+					KubeProxyFree: utils.Pointer(false),
+				},
+			},
+			expectErr: true,
+		},
+		{
+			name: "Network/KubeProxyFreeFalseWhenNetworkDisabled",
+			new: types.ClusterConfig{
+				Network: types.Network{
+					Enabled:       utils.Pointer(false),
+					PodCIDR:       utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
+					KubeProxyFree: utils.Pointer(false),
+				},
+			},
+			expectMerged: types.ClusterConfig{
+				Network: types.Network{
+					Enabled:       utils.Pointer(false),
+					PodCIDR:       utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
+					KubeProxyFree: utils.Pointer(false),
+				},
+			},
+		},
+		{
+			name: "Network/KubeProxyFreeTrueWhenNetworkDisabled",
+			new: types.ClusterConfig{
+				Network: types.Network{
+					Enabled:       utils.Pointer(false),
+					PodCIDR:       utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
+					KubeProxyFree: utils.Pointer(true),
+				},
+			},
+			expectMerged: types.ClusterConfig{
+				Network: types.Network{
+					Enabled:       utils.Pointer(false),
+					PodCIDR:       utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
+					KubeProxyFree: utils.Pointer(true),
+				},
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
