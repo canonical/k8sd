@@ -8,6 +8,7 @@ import (
 	"time"
 
 	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
@@ -34,12 +35,8 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	if err != nil {
 		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
-
-	_, err = k8sClient.GetNode(r.Context(), hostname)
-	if err == nil {
-		return response.BadRequest(fmt.Errorf("a node with the same name %q is already part of the cluster", hostname))
-	} else if !apierrors.IsNotFound(err) {
-		return response.InternalError(fmt.Errorf("failed to check whether node name is available %q: %w", hostname, err))
+	if resp := checkNodeNameAvailable(r.Context(), k8sClient, hostname); resp != nil {
+		return resp
 	}
 
 	var token string
@@ -53,7 +50,7 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	if req.Worker {
 		token, err = getOrCreateWorkerToken(r.Context(), s, hostname, ttl)
 	} else {
-		token, err = getOrCreateJoinTokenFn(r.Context(), e.provider.MicroCluster(), hostname, ttl)
+		token, err = getOrCreateJoinToken(r.Context(), e.provider.MicroCluster(), hostname, ttl)
 	}
 	if err != nil {
 		return response.InternalError(fmt.Errorf("failed to create token: %w", err))
@@ -62,9 +59,16 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	return response.SyncResponse(true, &apiv1.GetJoinTokenResponse{EncodedToken: token})
 }
 
-// getOrCreateJoinTokenFn exists to allow tests to stub out microcluster join-token
-// creation without having to spin up a real microcluster instance.
-var getOrCreateJoinTokenFn = getOrCreateJoinToken
+func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, nodeName string) response.Response {
+	// Check if a node with the given name already exists in the cluster.
+	_, err := k8sClient.GetNode(ctx, nodeName)
+	if err == nil {
+		return response.BadRequest(fmt.Errorf("a node with the same name %q is already part of the cluster", nodeName))
+	} else if !apierrors.IsNotFound(err) {
+		return response.InternalError(fmt.Errorf("failed to check whether node name is available %q: %w", nodeName, err))
+	}
+	return nil
+}
 
 func getOrCreateJoinToken(ctx context.Context, m *microcluster.MicroCluster, tokenName string, ttl time.Duration) (string, error) {
 	log := log.FromContext(ctx)
