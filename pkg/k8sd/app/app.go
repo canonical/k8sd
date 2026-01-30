@@ -18,16 +18,20 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils/control"
-	"github.com/canonical/microcluster/v2/client"
-	"github.com/canonical/microcluster/v2/microcluster"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 // Config defines configuration for the k8sd app.
 type Config struct {
 	// Debug increases log message verbosity.
+	//
+	// Deprecated: No longer affects the underlying Microcluster.
 	Debug bool
 	// Verbose increases log message verbosity.
+	//
+	// Deprecated: No longer affects the underlying Microcluster.
 	Verbose bool
 	// StateDir is the local directory to store the state of the node.
 	StateDir string
@@ -62,7 +66,7 @@ type Config struct {
 type App struct {
 	config  Config
 	cluster *microcluster.MicroCluster
-	client  *client.Client
+	client  mctypes.Client
 	snap    snap.Snap
 
 	// profilingAddress
@@ -282,8 +286,6 @@ func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
 
 	err := a.cluster.Start(ctx, microcluster.DaemonArgs{
 		Version:                 string(apiv2.K8sdAPIVersion),
-		Verbose:                 a.config.Verbose,
-		Debug:                   a.config.Debug,
 		Hooks:                   hooks,
 		ExtensionServers:        api.New(ctx, a, a.config.DrainConnectionsTimeout),
 		ExtensionsSchema:        database.SchemaExtensions,

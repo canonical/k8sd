@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/canonical/microcluster/v2/cluster"
+	"github.com/canonical/microcluster/v3/microcluster/db"
 )
 
 var clusterAPIConfigsStmts = map[string]int{
@@ -19,7 +19,7 @@ func SetClusterAPIToken(ctx context.Context, tx *sql.Tx, token string) error {
 		return fmt.Errorf("token cannot be empty")
 	}
 
-	insertTxStmt, err := cluster.Stmt(tx, clusterAPIConfigsStmts["insert-capi-token"])
+	insertTxStmt, err := db.Stmt(tx, clusterAPIConfigsStmts["insert-capi-token"])
 	if err != nil {
 		return fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
@@ -32,7 +32,7 @@ func SetClusterAPIToken(ctx context.Context, tx *sql.Tx, token string) error {
 
 // ValidateClusterAPIToken returns true if the specified token matches the stored ClusterAPI token.
 func ValidateClusterAPIToken(ctx context.Context, tx *sql.Tx, token string) (bool, error) {
-	selectTxStmt, err := cluster.Stmt(tx, clusterAPIConfigsStmts["select-capi-token"])
+	selectTxStmt, err := db.Stmt(tx, clusterAPIConfigsStmts["select-capi-token"])
 	if err != nil {
 		return false, fmt.Errorf("failed to prepare select statement: %w", err)
 	}
