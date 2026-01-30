@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/utils"
@@ -33,7 +33,7 @@ func newEnableCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		Args:   cmdutil.MinimumNArgs(env, 1),
 		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat)),
 		Run: func(cmd *cobra.Command, args []string) {
-			config := apiv1.UserFacingClusterConfig{}
+			config := apiv2.UserFacingClusterConfig{}
 
 			if opts.timeout < minTimeout {
 				cmd.PrintErrf("Timeout %v is less than minimum of %v. Using the minimum %v instead.\n", opts.timeout, minTimeout, minTimeout)
@@ -43,31 +43,31 @@ func newEnableCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			for _, feature := range args {
 				switch feature {
 				case string(features.Network):
-					config.Network = apiv1.NetworkConfig{
+					config.Network = apiv2.NetworkConfig{
 						Enabled: utils.Pointer(true),
 					}
 				case string(features.DNS):
-					config.DNS = apiv1.DNSConfig{
+					config.DNS = apiv2.DNSConfig{
 						Enabled: utils.Pointer(true),
 					}
 				case string(features.Gateway):
-					config.Gateway = apiv1.GatewayConfig{
+					config.Gateway = apiv2.GatewayConfig{
 						Enabled: utils.Pointer(true),
 					}
 				case string(features.Ingress):
-					config.Ingress = apiv1.IngressConfig{
+					config.Ingress = apiv2.IngressConfig{
 						Enabled: utils.Pointer(true),
 					}
 				case string(features.LocalStorage):
-					config.LocalStorage = apiv1.LocalStorageConfig{
+					config.LocalStorage = apiv2.LocalStorageConfig{
 						Enabled: utils.Pointer(true),
 					}
 				case string(features.LoadBalancer):
-					config.LoadBalancer = apiv1.LoadBalancerConfig{
+					config.LoadBalancer = apiv2.LoadBalancerConfig{
 						Enabled: utils.Pointer(true),
 					}
 				case string(features.MetricsServer):
-					config.MetricsServer = apiv1.MetricsServerConfig{
+					config.MetricsServer = apiv2.MetricsServerConfig{
 						Enabled: utils.Pointer(true),
 					}
 				default:
@@ -97,7 +97,7 @@ func newEnableCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 
-			if err := client.SetClusterConfig(ctx, apiv1.SetClusterConfigRequest{Config: config}); err != nil {
+			if err := client.SetClusterConfig(ctx, apiv2.SetClusterConfigRequest{Config: config}); err != nil {
 				cmd.PrintErrf("Error: Failed to enable %s on the cluster.\n\nThe error was: %v\n", strings.Join(args, ", "), err)
 				env.Exit(1)
 				return

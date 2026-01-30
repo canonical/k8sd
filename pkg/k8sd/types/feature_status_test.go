@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	. "github.com/onsi/gomega"
 )
@@ -26,7 +26,7 @@ func TestK8sdFeatureStatusToAPI(t *testing.T) {
 }
 
 func TestAPIFeatureStatusToK8sd(t *testing.T) {
-	apiFS := apiv1.FeatureStatus{
+	apiFS := apiv2.FeatureStatus{
 		Enabled:   true,
 		Message:   "message",
 		Version:   "version",

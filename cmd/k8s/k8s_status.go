@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/spf13/cobra"
 )
@@ -56,7 +56,7 @@ func newStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			status := response.ClusterStatus
 
 			// silence the config, this should be retrieved with "k8s get".
-			status.Config = apiv1.UserFacingClusterConfig{}
+			status.Config = apiv2.UserFacingClusterConfig{}
 
 			outputFormatter.Print(ClusterStatus(status))
 		},

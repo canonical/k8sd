@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
@@ -20,7 +20,7 @@ import (
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
-	req := apiv1.GetJoinTokenRequest{}
+	req := apiv2.GetJoinTokenRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -56,7 +56,7 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 		return response.InternalError(fmt.Errorf("failed to create token: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv1.GetJoinTokenResponse{EncodedToken: token})
+	return response.SyncResponse(true, &apiv2.GetJoinTokenResponse{EncodedToken: token})
 }
 
 func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, nodeName string) response.Response {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
 	"github.com/canonical/k8sd/pkg/utils"
@@ -13,7 +13,7 @@ import (
 )
 
 func (e *Endpoints) getKubeconfig(s state.State, r *http.Request) response.Response {
-	req := apiv1.KubeConfigRequest{}
+	req := apiv2.KubeConfigRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -33,7 +33,7 @@ func (e *Endpoints) getKubeconfig(s state.State, r *http.Request) response.Respo
 		return response.InternalError(fmt.Errorf("failed to get kubeconfig: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv1.KubeConfigResponse{
+	return response.SyncResponse(true, &apiv2.KubeConfigResponse{
 		KubeConfig: kubeconfig,
 	})
 }

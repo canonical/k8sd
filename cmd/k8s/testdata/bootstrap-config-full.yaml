@@ -30,8 +30,7 @@ pod-cidr: 10.100.0.0/16
 service-cidr: 10.200.0.0/16
 disable-rbac: false
 secure-port: 6443
-k8s-dqlite-port: 9090
-datastore-type: k8s-dqlite
+datastore-type: etcd
 extra-sans:
 - custom.kubernetes
 extra-node-config-files:
@@ -48,5 +47,3 @@ extra-node-kubelet-args:
   --extra-kubelet-arg: extra-kubelet-value
 extra-node-containerd-args:
   --extra-containerd-arg: extra-containerd-value
-extra-node-k8s-dqlite-args:
-  --extra-k8s-dqlite-arg: extra-k8s-dqlite-value

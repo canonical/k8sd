@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
 // SetSnapdFromK8sd uses snapctl to update the local snapd configuration with the new k8sd cluster configuration.
-func SetSnapdFromK8sd(ctx context.Context, config apiv1.UserFacingClusterConfig, snap snap.Snap) error {
+func SetSnapdFromK8sd(ctx context.Context, config apiv2.UserFacingClusterConfig, snap snap.Snap) error {
 	var sets []string
 
 	for key, cfg := range map[types.FeatureName]any{

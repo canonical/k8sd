@@ -47,9 +47,7 @@ func WithState(t *testing.T, f func(context.Context, state.State)) {
 	defer cancel()
 
 	snapMock := mock.Snap{
-		Mock: mock.Mock{
-			K8sDqliteStateDir: t.TempDir(),
-		},
+		Mock: mock.Mock{},
 	}
 	app, err := app.New(app.Config{
 		StateDir: t.TempDir(),

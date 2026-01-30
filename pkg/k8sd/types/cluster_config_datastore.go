@@ -3,7 +3,6 @@ package types
 import (
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/utils"
@@ -11,10 +10,6 @@ import (
 
 type Datastore struct {
 	Type *string `json:"type,omitempty"`
-
-	K8sDqlitePort *int    `json:"k8s-dqlite-port,omitempty"`
-	K8sDqliteCert *string `json:"k8s-dqlite-crt,omitempty"`
-	K8sDqliteKey  *string `json:"k8s-dqlite-key,omitempty"`
 
 	ExternalServers    *[]string `json:"external-servers,omitempty"`
 	ExternalCACert     *string   `json:"external-ca-crt,omitempty"`
@@ -30,9 +25,6 @@ type Datastore struct {
 }
 
 func (c Datastore) GetType() string               { return getField(c.Type) }
-func (c Datastore) GetK8sDqlitePort() int         { return getField(c.K8sDqlitePort) }
-func (c Datastore) GetK8sDqliteCert() string      { return getField(c.K8sDqliteCert) }
-func (c Datastore) GetK8sDqliteKey() string       { return getField(c.K8sDqliteKey) }
 func (c Datastore) GetExternalServers() []string  { return getField(c.ExternalServers) }
 func (c Datastore) GetExternalCACert() string     { return getField(c.ExternalCACert) }
 func (c Datastore) GetExternalClientCert() string { return getField(c.ExternalClientCert) }
@@ -53,7 +45,6 @@ func (c Datastore) Empty() bool          { return c == Datastore{} }
 // DatastorePathsProvider is to avoid circular dependency for snap.Snap in Datastore.ToKubeAPIServerArguments().
 type DatastorePathsProvider interface {
 	KubernetesPKIDir() string
-	K8sDqliteStateDir() string
 	EtcdPKIDir() string
 }
 
@@ -66,13 +57,6 @@ func (c Datastore) ToKubeAPIServerArguments(p DatastorePathsProvider) (map[strin
 	)
 
 	switch c.GetType() {
-	case "k8s-dqlite":
-		updateArgs["--etcd-healthcheck-timeout"] = "4s"
-		updateArgs["--etcd-servers"] = fmt.Sprintf("unix://%s", filepath.Join(p.K8sDqliteStateDir(), "k8s-dqlite.sock"))
-		featureGates := []string{"ListFromCacheSnapshot=false", "SizeBasedListCostEstimate=false", "DetectCacheInconsistency=false"}
-		sort.Strings(featureGates)
-		updateArgs["--feature-gates"] = strings.Join(featureGates, ",")
-		deleteArgs = []string{"--etcd-cafile", "--etcd-certfile", "--etcd-keyfile"}
 	case "etcd":
 		updateArgs["--etcd-cafile"] = filepath.Join(p.EtcdPKIDir(), "ca.crt")
 		updateArgs["--etcd-certfile"] = filepath.Join(p.KubernetesPKIDir(), "apiserver-etcd-client.crt")

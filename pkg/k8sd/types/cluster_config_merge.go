@@ -38,8 +38,6 @@ func MergeClusterConfig(existing ClusterConfig, new ClusterConfig) (ClusterConfi
 		{name: "k8sd private key", val: &config.Certificates.K8sdPrivateKey, old: existing.Certificates.K8sdPrivateKey, new: new.Certificates.K8sdPrivateKey},
 		// datastore
 		{name: "datastore type", val: &config.Datastore.Type, old: existing.Datastore.Type, new: new.Datastore.Type},
-		{name: "k8s-dqlite certificate", val: &config.Datastore.K8sDqliteCert, old: existing.Datastore.K8sDqliteCert, new: new.Datastore.K8sDqliteCert},
-		{name: "k8s-dqlite key", val: &config.Datastore.K8sDqliteKey, old: existing.Datastore.K8sDqliteKey, new: new.Datastore.K8sDqliteKey},
 		{name: "external datastore CA certificate", val: &config.Datastore.ExternalCACert, old: existing.Datastore.ExternalCACert, new: new.Datastore.ExternalCACert, allowChange: true},
 		{name: "external datastore client certificate", val: &config.Datastore.ExternalClientCert, old: existing.Datastore.ExternalClientCert, new: new.Datastore.ExternalClientCert, allowChange: true},
 		{name: "external datastore client key", val: &config.Datastore.ExternalClientKey, old: existing.Datastore.ExternalClientKey, new: new.Datastore.ExternalClientKey, allowChange: true},
@@ -104,7 +102,6 @@ func MergeClusterConfig(existing ClusterConfig, new ClusterConfig) (ClusterConfi
 		// apiserver
 		{name: "kube-apiserver secure port", val: &config.APIServer.SecurePort, old: existing.APIServer.SecurePort, new: new.APIServer.SecurePort},
 		// datastore
-		{name: "k8s-dqlite port", val: &config.Datastore.K8sDqlitePort, old: existing.Datastore.K8sDqlitePort, new: new.Datastore.K8sDqlitePort},
 		{name: "etcd client port", val: &config.Datastore.EtcdPort, old: existing.Datastore.EtcdPort, new: new.Datastore.EtcdPort},
 		{name: "etcd peer port", val: &config.Datastore.EtcdPeerPort, old: existing.Datastore.EtcdPeerPort, new: new.Datastore.EtcdPeerPort},
 		// load-balancer

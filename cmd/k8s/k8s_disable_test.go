@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/cmd/k8s"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	k8sdmock "github.com/canonical/k8sd/pkg/client/k8sd/mock"
@@ -18,7 +18,7 @@ func TestDisableCmd(t *testing.T) {
 	tests := []struct {
 		name           string
 		funcs          []string
-		expectedCall   apiv1.SetClusterConfigRequest
+		expectedCall   apiv2.SetClusterConfigRequest
 		expectedCode   int
 		expectedStdout string
 		expectedStderr string
@@ -32,9 +32,9 @@ func TestDisableCmd(t *testing.T) {
 		{
 			name:  "one",
 			funcs: []string{string(features.Gateway)},
-			expectedCall: apiv1.SetClusterConfigRequest{
-				Config: apiv1.UserFacingClusterConfig{
-					Gateway: apiv1.GatewayConfig{Enabled: utils.Pointer(false)},
+			expectedCall: apiv2.SetClusterConfigRequest{
+				Config: apiv2.UserFacingClusterConfig{
+					Gateway: apiv2.GatewayConfig{Enabled: utils.Pointer(false)},
 				},
 			},
 			expectedStdout: "disabled",
@@ -42,10 +42,10 @@ func TestDisableCmd(t *testing.T) {
 		{
 			name:  "multiple",
 			funcs: []string{string(features.LoadBalancer), string(features.Gateway)},
-			expectedCall: apiv1.SetClusterConfigRequest{
-				Config: apiv1.UserFacingClusterConfig{
-					Gateway:      apiv1.GatewayConfig{Enabled: utils.Pointer(false)},
-					LoadBalancer: apiv1.LoadBalancerConfig{Enabled: utils.Pointer(false)},
+			expectedCall: apiv2.SetClusterConfigRequest{
+				Config: apiv2.UserFacingClusterConfig{
+					Gateway:      apiv2.GatewayConfig{Enabled: utils.Pointer(false)},
+					LoadBalancer: apiv2.LoadBalancerConfig{Enabled: utils.Pointer(false)},
 				},
 			},
 			expectedStdout: "disabled",

@@ -15,7 +15,7 @@ import (
 	"slices"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
@@ -35,8 +35,8 @@ import (
 
 // controlPlaneCertificateMarker manages pointers to control plane PKI fields.
 type controlPlaneCertificateMarker struct {
-	certificates map[apiv1.CertificateName]*string
-	keys         map[apiv1.CertificateName]*string
+	certificates map[apiv2.CertificateName]*string
+	keys         map[apiv2.CertificateName]*string
 }
 
 // csrDefinition holds the paramaters needed to generate and request a specific CSR.
@@ -57,42 +57,42 @@ type csrDefinition struct {
 // the PKI struct fields.
 func newControlPlaneCertificateMarker(pki *pki.ControlPlanePKI) *controlPlaneCertificateMarker {
 	marker := &controlPlaneCertificateMarker{}
-	marker.certificates = make(map[apiv1.CertificateName]*string, 9)
-	marker.keys = make(map[apiv1.CertificateName]*string, 9)
+	marker.certificates = make(map[apiv2.CertificateName]*string, 9)
+	marker.keys = make(map[apiv2.CertificateName]*string, 9)
 
-	marker.certificates[apiv1.CertificateAdminClient] = &pki.AdminClientCert
-	marker.keys[apiv1.CertificateAdminClient] = &pki.AdminClientKey
+	marker.certificates[apiv2.CertificateAdminClient] = &pki.AdminClientCert
+	marker.keys[apiv2.CertificateAdminClient] = &pki.AdminClientKey
 
-	marker.certificates[apiv1.CertificateFrontProxyClient] = &pki.FrontProxyClientCert
-	marker.keys[apiv1.CertificateFrontProxyClient] = &pki.FrontProxyClientKey
+	marker.certificates[apiv2.CertificateFrontProxyClient] = &pki.FrontProxyClientCert
+	marker.keys[apiv2.CertificateFrontProxyClient] = &pki.FrontProxyClientKey
 
-	marker.certificates[apiv1.CertificateAPIServerKubeletClient] = &pki.APIServerKubeletClientCert
-	marker.keys[apiv1.CertificateAPIServerKubeletClient] = &pki.APIServerKubeletClientKey
+	marker.certificates[apiv2.CertificateAPIServerKubeletClient] = &pki.APIServerKubeletClientCert
+	marker.keys[apiv2.CertificateAPIServerKubeletClient] = &pki.APIServerKubeletClientKey
 
-	marker.certificates[apiv1.CertificateSchedulerClient] = &pki.KubeSchedulerClientCert
-	marker.keys[apiv1.CertificateSchedulerClient] = &pki.KubeSchedulerClientKey
+	marker.certificates[apiv2.CertificateSchedulerClient] = &pki.KubeSchedulerClientCert
+	marker.keys[apiv2.CertificateSchedulerClient] = &pki.KubeSchedulerClientKey
 
-	marker.certificates[apiv1.CertificateControllerManagerClient] = &pki.KubeControllerManagerClientCert
-	marker.keys[apiv1.CertificateControllerManagerClient] = &pki.KubeControllerManagerClientKey
+	marker.certificates[apiv2.CertificateControllerManagerClient] = &pki.KubeControllerManagerClientCert
+	marker.keys[apiv2.CertificateControllerManagerClient] = &pki.KubeControllerManagerClientKey
 
-	marker.certificates[apiv1.CertificateAPIServer] = &pki.APIServerCert
-	marker.keys[apiv1.CertificateAPIServer] = &pki.APIServerKey
+	marker.certificates[apiv2.CertificateAPIServer] = &pki.APIServerCert
+	marker.keys[apiv2.CertificateAPIServer] = &pki.APIServerKey
 
-	marker.certificates[apiv1.CertificateKubeletClient] = &pki.KubeletClientCert
-	marker.keys[apiv1.CertificateKubeletClient] = &pki.KubeletClientKey
+	marker.certificates[apiv2.CertificateKubeletClient] = &pki.KubeletClientCert
+	marker.keys[apiv2.CertificateKubeletClient] = &pki.KubeletClientKey
 
-	marker.certificates[apiv1.CertificateKubelet] = &pki.KubeletCert
-	marker.keys[apiv1.CertificateKubelet] = &pki.KubeletKey
+	marker.certificates[apiv2.CertificateKubelet] = &pki.KubeletCert
+	marker.keys[apiv2.CertificateKubelet] = &pki.KubeletKey
 
-	marker.certificates[apiv1.CertificateProxyClient] = &pki.KubeProxyClientCert
-	marker.keys[apiv1.CertificateProxyClient] = &pki.KubeProxyClientKey
+	marker.certificates[apiv2.CertificateProxyClient] = &pki.KubeProxyClientCert
+	marker.keys[apiv2.CertificateProxyClient] = &pki.KubeProxyClientKey
 
 	return marker
 }
 
 // markCertificatesForRefresh clears the string values pointed to for the
 // specified certs.
-func (c *controlPlaneCertificateMarker) markCertificatesForRefresh(certificates []apiv1.CertificateName) error {
+func (c *controlPlaneCertificateMarker) markCertificatesForRefresh(certificates []apiv2.CertificateName) error {
 	for _, cert := range certificates {
 		certValuePtr, found := c.certificates[cert]
 		if !found {
@@ -110,8 +110,8 @@ func (c *controlPlaneCertificateMarker) markCertificatesForRefresh(certificates 
 
 // validateCertificatesByRole checks if the requested certs are valid for the
 // given role.
-func validateCertificatesByRole(role apiv1.ClusterRole, certs []apiv1.CertificateName) error {
-	validCerts, ok := apiv1.CertificatesByRole[role]
+func validateCertificatesByRole(role apiv2.ClusterRole, certs []apiv2.CertificateName) error {
+	validCerts, ok := apiv2.CertificatesByRole[role]
 	if !ok {
 		return fmt.Errorf("unknown role: %s", role)
 	}
@@ -125,7 +125,7 @@ func validateCertificatesByRole(role apiv1.ClusterRole, certs []apiv1.Certificat
 }
 
 func (e *Endpoints) postRefreshCertsPlan(s state.State, r *http.Request) response.Response {
-	req := apiv1.RefreshCertificatesPlanRequest{}
+	req := apiv2.RefreshCertificatesPlanRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -142,21 +142,21 @@ func (e *Endpoints) postRefreshCertsPlan(s state.State, r *http.Request) respons
 		return response.InternalError(fmt.Errorf("failed to check if node is a worker: %w", err))
 	}
 
-	var role apiv1.ClusterRole
-	var certsToPlan []apiv1.CertificateName
+	var role apiv2.ClusterRole
+	var certsToPlan []apiv2.CertificateName
 	if isWorker {
-		role = apiv1.ClusterRoleWorker
+		role = apiv2.ClusterRoleWorker
 		if len(req.Certificates) > 0 {
 			certsToPlan = toCertificateNames(req.Certificates)
 		} else {
-			certsToPlan = getAllCertsForRole(apiv1.ClusterRoleWorker)
+			certsToPlan = getAllCertsForRole(apiv2.ClusterRoleWorker)
 		}
 	} else {
-		role = apiv1.ClusterRoleControlPlane
+		role = apiv2.ClusterRoleControlPlane
 		if len(req.Certificates) > 0 {
 			certsToPlan = toCertificateNames(req.Certificates)
 		} else {
-			certsToPlan = getAllCertsForRole(apiv1.ClusterRoleControlPlane)
+			certsToPlan = getAllCertsForRole(apiv2.ClusterRoleControlPlane)
 		}
 	}
 
@@ -166,7 +166,7 @@ func (e *Endpoints) postRefreshCertsPlan(s state.State, r *http.Request) respons
 		}
 	}
 
-	resp := apiv1.RefreshCertificatesPlanResponse{
+	resp := apiv2.RefreshCertificatesPlanResponse{
 		Seed: seed,
 	}
 
@@ -204,18 +204,18 @@ func (e *Endpoints) postRefreshCertsRun(s state.State, r *http.Request) response
 func refreshCertsRunControlPlane(s state.State, r *http.Request, snap snap.Snap) response.Response {
 	log := log.FromContext(r.Context())
 
-	req := apiv1.RefreshCertificatesRunRequest{}
+	req := apiv2.RefreshCertificatesRunRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	certsToRefresh := toCertificateNames(req.Certificates)
 	if len(certsToRefresh) > 0 {
-		if err := validateCertificatesByRole(apiv1.ClusterRoleControlPlane, certsToRefresh); err != nil {
+		if err := validateCertificatesByRole(apiv2.ClusterRoleControlPlane, certsToRefresh); err != nil {
 			return response.BadRequest(fmt.Errorf("failed to validate requested certificates: %w", err))
 		}
 	} else {
-		certsToRefresh = getAllCertsForRole(apiv1.ClusterRoleControlPlane)
+		certsToRefresh = getAllCertsForRole(apiv2.ClusterRoleControlPlane)
 	}
 
 	clusterConfig, err := databaseutil.GetClusterConfig(r.Context(), s)
@@ -301,7 +301,7 @@ func refreshCertsRunControlPlane(s state.State, r *http.Request, snap snap.Snap)
 
 	expirationTimeUNIX := apiServerCert.NotAfter.Unix()
 
-	return utils.SyncManualResponseWithSignal(r, readyCh, apiv1.RefreshCertificatesRunResponse{
+	return utils.SyncManualResponseWithSignal(r, readyCh, apiv2.RefreshCertificatesRunResponse{
 		ExpirationSeconds: int(expirationTimeUNIX),
 	})
 }
@@ -310,16 +310,16 @@ func refreshCertsRunControlPlane(s state.State, r *http.Request, snap snap.Snap)
 func refreshCertsRunWorker(s state.State, r *http.Request, snap snap.Snap) response.Response {
 	log := log.FromContext(r.Context())
 
-	req := apiv1.RefreshCertificatesRunRequest{}
+	req := apiv2.RefreshCertificatesRunRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	certsToRefresh := toCertificateNames(req.Certificates)
 	if len(certsToRefresh) == 0 {
-		certsToRefresh = getAllCertsForRole(apiv1.ClusterRoleWorker)
+		certsToRefresh = getAllCertsForRole(apiv2.ClusterRoleWorker)
 	} else {
-		if err := validateCertificatesByRole(apiv1.ClusterRoleWorker, certsToRefresh); err != nil {
+		if err := validateCertificatesByRole(apiv2.ClusterRoleWorker, certsToRefresh); err != nil {
 			return response.BadRequest(fmt.Errorf("failed to validate requested certificates: %w", err))
 		}
 	}
@@ -367,13 +367,13 @@ func refreshCertsRunWorker(s state.State, r *http.Request, snap snap.Snap) respo
 		}
 		// nolint:exhaustive
 		switch certName {
-		case apiv1.CertificateKubelet:
+		case apiv2.CertificateKubelet:
 			csrDef.targetCert = &certificates.KubeletCert
 			csrDef.targetKey = &certificates.KubeletKey
-		case apiv1.CertificateKubeletClient:
+		case apiv2.CertificateKubeletClient:
 			csrDef.targetCert = &certificates.KubeletClientCert
 			csrDef.targetKey = &certificates.KubeletClientKey
-		case apiv1.CertificateProxyClient:
+		case apiv2.CertificateProxyClient:
 			csrDef.targetCert = &certificates.KubeProxyClientCert
 			csrDef.targetKey = &certificates.KubeProxyClientKey
 		default:
@@ -475,8 +475,8 @@ func refreshCertsRunWorker(s state.State, r *http.Request, snap snap.Snap) respo
 	// restarting the kube-proxy and kubelet, which would break the
 	// proxy connection and cause missed responses in the proxy side.
 	restartFn := func(ctx context.Context) error {
-		restartKubelet := slices.Contains(certsToRefresh, apiv1.CertificateKubelet) || slices.Contains(certsToRefresh, apiv1.CertificateKubeletClient)
-		restartProxy := slices.Contains(certsToRefresh, apiv1.CertificateProxyClient)
+		restartKubelet := slices.Contains(certsToRefresh, apiv2.CertificateKubelet) || slices.Contains(certsToRefresh, apiv2.CertificateKubeletClient)
+		restartProxy := slices.Contains(certsToRefresh, apiv2.CertificateProxyClient)
 
 		if restartKubelet {
 			if err := snap.RestartServices(ctx, []string{"kubelet"}); err != nil {
@@ -500,25 +500,25 @@ func refreshCertsRunWorker(s state.State, r *http.Request, snap snap.Snap) respo
 
 	expirationTimeUNIX := cert.NotAfter.Unix()
 
-	return utils.SyncManualResponseWithSignal(r, readyCh, apiv1.RefreshCertificatesRunResponse{
+	return utils.SyncManualResponseWithSignal(r, readyCh, apiv2.RefreshCertificatesRunResponse{
 		ExpirationSeconds: int(expirationTimeUNIX),
 	})
 }
 
 // toCertificateNames converts a slice of strings to a slice of CertificateName.
-func toCertificateNames(certNames []string) []apiv1.CertificateName {
-	certNamesSlice := make([]apiv1.CertificateName, len(certNames))
+func toCertificateNames(certNames []string) []apiv2.CertificateName {
+	certNamesSlice := make([]apiv2.CertificateName, len(certNames))
 
 	for i, s := range certNames {
-		certNamesSlice[i] = apiv1.CertificateName(s)
+		certNamesSlice[i] = apiv2.CertificateName(s)
 	}
 	return certNamesSlice
 }
 
 // getAllCertsForRole returns a slice of all certificate names for a given role.
-func getAllCertsForRole(role apiv1.ClusterRole) []apiv1.CertificateName {
-	if roleCerts, ok := apiv1.CertificatesByRole[role]; ok {
-		certs := make([]apiv1.CertificateName, 0, len(roleCerts))
+func getAllCertsForRole(role apiv2.ClusterRole) []apiv2.CertificateName {
+	if roleCerts, ok := apiv2.CertificatesByRole[role]; ok {
+		certs := make([]apiv2.CertificateName, 0, len(roleCerts))
 		for certName := range roleCerts {
 			certs = append(certs, certName)
 		}
@@ -529,11 +529,11 @@ func getAllCertsForRole(role apiv1.ClusterRole) []apiv1.CertificateName {
 }
 
 // Map of worker certificate names to their corresponding CSR definitions.
-func getWorkerCSRDefinitions(hostname string) map[apiv1.CertificateName]*csrDefinition {
+func getWorkerCSRDefinitions(hostname string) map[apiv2.CertificateName]*csrDefinition {
 	// nolint:exhaustive
-	return map[apiv1.CertificateName]*csrDefinition{
-		apiv1.CertificateKubelet: {
-			CertName:     string(apiv1.CertificateKubelet),
+	return map[apiv2.CertificateName]*csrDefinition{
+		apiv2.CertificateKubelet: {
+			CertName:     string(apiv2.CertificateKubelet),
 			CSRBaseName:  "worker-kubelet-serving",
 			CommonName:   fmt.Sprintf("system:node:%s", hostname),
 			Organization: []string{"system:nodes"},
@@ -541,8 +541,8 @@ func getWorkerCSRDefinitions(hostname string) map[apiv1.CertificateName]*csrDefi
 			SignerName:   "k8sd.io/kubelet-serving",
 			NeedsSANs:    true,
 		},
-		apiv1.CertificateKubeletClient: {
-			CertName:     string(apiv1.CertificateKubeletClient),
+		apiv2.CertificateKubeletClient: {
+			CertName:     string(apiv2.CertificateKubeletClient),
 			CSRBaseName:  "worker-kubelet-client",
 			CommonName:   fmt.Sprintf("system:node:%s", hostname),
 			Organization: []string{"system:nodes"},
@@ -550,8 +550,8 @@ func getWorkerCSRDefinitions(hostname string) map[apiv1.CertificateName]*csrDefi
 			SignerName:   "k8sd.io/kubelet-client",
 			NeedsSANs:    false,
 		},
-		apiv1.CertificateProxyClient: {
-			CertName:     string(apiv1.CertificateProxyClient),
+		apiv2.CertificateProxyClient: {
+			CertName:     string(apiv2.CertificateProxyClient),
 			CSRBaseName:  "worker-kube-proxy-client",
 			CommonName:   "system:kube-proxy",
 			Organization: []string{},

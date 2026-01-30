@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/canonical/k8sd/pkg/client/dqlite"
 	"github.com/canonical/k8sd/pkg/client/etcd"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/client/k8sd"
@@ -46,7 +45,6 @@ type Mock struct {
 	K8sBinDir                   string
 	K8sInspectScriptPath        string
 	K8sdStateDir                string
-	K8sDqliteStateDir           string
 	EtcdDir                     string
 	ServiceArgumentsDir         string
 	ServiceExtraConfigDir       string
@@ -58,8 +56,8 @@ type Mock struct {
 	KubernetesClient            *kubernetes.Client
 	KubernetesNodeClient        *kubernetes.Client
 	HelmClient                  helm.Client
-	K8sDqliteClient             *dqlite.Client
 	EtcdClient                  *etcd.Client
+	EtcdClientErr               error
 	K8sdClient                  k8sd.Client
 	SnapctlGet                  map[string][]byte
 }
@@ -260,10 +258,6 @@ func (s *Snap) K8sdStateDir() string {
 	return s.Mock.K8sdStateDir
 }
 
-func (s *Snap) K8sDqliteStateDir() string {
-	return s.Mock.K8sDqliteStateDir
-}
-
 func (s *Snap) EtcdDir() string {
 	return s.Mock.EtcdDir
 }
@@ -300,12 +294,8 @@ func (s *Snap) HelmClient() helm.Client {
 	return s.Mock.HelmClient
 }
 
-func (s *Snap) K8sDqliteClient(context.Context) (*dqlite.Client, error) {
-	return s.Mock.K8sDqliteClient, nil
-}
-
 func (s *Snap) EtcdClient(endpoints []string) (*etcd.Client, error) {
-	return s.Mock.EtcdClient, nil
+	return s.Mock.EtcdClient, s.Mock.EtcdClientErr
 }
 
 func (s *Snap) K8sdClient(address string) (k8sd.Client, error) {

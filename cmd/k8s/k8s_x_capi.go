@@ -1,7 +1,7 @@
 package k8s
 
 import (
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/spf13/cobra"
@@ -37,7 +37,7 @@ func newXCAPICmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 
-			err = client.SetClusterAPIAuthToken(cmd.Context(), apiv1.ClusterAPISetAuthTokenRequest{Token: token})
+			err = client.SetClusterAPIAuthToken(cmd.Context(), apiv2.ClusterAPISetAuthTokenRequest{Token: token})
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to set the CAPI auth token.\n\nThe error was: %v\n", err)
 				env.Exit(1)

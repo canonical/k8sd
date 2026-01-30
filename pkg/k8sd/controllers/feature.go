@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	apiv1_annotations "github.com/canonical/k8s-snap-api/api/v1/annotations"
-	upgradesv1alpha "github.com/canonical/k8s-snap-api/api/v1alpha"
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
+	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"

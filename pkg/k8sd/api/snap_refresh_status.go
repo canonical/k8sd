@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"net/http"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/state"
 )
 
 func (e *Endpoints) postSnapRefreshStatus(s state.State, r *http.Request) response.Response {
-	req := apiv1.SnapRefreshStatusRequest{}
+	req := apiv2.SnapRefreshStatusRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}

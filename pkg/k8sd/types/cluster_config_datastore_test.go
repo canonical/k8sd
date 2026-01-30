@@ -12,8 +12,7 @@ import (
 func TestDatastoreToKubeAPIServerArguments(t *testing.T) {
 	snap := &mock.Snap{
 		Mock: mock.Mock{
-			K8sDqliteStateDir: "/k8s-dqlite",
-			EtcdPKIDir:        "/pki/etcd",
+			EtcdPKIDir: "/pki/etcd",
 		},
 	}
 
@@ -26,18 +25,6 @@ func TestDatastoreToKubeAPIServerArguments(t *testing.T) {
 		{
 			name:             "Nil",
 			expectUpdateArgs: map[string]string{},
-		},
-		{
-			name: "K8sDqlite",
-			config: types.Datastore{
-				Type: utils.Pointer("k8s-dqlite"),
-			},
-			expectUpdateArgs: map[string]string{
-				"--etcd-servers":             "unix:///k8s-dqlite/k8s-dqlite.sock",
-				"--etcd-healthcheck-timeout": "4s",
-				"--feature-gates":            "DetectCacheInconsistency=false,ListFromCacheSnapshot=false,SizeBasedListCostEstimate=false",
-			},
-			expectDeleteArgs: []string{"--etcd-cafile", "--etcd-certfile", "--etcd-keyfile"},
 		},
 		{
 			name: "ExternalFull",

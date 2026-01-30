@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/api"
 	"github.com/canonical/k8sd/pkg/k8sd/controllers"
 	"github.com/canonical/k8sd/pkg/k8sd/controllers/upgrade"
@@ -188,33 +188,44 @@ func New(cfg Config) (*App, error) {
 		log.L().Info("feature-controller disabled via config")
 	}
 
+	var upgradeCtrlOpts controllers.UpgradeControllerOptions
+	if !cfg.DisableFeatureController {
+		upgradeCtrlOpts = controllers.UpgradeControllerOptions{
+			ControllerOptions: upgrade.ControllerOptions{
+				FeatureControllerReadyCh:   app.featureController.ReadyCh(),
+				NotifyNetworkFeature:       app.NotifyNetwork,
+				NotifyGatewayFeature:       app.NotifyGateway,
+				NotifyIngressFeature:       app.NotifyIngress,
+				NotifyLoadBalancerFeature:  app.NotifyLoadBalancer,
+				NotifyLocalStorageFeature:  app.NotifyLocalStorage,
+				NotifyMetricsServerFeature: app.NotifyMetricsServer,
+				NotifyDNSFeature:           app.NotifyDNS,
+				FeatureToReconciledCh: map[types.FeatureName]<-chan struct{}{
+					features.Network:       app.featureController.ReconciledNetworkCh(),
+					features.Gateway:       app.featureController.ReconciledGatewayCh(),
+					features.Ingress:       app.featureController.ReconciledIngressCh(),
+					features.DNS:           app.featureController.ReconciledDNSCh(),
+					features.LoadBalancer:  app.featureController.ReconciledLoadBalancerCh(),
+					features.LocalStorage:  app.featureController.ReconciledLocalStorageCh(),
+					features.MetricsServer: app.featureController.ReconciledMetricsServerCh(),
+				},
+				FeatureControllerReadyTimeout:     10 * time.Minute,
+				FeatureControllerReconcileTimeout: 2 * time.Minute,
+			},
+		}
+	}
+	upgradeCtrlOpts.Disable = cfg.DisableUpgradeController || cfg.DisableFeatureController
+
 	app.controllerCoordinator = controllers.NewCoordinator(
 		cfg.Snap,
 		app.readyWg.Wait,
-		cfg.DisableUpgradeController,
-		upgrade.ControllerOptions{
-			FeatureControllerReadyCh:   app.featureController.ReadyCh(),
-			NotifyNetworkFeature:       app.NotifyNetwork,
-			NotifyGatewayFeature:       app.NotifyGateway,
-			NotifyIngressFeature:       app.NotifyIngress,
-			NotifyLoadBalancerFeature:  app.NotifyLoadBalancer,
-			NotifyLocalStorageFeature:  app.NotifyLocalStorage,
-			NotifyMetricsServerFeature: app.NotifyMetricsServer,
-			NotifyDNSFeature:           app.NotifyDNS,
-			FeatureToReconciledCh: map[types.FeatureName]<-chan struct{}{
-				features.Network:       app.featureController.ReconciledNetworkCh(),
-				features.Gateway:       app.featureController.ReconciledGatewayCh(),
-				features.Ingress:       app.featureController.ReconciledIngressCh(),
-				features.DNS:           app.featureController.ReconciledDNSCh(),
-				features.LoadBalancer:  app.featureController.ReconciledLoadBalancerCh(),
-				features.LocalStorage:  app.featureController.ReconciledLocalStorageCh(),
-				features.MetricsServer: app.featureController.ReconciledMetricsServerCh(),
-			},
-			FeatureControllerReadyTimeout:     10 * time.Minute,
-			FeatureControllerReconcileTimeout: 2 * time.Minute,
+		upgradeCtrlOpts,
+		controllers.CSRSigningControllerOptions{
+			Disable: cfg.DisableCSRSigningController,
 		},
-		cfg.DisableCSRSigningController,
-		cfg.DisableDNSRebalancerController,
+		controllers.DNSRebalancerControllerOptions{
+			Disable: cfg.DisableDNSRebalancerController,
+		},
 	)
 
 	return app, nil
@@ -270,7 +281,7 @@ func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
 	}
 
 	err := a.cluster.Start(ctx, microcluster.DaemonArgs{
-		Version:                 string(apiv1.K8sdAPIVersion),
+		Version:                 string(apiv2.K8sdAPIVersion),
 		Verbose:                 a.config.Verbose,
 		Debug:                   a.config.Debug,
 		Hooks:                   hooks,

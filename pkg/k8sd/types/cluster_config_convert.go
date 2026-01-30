@@ -3,12 +3,12 @@ package types
 import (
 	"fmt"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
 )
 
 // ClusterConfigFromBootstrapConfig converts BootstrapConfig from public API into a ClusterConfig.
-func ClusterConfigFromBootstrapConfig(b apiv1.BootstrapConfig) (ClusterConfig, error) {
+func ClusterConfigFromBootstrapConfig(b apiv2.BootstrapConfig) (ClusterConfig, error) {
 	config, err := ClusterConfigFromUserFacing(b.ClusterConfig)
 	if err != nil {
 		return ClusterConfig{}, fmt.Errorf("invalid cluster configuration: %w", err)
@@ -24,30 +24,6 @@ func ClusterConfigFromBootstrapConfig(b apiv1.BootstrapConfig) (ClusterConfig, e
 
 	// Datastore
 	switch b.GetDatastoreType() {
-	case "k8s-dqlite":
-		if len(b.DatastoreServers) > 0 {
-			return ClusterConfig{}, fmt.Errorf("datastore-servers needs datastore-type to be external, not %q", b.GetDatastoreType())
-		}
-		if b.GetDatastoreCACert() != "" {
-			return ClusterConfig{}, fmt.Errorf("datastore-ca-crt needs datastore-type to be external, not %q", b.GetDatastoreType())
-		}
-		if b.GetDatastoreClientCert() != "" {
-			return ClusterConfig{}, fmt.Errorf("datastore-client-crt needs datastore-type to be external, not %q", b.GetDatastoreType())
-		}
-		if b.GetDatastoreClientKey() != "" {
-			return ClusterConfig{}, fmt.Errorf("datastore-client-key needs datastore-type to be external, not %q", b.GetDatastoreType())
-		}
-		if b.GetEtcdPeerPort() != 0 {
-			return ClusterConfig{}, fmt.Errorf("etcd-peer-port needs datastore-type to be etcd, not %q", b.GetDatastoreType())
-		}
-		if b.GetEtcdPort() != 0 {
-			return ClusterConfig{}, fmt.Errorf("etcd-port needs datastore-type to be etcd, not %q", b.GetDatastoreType())
-		}
-
-		config.Datastore = Datastore{
-			Type:          utils.Pointer("k8s-dqlite"),
-			K8sDqlitePort: b.K8sDqlitePort,
-		}
 	case "", "etcd":
 		if len(b.DatastoreServers) > 0 {
 			return ClusterConfig{}, fmt.Errorf("datastore-servers needs datastore-type to be external, not %q", b.GetDatastoreType())
@@ -61,9 +37,6 @@ func ClusterConfigFromBootstrapConfig(b apiv1.BootstrapConfig) (ClusterConfig, e
 		if b.GetDatastoreClientKey() != "" {
 			return ClusterConfig{}, fmt.Errorf("datastore-client-key needs datastore-type to be external, not %q", b.GetDatastoreType())
 		}
-		if b.GetK8sDqlitePort() != 0 {
-			return ClusterConfig{}, fmt.Errorf("datastore.k8s-dqlite-port needs datastore.type to be k8s-dqlite, not %q", b.GetDatastoreType())
-		}
 
 		config.Datastore = Datastore{
 			Type:         utils.Pointer("etcd"),
@@ -73,9 +46,6 @@ func ClusterConfigFromBootstrapConfig(b apiv1.BootstrapConfig) (ClusterConfig, e
 	case "external":
 		if len(b.DatastoreServers) == 0 {
 			return ClusterConfig{}, fmt.Errorf("datastore type is external but no datastore servers were set")
-		}
-		if b.GetK8sDqlitePort() != 0 {
-			return ClusterConfig{}, fmt.Errorf("k8s-dqlite-port needs datastore-type to be k8s-dqlite")
 		}
 		if b.GetEtcdPeerPort() != 0 {
 			return ClusterConfig{}, fmt.Errorf("etcd-peer-port needs datastore-type to be etcd")
@@ -108,7 +78,7 @@ func ClusterConfigFromBootstrapConfig(b apiv1.BootstrapConfig) (ClusterConfig, e
 }
 
 // ClusterConfigFromUserFacing converts UserFacingClusterConfig from public API into a ClusterConfig.
-func ClusterConfigFromUserFacing(u apiv1.UserFacingClusterConfig) (ClusterConfig, error) {
+func ClusterConfigFromUserFacing(u apiv2.UserFacingClusterConfig) (ClusterConfig, error) {
 	cidrs, ipRanges, err := loadBalancerCIDRsFromAPI(u.LoadBalancer.CIDRs)
 	if err != nil {
 		return ClusterConfig{}, fmt.Errorf("invalid load-balancer.cidrs: %w", err)
@@ -161,23 +131,23 @@ func ClusterConfigFromUserFacing(u apiv1.UserFacingClusterConfig) (ClusterConfig
 }
 
 // ToUserFacing converts a ClusterConfig to a UserFacingClusterConfig from the public API.
-func (c ClusterConfig) ToUserFacing() apiv1.UserFacingClusterConfig {
-	return apiv1.UserFacingClusterConfig{
-		Network: apiv1.NetworkConfig{
+func (c ClusterConfig) ToUserFacing() apiv2.UserFacingClusterConfig {
+	return apiv2.UserFacingClusterConfig{
+		Network: apiv2.NetworkConfig{
 			Enabled: c.Network.Enabled,
 		},
-		DNS: apiv1.DNSConfig{
+		DNS: apiv2.DNSConfig{
 			Enabled:             c.DNS.Enabled,
 			ClusterDomain:       c.Kubelet.ClusterDomain,
 			ServiceIP:           c.Kubelet.ClusterDNS,
 			UpstreamNameservers: c.DNS.UpstreamNameservers,
 		},
-		Ingress: apiv1.IngressConfig{
+		Ingress: apiv2.IngressConfig{
 			Enabled:             c.Ingress.Enabled,
 			DefaultTLSSecret:    c.Ingress.DefaultTLSSecret,
 			EnableProxyProtocol: c.Ingress.EnableProxyProtocol,
 		},
-		LoadBalancer: apiv1.LoadBalancerConfig{
+		LoadBalancer: apiv2.LoadBalancerConfig{
 			Enabled:        c.LoadBalancer.Enabled,
 			CIDRs:          loadBalancerCIDRsToAPI(c.LoadBalancer.CIDRs, c.LoadBalancer.IPRanges),
 			L2Mode:         c.LoadBalancer.L2Mode,
@@ -188,16 +158,16 @@ func (c ClusterConfig) ToUserFacing() apiv1.UserFacingClusterConfig {
 			BGPPeerASN:     c.LoadBalancer.BGPPeerASN,
 			BGPPeerPort:    c.LoadBalancer.BGPPeerPort,
 		},
-		LocalStorage: apiv1.LocalStorageConfig{
+		LocalStorage: apiv2.LocalStorageConfig{
 			Enabled:       c.LocalStorage.Enabled,
 			LocalPath:     c.LocalStorage.LocalPath,
 			ReclaimPolicy: c.LocalStorage.ReclaimPolicy,
 			Default:       c.LocalStorage.Default,
 		},
-		MetricsServer: apiv1.MetricsServerConfig{
+		MetricsServer: apiv2.MetricsServerConfig{
 			Enabled: c.MetricsServer.Enabled,
 		},
-		Gateway: apiv1.GatewayConfig{
+		Gateway: apiv2.GatewayConfig{
 			Enabled: c.Gateway.Enabled,
 		},
 		CloudProvider: c.Kubelet.CloudProvider,

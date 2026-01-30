@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
@@ -53,7 +53,7 @@ func (a *App) onBootstrap(ctx context.Context, s state.State, initConfig map[str
 	return a.onBootstrapControlPlane(ctx, s, bootstrapConfig)
 }
 
-func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedToken string, joinConfig apiv1.WorkerJoinConfig) (rerr error) {
+func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedToken string, joinConfig apiv2.WorkerJoinConfig) (rerr error) {
 	snap := a.Snap()
 
 	log := log.FromContext(ctx).WithValues("hook", "join")
@@ -113,10 +113,10 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedT
 
 	type wrappedResponse struct {
 		Error    string                          `json:"error"`
-		Metadata apiv1.GetWorkerJoinInfoResponse `json:"metadata"`
+		Metadata apiv2.GetWorkerJoinInfoResponse `json:"metadata"`
 	}
 
-	requestBody, err := json.Marshal(apiv1.GetWorkerJoinInfoRequest{Address: nodeIP.String()})
+	requestBody, err := json.Marshal(apiv2.GetWorkerJoinInfoRequest{Address: nodeIP.String()})
 	if err != nil {
 		return fmt.Errorf("failed to prepare worker info request: %w", err)
 	}
@@ -210,7 +210,7 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedT
 		return fmt.Errorf("failed to generate worker node kubeconfigs: %w", err)
 	}
 
-	// Write worker node configuration to dqlite
+	// Write worker node configuration to datastore
 	//
 	// Worker nodes only use a subset of the ClusterConfig struct. At the moment, these are:
 	// - Network.PodCIDR and Network.ClusterCIDR: informative
@@ -291,7 +291,7 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedT
 	return nil
 }
 
-func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootstrapConfig apiv1.BootstrapConfig) (rerr error) {
+func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootstrapConfig apiv2.BootstrapConfig) (rerr error) {
 	snap := a.Snap()
 
 	log := log.FromContext(ctx).WithValues("hook", "bootstrap")
@@ -344,24 +344,6 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootst
 	extraIPs, extraNames := utils.SplitIPAndDNSSANs(bootstrapConfig.ExtraSANs)
 
 	switch cfg.Datastore.GetType() {
-	case "k8s-dqlite":
-		// NOTE: Default certificate expiration is set to 20 years.
-		certificates := pki.NewK8sDqlitePKI(pki.K8sDqlitePKIOpts{
-			Hostname:          s.Name(),
-			IPSANs:            []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
-			NotBefore:         notBefore,
-			NotAfter:          notBefore.AddDate(20, 0, 0),
-			AllowSelfSignedCA: true,
-		})
-		if err := certificates.CompleteCertificates(); err != nil {
-			return fmt.Errorf("failed to initialize k8s-dqlite certificates: %w", err)
-		}
-		if _, err := setup.EnsureK8sDqlitePKI(snap, certificates); err != nil {
-			return fmt.Errorf("failed to write k8s-dqlite certificates: %w", err)
-		}
-
-		cfg.Datastore.K8sDqliteCert = utils.Pointer(certificates.K8sDqliteCert)
-		cfg.Datastore.K8sDqliteKey = utils.Pointer(certificates.K8sDqliteKey)
 	case "etcd":
 		// NOTE: Default certificate expiration is set to 20 years.
 		certificates := pki.NewEtcdPKI(pki.EtcdPKIOpts{
@@ -491,11 +473,6 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootst
 
 	// Configure datastore
 	switch cfg.Datastore.GetType() {
-	case "k8s-dqlite":
-		address := fmt.Sprintf("%s:%d", utils.ToIPString(nodeIP), cfg.Datastore.GetK8sDqlitePort())
-		if err := setup.K8sDqlite(snap, address, nil, bootstrapConfig.ExtraNodeK8sDqliteArgs); err != nil {
-			return fmt.Errorf("failed to configure k8s-dqlite: %w", err)
-		}
 	case "etcd":
 		if err := setup.Etcd(snap, s.Name(), nodeIP, cfg.Datastore.GetEtcdPort(), cfg.Datastore.GetEtcdPeerPort(), nil, bootstrapConfig.ExtraNodeEtcdArgs); err != nil {
 			return fmt.Errorf("failed to configure etcd: %w", err)
@@ -529,7 +506,7 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootst
 		return fmt.Errorf("failed to write extra node config files: %w", err)
 	}
 
-	// Write cluster configuration to dqlite
+	// Write cluster configuration to datastore.
 	if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		if _, err := database.SetClusterConfig(ctx, tx, cfg); err != nil {
 			return fmt.Errorf("failed to write cluster configuration: %w", err)

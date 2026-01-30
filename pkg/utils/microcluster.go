@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"gopkg.in/yaml.v2"
 )
 
@@ -34,8 +34,8 @@ func MicroclusterTimeoutFromMap(m map[string]string) time.Duration {
 	}
 }
 
-// MicroclusterConfigWithBootstrap adds apiv1.BootstrapConfig to the config struct.
-func MicroclusterMapWithBootstrapConfig(m map[string]string, bootstrap apiv1.BootstrapConfig) (map[string]string, error) {
+// MicroclusterConfigWithBootstrap adds apiv2.BootstrapConfig to the config struct.
+func MicroclusterMapWithBootstrapConfig(m map[string]string, bootstrap apiv2.BootstrapConfig) (map[string]string, error) {
 	b, err := json.Marshal(bootstrap)
 	if err != nil {
 		return m, fmt.Errorf("failed to marshal bootstrap config: %w", err)
@@ -47,16 +47,16 @@ func MicroclusterMapWithBootstrapConfig(m map[string]string, bootstrap apiv1.Boo
 	return m, nil
 }
 
-// MicroclusterBootstrapConfigFromMap returns an apiv1.BootstrapConfig from the config struct.
-func MicroclusterBootstrapConfigFromMap(m map[string]string) (apiv1.BootstrapConfig, error) {
-	var config apiv1.BootstrapConfig
+// MicroclusterBootstrapConfigFromMap returns an apiv2.BootstrapConfig from the config struct.
+func MicroclusterBootstrapConfigFromMap(m map[string]string) (apiv2.BootstrapConfig, error) {
+	var config apiv2.BootstrapConfig
 	if err := json.Unmarshal([]byte(m["bootstrapConfig"]), &config); err != nil {
-		return apiv1.BootstrapConfig{}, fmt.Errorf("failed to unmarshal bootstrap config: %w", err)
+		return apiv2.BootstrapConfig{}, fmt.Errorf("failed to unmarshal bootstrap config: %w", err)
 	}
 	return config, nil
 }
 
-// MicroclusterMapWithControlPlaneJoinConfig adds (a JSON formatted) apiv1.ControlPlaneJoinConfig to the config struct.
+// MicroclusterMapWithControlPlaneJoinConfig adds (a JSON formatted) apiv2.ControlPlaneJoinConfig to the config struct.
 func MicroclusterMapWithControlPlaneJoinConfig(m map[string]string, controlPlaneJoinConfigJSON string) map[string]string {
 	if m == nil {
 		m = make(map[string]string)
@@ -65,16 +65,16 @@ func MicroclusterMapWithControlPlaneJoinConfig(m map[string]string, controlPlane
 	return m
 }
 
-// MicroclusterControlPlaneJoinConfigFromMap returns an apiv1.ControlPlaneJoinConfig from the config struct.
-func MicroclusterControlPlaneJoinConfigFromMap(m map[string]string) (apiv1.ControlPlaneJoinConfig, error) {
-	var config apiv1.ControlPlaneJoinConfig
+// MicroclusterControlPlaneJoinConfigFromMap returns an apiv2.ControlPlaneJoinConfig from the config struct.
+func MicroclusterControlPlaneJoinConfigFromMap(m map[string]string) (apiv2.ControlPlaneJoinConfig, error) {
+	var config apiv2.ControlPlaneJoinConfig
 	if err := yaml.UnmarshalStrict([]byte(m["controlPlaneJoinConfig"]), &config); err != nil {
-		return apiv1.ControlPlaneJoinConfig{}, fmt.Errorf("failed to unmarshal control plane join config: %w", err)
+		return apiv2.ControlPlaneJoinConfig{}, fmt.Errorf("failed to unmarshal control plane join config: %w", err)
 	}
 	return config, nil
 }
 
-// MicroclusterMapWithWorkerJoinConfig adds (a JSON formatted) apiv1.WorkerJoinConfig to the config struct.
+// MicroclusterMapWithWorkerJoinConfig adds (a JSON formatted) apiv2.WorkerJoinConfig to the config struct.
 func MicroclusterMapWithWorkerJoinConfig(m map[string]string, token string, workerJoinConfigJSON string) map[string]string {
 	if m == nil {
 		m = make(map[string]string)
@@ -84,11 +84,11 @@ func MicroclusterMapWithWorkerJoinConfig(m map[string]string, token string, work
 	return m
 }
 
-// MicroclusterWorkerJoinConfigFromMap returns an apiv1.WorkerJoinConfig from the config struct.
-func MicroclusterWorkerJoinConfigFromMap(m map[string]string) (apiv1.WorkerJoinConfig, error) {
-	var config apiv1.WorkerJoinConfig
+// MicroclusterWorkerJoinConfigFromMap returns an apiv2.WorkerJoinConfig from the config struct.
+func MicroclusterWorkerJoinConfigFromMap(m map[string]string) (apiv2.WorkerJoinConfig, error) {
+	var config apiv2.WorkerJoinConfig
 	if err := yaml.UnmarshalStrict([]byte(m["workerJoinConfig"]), &config); err != nil {
-		return apiv1.WorkerJoinConfig{}, fmt.Errorf("failed to unmarshal worker join config: %w", err)
+		return apiv2.WorkerJoinConfig{}, fmt.Errorf("failed to unmarshal worker join config: %w", err)
 	}
 	return config, nil
 }

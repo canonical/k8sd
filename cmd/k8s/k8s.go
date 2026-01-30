@@ -50,7 +50,7 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.SetOut(env.Stdout)
 	cmd.SetErr(env.Stderr)
 
-	cmd.PersistentFlags().StringVar(&opts.stateDir, "state-dir", "", "directory with the dqlite datastore")
+	cmd.PersistentFlags().StringVar(&opts.stateDir, "state-dir", "", "directory with the datastore")
 	cmd.PersistentFlags().BoolVarP(&opts.logDebug, "debug", "d", false, "show all debug messages")
 	cmd.PersistentFlags().BoolVarP(&opts.logVerbose, "verbose", "v", true, "show all information messages")
 

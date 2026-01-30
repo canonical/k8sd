@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/microcluster/v2/state"
 )
 
 // GetControlPlaneNode returns the node information if the given node name
 // belongs to a control-plane in the cluster or nil if not.
-func GetControlPlaneNode(ctx context.Context, s state.State, name string) (*apiv1.NodeStatus, error) {
+func GetControlPlaneNode(ctx context.Context, s state.State, name string) (*apiv2.NodeStatus, error) {
 	client, err := s.Leader()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get microcluster leader client: %w", err)
@@ -23,10 +23,10 @@ func GetControlPlaneNode(ctx context.Context, s state.State, name string) (*apiv
 
 	for _, member := range members {
 		if member.Name == name {
-			return &apiv1.NodeStatus{
+			return &apiv2.NodeStatus{
 				Name:          member.Name,
 				Address:       member.Address.String(),
-				ClusterRole:   apiv1.ClusterRoleControlPlane,
+				ClusterRole:   apiv2.ClusterRoleControlPlane,
 				DatastoreRole: DatastoreRoleFromString(member.Role),
 			}, nil
 		}
@@ -44,17 +44,17 @@ func IsControlPlaneNode(ctx context.Context, s state.State, name string) (bool, 
 }
 
 // DatastoreRoleFromString converts the string-based role to the enum-based role.
-func DatastoreRoleFromString(role string) apiv1.DatastoreRole {
+func DatastoreRoleFromString(role string) apiv2.DatastoreRole {
 	switch role {
 	case "voter":
-		return apiv1.DatastoreRoleVoter
+		return apiv2.DatastoreRoleVoter
 	case "stand-by":
-		return apiv1.DatastoreRoleStandBy
+		return apiv2.DatastoreRoleStandBy
 	case "spare":
-		return apiv1.DatastoreRoleSpare
+		return apiv2.DatastoreRoleSpare
 	case "PENDING":
-		return apiv1.DatastoreRolePending
+		return apiv2.DatastoreRolePending
 	default:
-		return apiv1.DatastoreRoleUnknown
+		return apiv2.DatastoreRoleUnknown
 	}
 }

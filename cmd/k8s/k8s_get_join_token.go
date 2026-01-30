@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/spf13/cobra"
 )
@@ -57,7 +57,7 @@ func newGetJoinTokenCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 
-			token, err := client.GetJoinToken(ctx, apiv1.GetJoinTokenRequest{Name: name, Worker: opts.worker, TTL: opts.ttl})
+			token, err := client.GetJoinToken(ctx, apiv2.GetJoinTokenRequest{Name: name, Worker: opts.worker, TTL: opts.ttl})
 			if err != nil {
 				cmd.PrintErrf("Error: Could not generate a join token for %q.\n\nThe error was: %v\n", name, err)
 				env.Exit(1)

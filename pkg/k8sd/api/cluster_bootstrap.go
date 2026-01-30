@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"time"
 
-	apiv1 "github.com/canonical/k8s-snap-api/api/v1"
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/state"
 )
 
 func (e *Endpoints) postClusterBootstrap(_ state.State, r *http.Request) response.Response {
-	req := apiv1.BootstrapClusterRequest{}
+	req := apiv2.BootstrapClusterRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
 		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
@@ -59,7 +59,7 @@ func (e *Endpoints) postClusterBootstrap(_ state.State, r *http.Request) respons
 		return response.BadRequest(fmt.Errorf("failed to bootstrap new cluster: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv1.BootstrapClusterResponse{
+	return response.SyncResponse(true, &apiv2.BootstrapClusterResponse{
 		Name:    hostname,
 		Address: req.Address,
 	})

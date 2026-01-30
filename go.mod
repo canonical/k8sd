@@ -4,14 +4,13 @@ go 1.25.5
 
 require (
 	dario.cat/mergo v1.0.2
-	github.com/canonical/go-dqlite/v2 v2.0.1
-	github.com/canonical/k8s-snap-api v1.2.0
+	github.com/canonical/k8s-snap-api/v2 v2.0.0
 	github.com/canonical/lxd v0.0.0-20260115083613-b39fc6efb943
 	github.com/canonical/microcluster/v2 v2.2.2
 	github.com/go-logr/logr v1.4.3
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/onsi/gomega v1.38.2
+	github.com/onsi/gomega v1.39.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/etcd/api/v3 v3.6.7
@@ -28,7 +27,7 @@ require (
 	k8s.io/client-go v0.35.0
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/utils v0.0.0-20260108192941-914a6e750570
-	sigs.k8s.io/controller-runtime v0.22.4
+	sigs.k8s.io/controller-runtime v0.23.0
 )
 
 require (
@@ -44,6 +43,7 @@ require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
+	github.com/canonical/go-dqlite/v2 v2.0.1 // indirect
 	github.com/canonical/go-dqlite/v3 v3.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chai2010/gettext-go v1.0.3 // indirect

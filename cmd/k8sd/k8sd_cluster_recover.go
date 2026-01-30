@@ -2,20 +2,13 @@ package k8sd
 
 import (
 	"bufio"
-	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"os"
 	"path"
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
-	"github.com/canonical/go-dqlite/v2"
-	"github.com/canonical/go-dqlite/v2/app"
-	"github.com/canonical/go-dqlite/v2/client"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/utils"
@@ -35,7 +28,6 @@ const preRecoveryMessage = `You should only run this command if:
 
 Note that before applying any changes, a database backup is created at:
 * k8sd (microcluster): /var/snap/k8s/common/var/lib/k8sd/state/db_backup.<timestamp>.tar.gz
-* k8s-dqlite: /var/snap/k8s/common/recovery-k8s-dqlite-<timestamp>-pre-recovery.tar.gz
 `
 
 const recoveryConfirmation = "Do you want to proceed? (yes/no): "
@@ -62,13 +54,6 @@ const clusterK8sdYamlRecoveryComment = `# Member roles can be modified. Unrecove
 # - no changes are made
 `
 
-const clusterK8sDqliteRecoveryComment = `# Member roles can be modified. Unrecoverable nodes should be given the role 2 (spare).
-#
-# 0 (voter) - Voting member of the database. A majority of voters is a quorum.
-# 1 (stand-by) - Non-voting member of the database; can be promoted to voter.
-# 2 (spare) - Not a member of the database.
-`
-
 const infoYamlRecoveryComment = `# Verify the ID, address and role of the local node.
 #
 # Cluster members:
@@ -83,10 +68,7 @@ const daemonYamlRecoveryComment = `# Verify the name and address of the local no
 const yamlHelperCommentFooter = "# ------- everything below will be written -------\n"
 
 var clusterRecoverOpts struct {
-	K8sDqliteStateDir string
-	NonInteractive    bool
-	SkipK8sd          bool
-	SkipK8sDqlite     bool
+	NonInteractive bool
 }
 
 func newClusterRecoverCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
@@ -104,52 +86,22 @@ func newClusterRecoverCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				env.Exit(1)
 			}
 
-			if clusterRecoverOpts.SkipK8sd {
-				cmd.Printf("Skipping k8sd recovery.\n")
-			} else {
-				k8sdTarballPath, err := recoverK8sd()
-				if err != nil {
-					cmd.PrintErrf("Failed to recover k8sd, error: %v\n", err)
-					env.Exit(1)
-				}
-				cmd.Printf("K8sd cluster changes applied.\n")
-				cmd.Printf("New database state saved to %s\n", k8sdTarballPath)
-				cmd.Printf("*Before* starting any cluster member, copy %s to %s "+
-					"on all remaining cluster members.\n",
-					k8sdTarballPath, k8sdTarballPath)
-				cmd.Printf("K8sd will load this file during startup.\n\n")
+			k8sdTarballPath, err := recoverK8sd()
+			if err != nil {
+				cmd.PrintErrf("Failed to recover k8sd, error: %v\n", err)
+				env.Exit(1)
 			}
-
-			if clusterRecoverOpts.SkipK8sDqlite {
-				cmd.Printf("Skipping k8s-dqlite recovery.\n")
-			} else {
-				k8sDqlitePreRecoveryTarball, k8sDqlitePostRecoveryTarball, err := recoverK8sDqlite()
-				if err != nil {
-					cmd.PrintErrf(
-						"Failed to recover k8s-dqlite, error: %v, "+
-							"pre-recovery backup: %s\n",
-						err, k8sDqlitePreRecoveryTarball)
-					env.Exit(1)
-				}
-				cmd.Printf("K8s-dqlite cluster changes applied.\n")
-				cmd.Printf("New database state saved to %s\n",
-					k8sDqlitePostRecoveryTarball)
-				cmd.Printf("*Before* starting any cluster member, copy %s "+
-					"on all remaining cluster members and extract the archive to %s.\n",
-					k8sDqlitePostRecoveryTarball, clusterRecoverOpts.K8sDqliteStateDir)
-				cmd.Printf("Pre-recovery database backup: %s\n\n", k8sDqlitePreRecoveryTarball)
-			}
+			cmd.Printf("K8sd cluster changes applied.\n")
+			cmd.Printf("New database state saved to %s\n", k8sdTarballPath)
+			cmd.Printf("*Before* starting any cluster member, copy %s to %s "+
+				"on all remaining cluster members.\n",
+				k8sdTarballPath, k8sdTarballPath)
+			cmd.Printf("K8sd will load this file during startup.\n\n")
 		},
 	}
 
-	cmd.Flags().StringVar(&clusterRecoverOpts.K8sDqliteStateDir, "k8s-dqlite-state-dir",
-		"", "k8s-dqlite datastore location")
 	cmd.Flags().BoolVar(&clusterRecoverOpts.NonInteractive, "non-interactive",
 		false, "disable interactive prompts, assume that the configs have been updated")
-	cmd.Flags().BoolVar(&clusterRecoverOpts.SkipK8sd, "skip-k8sd",
-		false, "skip k8sd recovery")
-	cmd.Flags().BoolVar(&clusterRecoverOpts.SkipK8sDqlite, "skip-k8s-dqlite",
-		false, "skip k8s-dqlite recovery")
 
 	return cmd
 }
@@ -176,10 +128,7 @@ func recoveryCmdPrechecks(cmd *cobra.Command) error {
 		return fmt.Errorf("interactive mode requested in a non-interactive terminal")
 	}
 
-	if clusterRecoverOpts.K8sDqliteStateDir == "" && !clusterRecoverOpts.SkipK8sDqlite {
-		return fmt.Errorf("k8s-dqlite state dir not specified")
-	}
-	if rootCmdOpts.stateDir == "" && !clusterRecoverOpts.SkipK8sd {
+	if rootCmdOpts.stateDir == "" {
 		return fmt.Errorf("k8sd state dir not specified")
 	}
 
@@ -204,100 +153,6 @@ func recoveryCmdPrechecks(cmd *cobra.Command) error {
 		}
 
 		cmd.Print("\n")
-	}
-
-	if !clusterRecoverOpts.SkipK8sDqlite {
-		if err := ensureK8sDqliteMembersStopped(cmd.Context()); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func ensureK8sDqliteMembersStopped(ctx context.Context) error {
-	log := log.FromContext(ctx)
-
-	log.V(1).Info("Ensuring that all k8s-dqlite members are stopped.")
-
-	clusterYamlPath := path.Join(clusterRecoverOpts.K8sDqliteStateDir, "cluster.yaml")
-	membersYaml, err := os.ReadFile(clusterYamlPath)
-	if err != nil {
-		return fmt.Errorf("could not read k8s-dqlite cluster.yaml, error: %w", err)
-	}
-
-	members := []dqlite.NodeInfo{}
-	if err = yaml.Unmarshal(membersYaml, &members); err != nil {
-		return fmt.Errorf("couldn't parse k8s-dqlite cluster.yaml, error: %w", err)
-	}
-
-	crt := path.Join(clusterRecoverOpts.K8sDqliteStateDir, "cluster.crt")
-	key := path.Join(clusterRecoverOpts.K8sDqliteStateDir, "cluster.key")
-
-	keypair, err := tls.LoadX509KeyPair(crt, key)
-	if err != nil {
-		return fmt.Errorf("could not load k8s-dqlite certificates, error: %w", err)
-	}
-
-	data, err := os.ReadFile(crt)
-	if err != nil {
-		return fmt.Errorf("could not read k8s-dqlite certificate, error: %w", err)
-	}
-
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(data) {
-		return fmt.Errorf("invalid k8s-dqlite certificate")
-	}
-
-	dial := client.DialFuncWithTLS(client.DefaultDialFunc, app.SimpleDialTLSConfig(keypair, pool))
-
-	// We'll dial all members concurrently, passing the reachable addresses
-	// through a channel.
-	availableMembers := []string{}
-	c := make(chan string)
-	for _, member := range members {
-		log.V(1).Info("Checking k8s-dqlite member", "member", member)
-
-		if member.Address == "" {
-			return fmt.Errorf("k8s-dqlite member check failed, missing member address.")
-		}
-
-		go func(ctx context.Context, dialFunc client.DialFunc, addr string) {
-			// We expect the member nodes to be unavailable, let's not wait
-			// more than 3 seconds during this sanity test.
-			ctx_timeout, cancel := context.WithTimeout(ctx, 3*time.Second)
-			defer cancel()
-
-			log.V(1).Info("testing k8s-dqlite member connectivity", "addr", addr)
-			conn, err := dialFunc(ctx_timeout, addr)
-			if err == nil {
-				log.V(1).Info("k8s-dqlite member reachable", "addr", addr)
-				conn.Close()
-				// The cluster member is reachable, pass back the address.
-				c <- addr
-			} else {
-				log.V(1).Info("k8s-dqlite member unreachable",
-					"addr", addr, "error", err)
-				c <- ""
-			}
-		}(ctx, dial, member.Address)
-	}
-
-	for range members {
-		addr, ok := <-c
-		if !ok {
-			return fmt.Errorf("channel closed unexpectedly")
-		}
-		if addr != "" {
-			availableMembers = append(availableMembers, addr)
-		}
-	}
-
-	if len(availableMembers) != 0 {
-		return fmt.Errorf("Some k8s-dqlite services are still running, "+
-			"please stop them and try again: %v. "+
-			"Run `sudo snap stop k8s` to stop all k8s services on a given node.",
-			availableMembers)
 	}
 
 	return nil
@@ -345,21 +200,6 @@ func yamlEditorGuide(
 	return newContent, err
 }
 
-func createK8sDqliteRecoveryTarball(pathSuffix string) (string, error) {
-	timestamp := time.Now().Format("2006-01-02T150405Z0700")
-	fname := fmt.Sprintf("recovery-k8s-dqlite-%s-%s.tar.gz", timestamp, pathSuffix)
-	tarballPath := path.Join("/var/snap/k8s/common", fname)
-
-	// info.yaml is used by go-dqlite to keep track of the current cluster member's
-	// ID and address. We shouldn't replicate the recovery member's info.yaml
-	// to all other members, so exclude it from the tarball:
-	err := utils.CreateTarball(
-		tarballPath, clusterRecoverOpts.K8sDqliteStateDir, ".",
-		[]string{"info.yaml", "k8s-dqlite.sock", "cluster.key", "cluster.crt"})
-
-	return tarballPath, err
-}
-
 // On success, returns the recovery tarball path.
 func recoverK8sd() (string, error) {
 	m, err := microcluster.App(
@@ -372,8 +212,7 @@ func recoverK8sd() (string, error) {
 	}
 
 	// The following method parses cluster.yaml and filters out the entries
-	// that are not included in the trust store. Note that in case of k8s-dqlite,
-	// there is no trust store.
+	// that are not included in the trust store.
 	members, err := m.GetDqliteClusterMembers()
 	if err != nil {
 		return "", fmt.Errorf("could not retrieve K8sd cluster members, error: %w", err)
@@ -476,83 +315,4 @@ func recoverK8sd() (string, error) {
 	}
 
 	return tarballPath, nil
-}
-
-func recoverK8sDqlite() (string, string, error) {
-	k8sDqliteStateDir := clusterRecoverOpts.K8sDqliteStateDir
-
-	var err error
-	clusterYamlContent := []byte{}
-	clusterYamlPath := path.Join(k8sDqliteStateDir, "cluster.yaml")
-	clusterYamlCommentHeader := fmt.Sprintf("# k8s-dqlite cluster configuration\n# (%s)\n", clusterYamlPath)
-
-	if clusterRecoverOpts.NonInteractive {
-		clusterYamlContent, err = os.ReadFile(clusterYamlPath)
-		if err != nil {
-			return "", "", fmt.Errorf(
-				"could not read k8s-dqlite cluster.yaml, error: %w", err)
-		}
-	} else {
-		// Interactive mode requested (default).
-		// Assist the user in configuring dqlite.
-		clusterYamlContent, err = yamlEditorGuide(
-			clusterYamlPath,
-			true,
-			slices.Concat(
-				[]byte(clusterYamlCommentHeader),
-				[]byte("#\n"),
-				[]byte(clusterK8sDqliteRecoveryComment),
-				[]byte(yamlHelperCommentFooter),
-			),
-			true,
-		)
-		if err != nil {
-			return "", "", fmt.Errorf("interactive text editor failed, error: %w", err)
-		}
-
-		infoYamlPath := path.Join(k8sDqliteStateDir, "info.yaml")
-		infoYamlCommentHeader := fmt.Sprintf("# k8s-dqlite info.yaml\n# (%s)\n", infoYamlPath)
-		_, err = yamlEditorGuide(
-			infoYamlPath,
-			true,
-			slices.Concat(
-				[]byte(infoYamlCommentHeader),
-				[]byte("#\n"),
-				[]byte(infoYamlRecoveryComment),
-				utils.YamlCommentLines(clusterYamlContent),
-				[]byte("\n"),
-				[]byte(yamlHelperCommentFooter),
-			),
-			true,
-		)
-		if err != nil {
-			return "", "", fmt.Errorf("interactive text editor failed, error: %w", err)
-		}
-	}
-
-	newMembers := []dqlite.NodeInfo{}
-	if err = yaml.Unmarshal(clusterYamlContent, &newMembers); err != nil {
-		return "", "", fmt.Errorf("couldn't parse cluster.yaml, error: %w", err)
-	}
-
-	// microcluster creates two backup tarballs, one before the recovery was attempted
-	// and another one after. We'll do the same.
-	preRecoveryTarball, err := createK8sDqliteRecoveryTarball("pre-recovery")
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create pre-recovery backup tarball, error: %w", err)
-	}
-
-	if err = dqlite.ReconfigureMembershipExt(k8sDqliteStateDir, newMembers); err != nil {
-		return preRecoveryTarball, "", fmt.Errorf("k8s-dqlite recovery failed, error: %w", err)
-	}
-
-	postRecoveryTarball, err := createK8sDqliteRecoveryTarball("post-recovery")
-	if err != nil {
-		return preRecoveryTarball, "", fmt.Errorf("failed to create post-recovery backup tarball, error: %w", err)
-	}
-
-	// TODO: steps performed by the microcluster lib for k8sd that could also
-	// apply to k8s-dqlite:
-	//   * validate cluster.yaml changes
-	return preRecoveryTarball, postRecoveryTarball, nil
 }
