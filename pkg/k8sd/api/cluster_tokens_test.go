@@ -2,10 +2,7 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
@@ -19,7 +16,7 @@ import (
 )
 
 func TestCheckNodeNameAvailable_Duplicate_Node(t *testing.T) {
-	// Tests that checkNodeNameAvailable returns BadRequest when a node with the given name already exists.
+	// Tests that checkNodeNameAvailable returns error when a node with the given name already exists.
 	g := NewWithT(t)
 	shared_name := "duplicate-node"
 	existingNode := &corev1.Node{
@@ -30,21 +27,11 @@ func TestCheckNodeNameAvailable_Duplicate_Node(t *testing.T) {
 	fakeClientset := fake.NewSimpleClientset(existingNode)
 	k8sClient := &kubernetes.Client{Interface: fakeClientset}
 
-	resp := checkNodeNameAvailable(context.Background(), k8sClient, shared_name)
-	g.Expect(resp).ToNot(BeNil())
+	err := checkNodeNameAvailable(context.Background(), k8sClient, shared_name)
+	g.Expect(err).ToNot(BeNil())
 
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/", nil)
-	err := resp.Render(w, req)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(w.Code).To(Equal(http.StatusBadRequest))
-
-	var respBody map[string]interface{}
-	err = json.Unmarshal(w.Body.Bytes(), &respBody)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	expectedError := "a node with the same name \"" + shared_name + "\" is already part of the cluster"
-	g.Expect(respBody["error"]).To(Equal(expectedError))
+	expectedError := fmt.Sprintf(errNodeNameAlreadyExists, shared_name)
+	g.Expect(err.Error()).To(Equal(expectedError))
 }
 
 func TestCheckNodeNameAvailable_Unique_Name(t *testing.T) {
@@ -60,39 +47,32 @@ func TestCheckNodeNameAvailable_Unique_Name(t *testing.T) {
 	k8sClient := &kubernetes.Client{Interface: fakeClientset}
 
 	// Check for a different node name
-	resp := checkNodeNameAvailable(context.Background(), k8sClient, "unique-node-2")
-	g.Expect(resp).To(BeNil())
+	err := checkNodeNameAvailable(context.Background(), k8sClient, "unique-node-2")
+	g.Expect(err).To(BeNil())
 }
 
 func TestCheckNodeNameAvailable_API_Errors(t *testing.T) {
-	// Tests that checkNodeNameAvailable returns InternalError when the K8s API throws a non-NotFound error.
+	// Tests that checkNodeNameAvailable returns error when the K8s API throws a non-NotFound error.
 	g := NewWithT(t)
 
 	// Create fake K8s client and inject an error for GET nodes RPC.
 	fakeClientset := fake.NewSimpleClientset()
+	mockError := apierrors.NewInternalError(fmt.Errorf("mock API error"))
 	fakeClientset.PrependReactor("get", "nodes", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		_, ok := action.(k8stesting.GetAction)
 		if ok {
-			return true, nil, apierrors.NewInternalError(fmt.Errorf("mock API error"))
+			return true, nil, mockError
 		}
 		return false, nil, nil
 	})
 
 	k8sClient := &kubernetes.Client{Interface: fakeClientset}
 
-	resp := checkNodeNameAvailable(context.Background(), k8sClient, "any-node")
-	g.Expect(resp).ToNot(BeNil())
+	failedNodeName := "any-node"
+	err := checkNodeNameAvailable(context.Background(), k8sClient, failedNodeName)
+	g.Expect(err).ToNot(BeNil())
 
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/", nil)
-	err := resp.Render(w, req)
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(w.Code).To(Equal(http.StatusInternalServerError))
-
-	var respBody map[string]interface{}
-	err = json.Unmarshal(w.Body.Bytes(), &respBody)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	g.Expect(respBody["error"]).To(ContainSubstring("failed to check whether node name is available \"any-node\":"))
-	g.Expect(respBody["error"]).To(ContainSubstring("mock API error"))
+	expectedPrefix := fmt.Sprintf(errFailedToCheckNodeName, failedNodeName)
+	g.Expect(err.Error()).To(ContainSubstring(expectedPrefix))
+	g.Expect(err.Error()).To(ContainSubstring(mockError.Error()))
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
@@ -17,6 +18,11 @@ import (
 	"github.com/canonical/microcluster/v2/microcluster"
 	"github.com/canonical/microcluster/v2/state"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+)
+
+var (
+	errNodeNameAlreadyExists = "a node with the same name %q is already part of the cluster"
+	errFailedToCheckNodeName = "failed to check whether node name is available %q"
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
@@ -35,8 +41,12 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	if err != nil {
 		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
-	if resp := checkNodeNameAvailable(r.Context(), k8sClient, hostname); resp != nil {
-		return resp
+	err = checkNodeNameAvailable(r.Context(), k8sClient, hostname)
+	if err != nil {
+		if !strings.Contains(err.Error(), errFailedToCheckNodeName) {
+			return response.BadRequest(err)
+		}
+		return response.InternalError(err)
 	}
 
 	var token string
@@ -59,13 +69,14 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	return response.SyncResponse(true, &apiv2.GetJoinTokenResponse{EncodedToken: token})
 }
 
-func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, nodeName string) response.Response {
+func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, nodeName string) error {
 	// Check if a node with the given name already exists in the cluster.
 	_, err := k8sClient.GetNode(ctx, nodeName)
 	if err == nil {
-		return response.BadRequest(fmt.Errorf("a node with the same name %q is already part of the cluster", nodeName))
-	} else if !apierrors.IsNotFound(err) {
-		return response.InternalError(fmt.Errorf("failed to check whether node name is available %q: %w", nodeName, err))
+		return fmt.Errorf(errNodeNameAlreadyExists, nodeName)
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf(errFailedToCheckNodeName+": %w", nodeName, err)
 	}
 	return nil
 }
