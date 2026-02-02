@@ -28,7 +28,7 @@ func TestCheckNodeNameAvailable_Duplicate_Node(t *testing.T) {
 	k8sClient := &kubernetes.Client{Interface: fakeClientset}
 
 	err := checkNodeNameAvailable(context.Background(), k8sClient, shared_name)
-	g.Expect(err).ToNot(BeNil())
+	g.Expect(err).To(HaveOccurred())
 
 	expectedError := fmt.Sprintf(errNodeNameAlreadyExists, shared_name)
 	g.Expect(err.Error()).To(Equal(expectedError))
@@ -48,7 +48,7 @@ func TestCheckNodeNameAvailable_Unique_Name(t *testing.T) {
 
 	// Check for a different node name
 	err := checkNodeNameAvailable(context.Background(), k8sClient, "unique-node-2")
-	g.Expect(err).To(BeNil())
+	g.Expect(err).ToNot(HaveOccurred())
 }
 
 func TestCheckNodeNameAvailable_API_Errors(t *testing.T) {
@@ -70,7 +70,7 @@ func TestCheckNodeNameAvailable_API_Errors(t *testing.T) {
 
 	failedNodeName := "any-node"
 	err := checkNodeNameAvailable(context.Background(), k8sClient, failedNodeName)
-	g.Expect(err).ToNot(BeNil())
+	g.Expect(err).To(HaveOccurred())
 
 	expectedPrefix := fmt.Sprintf(errFailedToCheckNodeName, failedNodeName)
 	g.Expect(err.Error()).To(ContainSubstring(expectedPrefix))
