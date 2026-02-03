@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -30,8 +31,7 @@ func TestCheckNodeNameAvailable_Duplicate_Node(t *testing.T) {
 	err := checkNodeNameAvailable(context.Background(), k8sClient, shared_name)
 	g.Expect(err).To(HaveOccurred())
 
-	expectedError := fmt.Sprintf(errNodeNameAlreadyExists, shared_name)
-	g.Expect(err.Error()).To(Equal(expectedError))
+	g.Expect(errors.Is(err, errNodeNameAlreadyExists)).To(BeTrue())
 }
 
 func TestCheckNodeNameAvailable_Unique_Name(t *testing.T) {
@@ -72,7 +72,6 @@ func TestCheckNodeNameAvailable_API_Errors(t *testing.T) {
 	err := checkNodeNameAvailable(context.Background(), k8sClient, failedNodeName)
 	g.Expect(err).To(HaveOccurred())
 
-	expectedPrefix := fmt.Sprintf(errFailedToCheckNodeName, failedNodeName)
-	g.Expect(err.Error()).To(ContainSubstring(expectedPrefix))
+	g.Expect(errors.Is(err, errFailedToCheckNodeName)).To(BeTrue())
 	g.Expect(err.Error()).To(ContainSubstring(mockError.Error()))
 }

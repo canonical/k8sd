@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
@@ -21,8 +21,8 @@ import (
 )
 
 var (
-	errNodeNameAlreadyExists = "a node with the same name %q is already part of the cluster"
-	errFailedToCheckNodeName = "failed to check whether node name is available %q"
+	errNodeNameAlreadyExists = errors.New("a node with this name is already part of the cluster")
+	errFailedToCheckNodeName = errors.New("failed to check whether node name is available in cluster")
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
@@ -41,9 +41,8 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	if err != nil {
 		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
-	err = checkNodeNameAvailable(r.Context(), k8sClient, hostname)
-	if err != nil {
-		if !strings.Contains(err.Error(), errFailedToCheckNodeName) {
+	if err = checkNodeNameAvailable(r.Context(), k8sClient, hostname); err != nil {
+		if errors.Is(err, errFailedToCheckNodeName) {
 			return response.BadRequest(err)
 		}
 		return response.InternalError(err)
@@ -73,10 +72,10 @@ func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, n
 	// Check if a node with the given name already exists in the cluster.
 	_, err := k8sClient.GetNode(ctx, nodeName)
 	if err == nil {
-		return fmt.Errorf(errNodeNameAlreadyExists, nodeName)
+		return fmt.Errorf("%w: %q", errNodeNameAlreadyExists, nodeName)
 	}
 	if !apierrors.IsNotFound(err) {
-		return fmt.Errorf(errFailedToCheckNodeName+": %w", nodeName, err)
+		return fmt.Errorf("%w: %q: %v", errFailedToCheckNodeName, nodeName, err)
 	}
 	return nil
 }
