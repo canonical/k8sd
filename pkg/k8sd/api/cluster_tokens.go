@@ -75,7 +75,7 @@ func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, n
 		return fmt.Errorf("%w: %q", errNodeNameAlreadyExists, nodeName)
 	}
 	if !apierrors.IsNotFound(err) {
-		return fmt.Errorf("%w: %q: %v", errFailedToCheckNodeName, nodeName, err)
+		return fmt.Errorf("%w: %q: %w", errFailedToCheckNodeName, nodeName, err)
 	}
 	return nil
 }
