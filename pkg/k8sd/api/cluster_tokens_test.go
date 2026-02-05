@@ -9,7 +9,6 @@ import (
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -57,7 +56,7 @@ func TestCheckNodeNameAvailable_API_Errors(t *testing.T) {
 
 	// Create fake K8s client and inject an error for GET nodes RPC.
 	fakeClientset := fake.NewSimpleClientset()
-	mockError := apierrors.NewInternalError(fmt.Errorf("mock API error"))
+	mockError := fmt.Errorf("mock API error")
 	fakeClientset.PrependReactor("get", "nodes", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		_, ok := action.(k8stesting.GetAction)
 		if ok {
@@ -73,5 +72,5 @@ func TestCheckNodeNameAvailable_API_Errors(t *testing.T) {
 	g.Expect(err).To(HaveOccurred())
 
 	g.Expect(errors.Is(err, errFailedToCheckNodeName)).To(BeTrue())
-	g.Expect(err.Error()).To(ContainSubstring(mockError.Error()))
+	g.Expect(errors.Is(err, mockError)).To(BeTrue())
 }
