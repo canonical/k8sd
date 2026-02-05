@@ -3,11 +3,13 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
@@ -15,6 +17,12 @@ import (
 	"github.com/canonical/lxd/lxd/response"
 	"github.com/canonical/microcluster/v2/microcluster"
 	"github.com/canonical/microcluster/v2/state"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+)
+
+var (
+	errNodeNameAlreadyExists = errors.New("a node with this name is already part of the cluster")
+	errFailedToCheckNodeName = errors.New("failed to check whether node name is available in cluster")
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
@@ -26,6 +34,18 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	hostname, err := utils.CleanHostname(req.Name)
 	if err != nil {
 		return response.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
+	}
+
+	// Verify that the node name is not already in use by an existing node
+	k8sClient, err := e.provider.Snap().KubernetesClient("")
+	if err != nil {
+		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
+	}
+	if err = checkNodeNameAvailable(r.Context(), k8sClient, hostname); err != nil {
+		if errors.Is(err, errFailedToCheckNodeName) {
+			return response.BadRequest(err)
+		}
+		return response.InternalError(err)
 	}
 
 	var token string
@@ -46,6 +66,18 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 	}
 
 	return response.SyncResponse(true, &apiv2.GetJoinTokenResponse{EncodedToken: token})
+}
+
+func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, nodeName string) error {
+	// Check if a node with the given name already exists in the cluster.
+	_, err := k8sClient.GetNode(ctx, nodeName)
+	if err == nil {
+		return fmt.Errorf("%w: %q", errNodeNameAlreadyExists, nodeName)
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("%w: %q: %w", errFailedToCheckNodeName, nodeName, err)
+	}
+	return nil
 }
 
 func getOrCreateJoinToken(ctx context.Context, m *microcluster.MicroCluster, tokenName string, ttl time.Duration) (string, error) {
