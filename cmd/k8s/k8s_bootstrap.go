@@ -45,7 +45,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "bootstrap",
 		Short:  "Bootstrap a new Kubernetes cluster",
-		Long:   "Generate certificates, configure service arguments and start the Kubernetes services.",
+		Long:   "Bootstrap a new Kubernetes cluster by generating certificates, configuring service arguments, and starting the Kubernetes services.",
 		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat), hookCheckLXD()),
 		Args:   cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {

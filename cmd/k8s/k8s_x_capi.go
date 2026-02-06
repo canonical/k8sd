@@ -67,7 +67,8 @@ func newXCAPICmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:    "x-capi",
-		Short:  "Manage the CAPI integration",
+		Short:  "Manage Cluster API provider configuration",
+		Long:   "Manage Cluster API provider configuration, including authentication tokens. This is an experimental command.",
 		Hidden: true,
 	}
 

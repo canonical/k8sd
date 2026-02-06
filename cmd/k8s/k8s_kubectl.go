@@ -13,6 +13,7 @@ func newKubectlCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	return &cobra.Command{
 		Use:                "kubectl",
 		Short:              "Integrated Kubernetes kubectl client",
+		Long:               "Run kubectl commands against the cluster using the integrated kubectl client.",
 		DisableFlagParsing: true,
 		PreRun:             chainPreRunHooks(hookRequireRoot(env)),
 		Run: func(cmd *cobra.Command, args []string) {

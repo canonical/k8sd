@@ -12,6 +12,7 @@ func newLocalNodeStatusCommand(env cmdutil.ExecutionEnvironment) *cobra.Command 
 	cmd := &cobra.Command{
 		Use:    "local-node-status",
 		Short:  "Retrieve the current status of the local node",
+		Long:   "Retrieve the current status of the local node, including its role and cluster membership information.",
 		Hidden: true,
 		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat)),
 		Args:   cobra.NoArgs,

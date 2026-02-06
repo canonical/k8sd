@@ -20,7 +20,7 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "get <feature.key>",
 		Short:  "Get cluster configuration",
-		Long:   fmt.Sprintf("Show configuration of one of %s.", strings.Join(featureList, ", ")),
+		Long:   fmt.Sprintf("Get cluster configuration for a specific feature or show all configuration.\n\nAvailable features: %s", strings.Join(featureList, ", ")),
 		Args:   cmdutil.MaximumNArgs(env, 1),
 		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat)),
 		Run: func(cmd *cobra.Command, args []string) {
