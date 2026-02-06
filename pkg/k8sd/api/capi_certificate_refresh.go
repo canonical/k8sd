@@ -6,8 +6,8 @@ import (
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/state"
 	"golang.org/x/sync/errgroup"
 	certv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"

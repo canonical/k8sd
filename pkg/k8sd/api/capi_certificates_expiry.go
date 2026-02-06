@@ -8,8 +8,8 @@ import (
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 func (e *Endpoints) postCertificatesExpiry(s state.State, r *http.Request) response.Response {

@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
@@ -16,9 +15,8 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/k8sd/pkg/utils/node"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/cluster"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 // postClusterRemove handles requests to remove a node from the cluster.
@@ -46,7 +44,7 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 		return response.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
 
-	isControlPlane, err := node.IsControlPlaneNode(ctx, s, req.Name)
+	isControlPlane, err := node.IsControlPlaneNode(ctx, s, req.Name, e.provider.Snap())
 	if err != nil {
 		if req.Force {
 			log.Error(err, "Failed to determine if node is control-plane, but continuing due to force=true")
@@ -87,7 +85,7 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 		}
 
 		log.Info("Remove node from microcluster")
-		if err := removeNodeFromMicrocluster(ctx, s, req.Name, req.Force); err != nil {
+		if err := removeNodeFromMicrocluster(ctx, s, req.Name, req.Force, snap); err != nil {
 			if req.Force {
 				log.Error(err, "Failed to remove node from microcluster, but continuing due to force=true; ignore error for workers")
 			} else {
@@ -114,11 +112,12 @@ func removeNodeFromDatastore(ctx context.Context, s state.State, snap snap.Snap,
 }
 
 func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s state.State, cfg types.ClusterConfig, nodeName string) error {
-	leader, err := s.Leader()
+	c, err := snap.K8sdClient("")
 	if err != nil {
-		return fmt.Errorf("failed to get microcluster leader: %w", err)
+		return fmt.Errorf("failed to get k8sd client: %w", err)
 	}
-	members, err := leader.GetClusterMembers(ctx)
+
+	members, err := c.GetClusterMembers(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get microcluster members: %w", err)
 	}
@@ -147,41 +146,38 @@ func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s state.State, cfg 
 	return nil
 }
 
-func removeNodeFromMicrocluster(ctx context.Context, s state.State, nodeName string, force bool) error {
+func removeNodeFromMicrocluster(ctx context.Context, s state.State, nodeName string, force bool, snap snap.Snap) error {
 	log := log.FromContext(ctx).WithValues("name", nodeName)
 
+	c, err := snap.K8sdClient("")
+	if err != nil {
+		return fmt.Errorf("failed to get k8sd client: %w", err)
+	}
+
+	var nodeAddr string
 	maxRetries := 10
-	var txnRetries int
+	var retries int
 	if err := control.WaitUntilReady(ctx, func() (bool, error) {
 		var notPending bool
 		log.Info("Waiting for node to finish microcluster join before removing")
-		if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
-			member, err := cluster.GetCoreClusterMember(ctx, tx, s.Name())
-			if err != nil {
-				log.Error(err, "Failed to get member")
-				return nil
-			}
-			notPending = member.Role != cluster.Pending
-			return nil
-		}); err != nil {
-			log.Error(err, "Failed database transaction to check cluster member role")
-			txnRetries++
+		member, err := c.GetClusterMember(ctx, s.Name())
+		if err != nil {
+			log.Error(err, fmt.Sprintf("Failed to get cluster member %q", s.Name()))
+			retries++
+		} else {
+			// NOTE(Hue): We can not check for `cluster.Pending` with the `Role` type since it's internal to Microcluster
+			notPending = member.Role != "PENDING"
+			nodeAddr = member.Address.String()
 		}
 
-		if txnRetries >= maxRetries {
-			log.Info("Reached maximum number of retries for database transactions", "max_retries", maxRetries)
+		if retries >= maxRetries {
+			log.Info("Reached maximum number of retries for cluster member role check", "max_retries", maxRetries)
 			return true, nil
 		}
 
 		return notPending, nil
 	}); err != nil {
 		log.Error(err, "Failed to wait for node to finish microcluster join before removing. Continuing with the cleanup...")
-	}
-
-	// Remove control plane via microcluster API.
-	c, err := s.Leader()
-	if err != nil {
-		return fmt.Errorf("failed to create client to cluster leader: %w", err)
 	}
 
 	// NOTE(hue): node removal process in CAPI might fail, we figured that the context passed to
@@ -192,7 +188,7 @@ func removeNodeFromMicrocluster(ctx context.Context, s state.State, nodeName str
 	deleteCtx, deleteCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer deleteCancel()
 	log.Info("Deleting node from Microcluster cluster, for real")
-	if err := c.DeleteClusterMember(deleteCtx, nodeName, force); err != nil {
+	if err := c.RemoveClusterMember(deleteCtx, nodeName, nodeAddr, force); err != nil {
 		return fmt.Errorf("failed to delete cluster member %s: %w", nodeName, err)
 	}
 

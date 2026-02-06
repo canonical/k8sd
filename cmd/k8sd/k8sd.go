@@ -85,8 +85,8 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.SetErr(env.Stderr)
 
 	cmd.PersistentFlags().IntVarP(&rootCmdOpts.logLevel, "log-level", "l", 0, "k8sd log level")
-	cmd.PersistentFlags().BoolVarP(&rootCmdOpts.logDebug, "debug", "d", false, "Show all debug messages")
-	cmd.PersistentFlags().BoolVarP(&rootCmdOpts.logVerbose, "verbose", "v", true, "Show all information messages")
+	cmd.PersistentFlags().BoolVarP(&rootCmdOpts.logDebug, "debug", "d", false, "Deprecated: Show all debug messages")
+	cmd.PersistentFlags().BoolVarP(&rootCmdOpts.logVerbose, "verbose", "v", true, "Deprecated: Show all information messages")
 	cmd.PersistentFlags().StringVar(&rootCmdOpts.stateDir, "state-dir", "", "Directory with the datastore")
 	cmd.PersistentFlags().StringVar(&rootCmdOpts.pprofAddress, "pprof-address", "", "Listen address for pprof endpoints, e.g. \"127.0.0.1:4217\"")
 	cmd.PersistentFlags().BoolVar(&rootCmdOpts.disableNodeConfigController, "disable-node-config-controller", false, "Disable the Node Config Controller")

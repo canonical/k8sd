@@ -9,7 +9,7 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/lxd/shared/api"
-	"github.com/canonical/microcluster/v2/rest/types"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // query is a helper method for sending requests to the k8sd client with common error checking and automatic retries.
@@ -21,7 +21,7 @@ func query[T any](ctx context.Context, c *k8sd, method, path string, in any, out
 	}
 
 	retryErr := control.WaitUntilReady(ctx, func() (bool, error) {
-		err := c.client.Query(ctx, method, apiv2.K8sdAPIVersion, api.NewURL().Path(strings.Split(path, "/")...), in, out)
+		err := c.client.Query(ctx, method, apiv2.K8sdAPIVersion, &api.NewURL().Path(strings.Split(path, "/")...).URL, in, out)
 		if err != nil {
 			if isTemporary(err) {
 				log.FromContext(ctx).Info("Temporary error from k8sd: %v", err)
