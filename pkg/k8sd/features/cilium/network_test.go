@@ -15,7 +15,7 @@ import (
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/k8sd/pkg/utils"
 	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 	. "github.com/onsi/gomega"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/ktesting"

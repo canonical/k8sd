@@ -12,8 +12,8 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/state"
 	"k8s.io/client-go/tools/clientcmd"
 )
 

@@ -8,14 +8,15 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	nodeutil "github.com/canonical/k8sd/pkg/utils/node"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 // GetClusterMembers retrieves information about the members of the cluster.
-func GetClusterMembers(ctx context.Context, s state.State) ([]apiv2.NodeStatus, error) {
-	c, err := s.Leader()
+
+func GetClusterMembers(ctx context.Context, s state.State, snap snap.Snap) ([]apiv2.NodeStatus, error) {
+	c, err := snap.K8sdClient("")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get leader client: %w", err)
+		return nil, fmt.Errorf("failed to get k8sd client: %w", err)
 	}
 
 	clusterMembers, err := c.GetClusterMembers(ctx)
@@ -48,7 +49,7 @@ func GetLocalNodeStatus(ctx context.Context, s state.State, snap snap.Snap) (api
 
 	if isWorker {
 		clusterRole = apiv2.ClusterRoleWorker
-	} else if node, err := nodeutil.GetControlPlaneNode(ctx, s, s.Name()); err != nil {
+	} else if node, err := nodeutil.GetControlPlaneNode(ctx, s, s.Name(), snap); err != nil {
 		clusterRole = apiv2.ClusterRoleUnknown
 	} else if node != nil {
 		return *node, nil
