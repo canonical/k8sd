@@ -8,7 +8,7 @@ import (
 
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 	. "github.com/onsi/gomega"
 )
 

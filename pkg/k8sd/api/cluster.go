@@ -12,8 +12,8 @@ import (
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 func (e *Endpoints) getClusterStatus(s state.State, r *http.Request) response.Response {
@@ -22,7 +22,7 @@ func (e *Endpoints) getClusterStatus(s state.State, r *http.Request) response.Re
 		return response.Unavailable(fmt.Errorf("daemon not yet initialized"))
 	}
 
-	members, err := impl.GetClusterMembers(r.Context(), s)
+	members, err := impl.GetClusterMembers(r.Context(), s, e.provider.Snap())
 	if err != nil {
 		return response.InternalError(fmt.Errorf("failed to get cluster members: %w", err))
 	}

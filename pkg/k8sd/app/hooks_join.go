@@ -23,7 +23,7 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
 	"github.com/canonical/k8sd/pkg/version"
 	"github.com/canonical/lxd/shared/revert"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 )
@@ -195,11 +195,12 @@ func (a *App) onPostJoin(ctx context.Context, s state.State, initConfig map[stri
 	// Configure datastore
 	switch cfg.Datastore.GetType() {
 	case "etcd":
-		leader, err := s.Leader()
+		c, err := snap.K8sdClient("")
 		if err != nil {
-			return fmt.Errorf("failed to get microcluster leader: %w", err)
+			return fmt.Errorf("failed to get k8sd client: %w", err)
 		}
-		members, err := leader.GetClusterMembers(ctx)
+
+		members, err := c.GetClusterMembers(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get microcluster members: %w", err)
 		}
@@ -268,7 +269,7 @@ func (a *App) onPostJoin(ctx context.Context, s state.State, initConfig map[stri
 	if err := setup.KubeScheduler(snap, joinConfig.ExtraNodeKubeSchedulerArgs); err != nil {
 		return fmt.Errorf("failed to configure kube-scheduler: %w", err)
 	}
-	if err := setup.KubeAPIServer(snap, cfg.APIServer.GetSecurePort(), nodeIP, cfg.Network.GetServiceCIDR(), s.Address().Path("1.0", "kubernetes", "auth", "webhook").String(), true, cfg.Datastore, cfg.APIServer.GetAuthorizationMode(), joinConfig.ExtraNodeKubeAPIServerArgs); err != nil {
+	if err := setup.KubeAPIServer(snap, cfg.APIServer.GetSecurePort(), nodeIP, cfg.Network.GetServiceCIDR(), utils.Path(s.Address(), "1.0", "kubernetes", "auth", "webhook").String(), true, cfg.Datastore, cfg.APIServer.GetAuthorizationMode(), joinConfig.ExtraNodeKubeAPIServerArgs); err != nil {
 		return fmt.Errorf("failed to configure kube-apiserver: %w", err)
 	}
 

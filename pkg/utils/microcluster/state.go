@@ -8,7 +8,8 @@ import (
 
 	"github.com/canonical/k8sd/pkg/k8sd/app"
 	"github.com/canonical/k8sd/pkg/snap/mock"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 const (
@@ -43,7 +44,7 @@ var nextIdx int
 //		})
 //	}
 func WithState(t *testing.T, f func(context.Context, state.State)) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(mctypes.ContextWithLogger(context.Background()))
 	defer cancel()
 
 	snapMock := mock.Snap{

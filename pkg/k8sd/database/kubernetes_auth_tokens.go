@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/canonical/microcluster/v2/cluster"
+	"github.com/canonical/microcluster/v3/microcluster/db"
 )
 
 var k8sdTokensStmts = map[string]int{
@@ -48,7 +48,7 @@ func groupsToList(inGroups string) []string {
 // CheckToken returns the username and groups of a token (if valid).
 // CheckToken returns an error in case the token is not valid.
 func CheckToken(ctx context.Context, tx *sql.Tx, token string) (string, []string, error) {
-	txStmt, err := cluster.Stmt(tx, k8sdTokensStmts["select-by-token"])
+	txStmt, err := db.Stmt(tx, k8sdTokensStmts["select-by-token"])
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
@@ -75,7 +75,7 @@ func GetOrCreateToken(ctx context.Context, tx *sql.Tx, username string, groups [
 	if err != nil {
 		return "", fmt.Errorf("invalid groups: %w", err)
 	}
-	selectTxStmt, err := cluster.Stmt(tx, k8sdTokensStmts["select-by-username"])
+	selectTxStmt, err := db.Stmt(tx, k8sdTokensStmts["select-by-username"])
 	if err != nil {
 		return "", fmt.Errorf("failed to prepare select statement: %w", err)
 	}
@@ -91,7 +91,7 @@ func GetOrCreateToken(ctx context.Context, tx *sql.Tx, username string, groups [
 	}
 	token = fmt.Sprintf("token::%s", hex.EncodeToString(b))
 
-	insertTxStmt, err := cluster.Stmt(tx, k8sdTokensStmts["insert-token"])
+	insertTxStmt, err := db.Stmt(tx, k8sdTokensStmts["insert-token"])
 	if err != nil {
 		return "", fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
@@ -109,7 +109,7 @@ func DeleteToken(ctx context.Context, tx *sql.Tx, token string) error {
 		return fmt.Errorf("token cannot be empty")
 	}
 
-	deleteTxStmt, err := cluster.Stmt(tx, k8sdTokensStmts["delete-by-token"])
+	deleteTxStmt, err := db.Stmt(tx, k8sdTokensStmts["delete-by-token"])
 	if err != nil {
 		return fmt.Errorf("failed to prepare delete statement: %w", err)
 	}

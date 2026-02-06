@@ -2,8 +2,8 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
@@ -14,8 +14,7 @@ import (
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	"github.com/canonical/k8sd/pkg/snap/util/cleanup"
 	"github.com/canonical/k8sd/pkg/utils/control"
-	"github.com/canonical/microcluster/v2/cluster"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 // NOTE(ben): the pre-remove performs a series of cleanup steps on a best-effort basis.
@@ -27,29 +26,29 @@ func (a *App) onPreRemove(ctx context.Context, s state.State, force bool) (rerr 
 	log := log.FromContext(ctx).WithValues("hook", "preremove", "node", s.Name())
 	log.Info("Running preremove hook")
 
+	c, err := snap.K8sdClient("")
+	if err != nil {
+		return fmt.Errorf("failed to get k8sd client: %w", err)
+	}
+
 	// NOTE (hue): in microcluster v2, PreRemove hook is also called if something goes wrong on
 	// `bootstrap` and `join-cluster`. It is possible that we get stuck in this loop forever which causes
 	// the `bootstrap` and `join-cluster` commands to hang and finally return an uninformative `context deadline exceeded` error
 	// we optimistically stop trying after a fixed number of retries.
 	maxRetries := 10
-	var txnRetries int
+	var retries int
 	if err := control.WaitUntilReady(ctx, func() (bool, error) {
 		var notPending bool
 		log.Info("Waiting for node to finish microcluster join before removing")
-		if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
-			member, err := cluster.GetCoreClusterMember(ctx, tx, s.Name())
-			if err != nil {
-				log.Error(err, "Failed to get member")
-				return nil
-			}
-			notPending = member.Role != cluster.Pending
-			return nil
-		}); err != nil {
-			log.Error(err, "Failed database transaction to check cluster member role")
-			txnRetries++
+		member, err := c.GetClusterMember(ctx, s.Name())
+		if err != nil {
+			log.Error(err, "Failed to get member")
+			retries++
+		} else {
+			notPending = member.Role != "PENDING"
 		}
 
-		if txnRetries >= maxRetries {
+		if retries >= maxRetries {
 			log.Info("Reached maximum number of retries for database transactions on pre-remove hook, continuing cleanup", "max_retries", maxRetries)
 			return true, nil
 		}

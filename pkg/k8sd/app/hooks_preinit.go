@@ -8,8 +8,8 @@ import (
 
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/shared"
-	microclusterTypes "github.com/canonical/microcluster/v2/rest/types"
-	"github.com/canonical/microcluster/v2/state"
+	microclusterTypes "github.com/canonical/microcluster/v3/microcluster/types"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 // onPreInit is called before we bootstrap or join a node.
@@ -24,16 +24,16 @@ func (a *App) onPreInit(ctx context.Context, s state.State, bootstrap bool, init
 	}
 	extraSANs := controlPlaneJoinConfig.ExtraSANS
 
-	if err := os.Remove(filepath.Join(s.FileSystem().StateDir, "server.crt")); err != nil {
+	if err := os.Remove(filepath.Join(s.FileSystem().StateDir(), "server.crt")); err != nil {
 		return fmt.Errorf("failed to remove server.crt: %w", err)
 	}
 
-	if err := os.Remove(filepath.Join(s.FileSystem().StateDir, "server.key")); err != nil {
+	if err := os.Remove(filepath.Join(s.FileSystem().StateDir(), "server.key")); err != nil {
 		return fmt.Errorf("failed to remove server.key: %w", err)
 	}
 
 	cert, err := shared.KeyPairAndCA(
-		s.FileSystem().StateDir,
+		s.FileSystem().StateDir(),
 		string(microclusterTypes.ServerCertificateName),
 		shared.CertServer,
 		shared.CertOptions{
@@ -45,7 +45,7 @@ func (a *App) onPreInit(ctx context.Context, s state.State, bootstrap bool, init
 		return err
 	}
 
-	if err := a.client.UpdateCertificate(ctx, microclusterTypes.ServerCertificateName, microclusterTypes.KeyPair{
+	if err := a.cluster.UpdateCertificates(ctx, microclusterTypes.ServerCertificateName, microclusterTypes.KeyPair{
 		Cert: string(cert.PublicKey()),
 		Key:  string(cert.PrivateKey()),
 	}); err != nil {

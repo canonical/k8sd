@@ -5,6 +5,7 @@ import (
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/k8sd"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // Mock is a mock implementation of k8sd.Client.
@@ -20,6 +21,15 @@ type Mock struct {
 	JoinClusterErr             error
 	RemoveNodeCalledWith       apiv2.RemoveNodeRequest
 	RemoveNodeErr              error
+	GetClusterMembersResponse  []types.ClusterMember
+	GetClusterMembersErr       error
+	GetClusterMemberCalledWith string
+	GetClusterMemberResponse   types.ClusterMember
+	GetClusterMemberErr        error
+	RemoveClusterMemberName    string
+	RemoveClusterMemberAddr    string
+	RemoveClusterMemberForce   bool
+	RemoveClusterMemberErr     error
 
 	// k8sd.StatusClient
 	NodeStatusResponse    apiv2.NodeStatusResponse
@@ -122,6 +132,22 @@ func (m *Mock) KubeConfig(_ context.Context, request apiv2.KubeConfigRequest) (a
 func (m *Mock) SetClusterAPIAuthToken(_ context.Context, request apiv2.ClusterAPISetAuthTokenRequest) error {
 	m.SetClusterAPIAuthTokenCalledWith = request
 	return m.SetClusterAPIAuthTokenErr
+}
+
+func (m *Mock) GetClusterMembers(_ context.Context) ([]types.ClusterMember, error) {
+	return m.GetClusterMembersResponse, m.GetClusterMembersErr
+}
+
+func (m *Mock) GetClusterMember(_ context.Context, name string) (types.ClusterMember, error) {
+	m.GetClusterMemberCalledWith = name
+	return m.GetClusterMemberResponse, m.GetClusterMemberErr
+}
+
+func (m *Mock) RemoveClusterMember(_ context.Context, name string, addr string, force bool) error {
+	m.RemoveClusterMemberName = name
+	m.RemoveClusterMemberAddr = addr
+	m.RemoveClusterMemberForce = force
+	return m.RemoveClusterMemberErr
 }
 
 var _ k8sd.Client = &Mock{}

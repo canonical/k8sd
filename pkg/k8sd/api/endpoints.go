@@ -6,7 +6,7 @@ import (
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
-	"github.com/canonical/microcluster/v2/rest"
+	"github.com/canonical/microcluster/v3/microcluster/rest"
 )
 
 type Endpoints struct {

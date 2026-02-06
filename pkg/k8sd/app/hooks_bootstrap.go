@@ -23,7 +23,7 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 // onBootstrap is called after we bootstrap the first cluster node.
@@ -498,7 +498,7 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootst
 	if err := setup.KubeScheduler(snap, bootstrapConfig.ExtraNodeKubeSchedulerArgs); err != nil {
 		return fmt.Errorf("failed to configure kube-scheduler: %w", err)
 	}
-	if err := setup.KubeAPIServer(snap, cfg.APIServer.GetSecurePort(), nodeIP, cfg.Network.GetServiceCIDR(), s.Address().Path("1.0", "kubernetes", "auth", "webhook").String(), true, cfg.Datastore, cfg.APIServer.GetAuthorizationMode(), bootstrapConfig.ExtraNodeKubeAPIServerArgs); err != nil {
+	if err := setup.KubeAPIServer(snap, cfg.APIServer.GetSecurePort(), nodeIP, cfg.Network.GetServiceCIDR(), utils.Path(s.Address(), "1.0", "kubernetes", "auth", "webhook").String(), true, cfg.Datastore, cfg.APIServer.GetAuthorizationMode(), bootstrapConfig.ExtraNodeKubeAPIServerArgs); err != nil {
 		return fmt.Errorf("failed to configure kube-apiserver: %w", err)
 	}
 
