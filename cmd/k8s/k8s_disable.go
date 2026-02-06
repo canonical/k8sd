@@ -28,8 +28,8 @@ func newDisableCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:    fmt.Sprintf("disable [%s] ...", strings.Join(featureList, "|")),
-		Short:  "Disable core cluster features",
-		Long:   fmt.Sprintf("Disable one of %s.", strings.Join(featureList, ", ")),
+		Short:  "Disable one or more core cluster features",
+		Long:   fmt.Sprintf("Disable one or more core cluster features.\n\nAvailable features: %s", strings.Join(featureList, ", ")),
 		Args:   cmdutil.MinimumNArgs(env, 1),
 		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat)),
 		Run: func(cmd *cobra.Command, args []string) {

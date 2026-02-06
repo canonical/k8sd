@@ -58,7 +58,8 @@ func newXWaitForCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:    "x-wait-for",
-		Short:  "Wait for the cluster's feature to be in a ready state",
+		Short:  "Wait for specific cluster features to be ready",
+		Long:   "Wait for specific cluster features (such as DNS or Network) to be ready. This is an experimental command.",
 		Hidden: true,
 	}
 

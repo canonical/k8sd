@@ -30,7 +30,7 @@ func newSetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "set <feature.key=value> ...",
 		Short:  "Set cluster configuration",
-		Long:   fmt.Sprintf("Configure one of %s.\nUse `k8s get` to explore configuration options.", strings.Join(featureList, ", ")),
+		Long:   fmt.Sprintf("Set cluster configuration for one or more features.\n\nAvailable features: %s\n\nUse 'k8s get' to explore configuration options.", strings.Join(featureList, ", ")),
 		Args:   cmdutil.MinimumNArgs(env, 1),
 		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat)),
 		Run: func(cmd *cobra.Command, args []string) {

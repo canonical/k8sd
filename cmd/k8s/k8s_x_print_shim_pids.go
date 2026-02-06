@@ -7,7 +7,8 @@ import (
 
 var xPrintShimPidsCmd = &cobra.Command{
 	Use:    "x-print-shim-pids",
-	Short:  "Print list of PIDs started by the containerd shim and pause processes",
+	Short:  "Print containerd shim and pause process PIDs",
+	Long:   "Print a list of process IDs (PIDs) for containerd shim and pause processes. This is an experimental command.",
 	Hidden: true,
 	Args:   cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
