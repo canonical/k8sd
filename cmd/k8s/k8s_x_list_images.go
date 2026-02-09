@@ -13,7 +13,7 @@ func newListImagesCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		Hidden:  true,
 		Aliases: []string{"list-images"},
 		Short:   "List all container images used by this release",
-		Long:    "List all container images used by this k8s release, including component images and dependencies.",
+		Long:    "List all container images used by this k8s release, including component images and dependencies. This is an experimental command.",
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			cmd.Println(strings.Join(images.Images(), "\n"))
