@@ -20,6 +20,7 @@ func newCertsStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "certs-status",
 		Short: "Display certificate and certificate authority expiration details",
+		Long:  "Display detailed information about certificate and certificate authority expiration dates, including residual time until expiration.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			client, err := env.Snap.K8sdClient("")

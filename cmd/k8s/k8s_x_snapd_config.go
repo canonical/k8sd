@@ -116,7 +116,8 @@ func newXSnapdConfigCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:    "x-snapd-config",
-		Short:  "Manage snapd configuration",
+		Short:  "Manage snapd configuration integration",
+		Long:   "Manage the integration between k8s and snapd configuration management. This is an experimental command.",
 		Hidden: true,
 	}
 

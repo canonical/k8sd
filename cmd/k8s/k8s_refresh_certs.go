@@ -27,6 +27,7 @@ func newRefreshCertsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "refresh-certs",
 		Short: "Refresh the certificates of the running node",
+		Long:  "Refresh the certificates of the running node. This can be used to renew expiring certificates or update certificates with new SANs.",
 		Args:  cobra.NoArgs,
 		PreRun: chainPreRunHooks(hookRequireRoot(env), func(cmd *cobra.Command, args []string) {
 			if opts.externalCerts == "" {

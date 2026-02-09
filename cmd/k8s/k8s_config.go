@@ -17,7 +17,8 @@ func newKubeConfigCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "config",
 		Hidden: true,
-		Short:  "Generate an admin kubeconfig that can be used to access the Kubernetes cluster",
+		Short:  "Generate an admin kubeconfig for cluster access",
+		Long:   "Generate an admin kubeconfig file that can be used to access the Kubernetes cluster.",
 		Args:   cobra.NoArgs,
 		PreRun: chainPreRunHooks(hookRequireRoot(env)),
 		Run: func(cmd *cobra.Command, args []string) {

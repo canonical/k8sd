@@ -61,7 +61,8 @@ func newXCleanupCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:    "x-cleanup",
-		Short:  "Cleanup left-over resources from the cluster's features",
+		Short:  "Cleanup left-over cluster resources",
+		Long:   "Cleanup left-over cluster resources such as network rules, containers, and containerd data. This is an experimental command.",
 		Hidden: true,
 	}
 
