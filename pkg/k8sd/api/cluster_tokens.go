@@ -21,8 +21,8 @@ import (
 )
 
 var (
-	errNodeNameAlreadyExists = errors.New("a node with this name is already part of the cluster")
-	errFailedToCheckNodeName = errors.New("failed to check whether node name is available in cluster")
+	ErrNodeNameAlreadyExists = errors.New("a node with this name is already part of the cluster")
+	ErrFailedToCheckNodeName = errors.New("failed to check whether node name is available in cluster")
 )
 
 func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
