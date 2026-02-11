@@ -50,7 +50,7 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@v0.6.1
 
           # We need to have our project built
-          make bin/static/k8s
+          sudo make bin/static/k8s
 
       - name: Run TICS
         uses: tiobe/tics-github-action@v3
