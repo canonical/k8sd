@@ -1,10 +1,6 @@
 name: Download k8s-snap
 
 inputs:
-  # Download k8s-snap using either a GH action artifact or a snap channel.
-  artifact:
-    description: The name of a GH action artifact.
-    type: string
   channel:
     description: k8s snap channel.
     type: string
@@ -17,25 +13,12 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Fail if neither artifact nor channel are specified
-      if: inputs.artifact == '' && inputs.channel == ''
+    - name: Fail if channel is not specified
+      if: inputs.channel == ''
       shell: bash
       run: |
-        echo "No k8s-snap artifact or channel specified..."
+        echo "No k8s-snap channel specified..."
         exit 1
-    - name: Fail if both artifact and channel are specified
-      if: inputs.artifact != '' && inputs.channel != ''
-      shell: bash
-      run: |
-        echo "Received snap artifact AND snap channel."
-        exit 1
-
-    - name: Download snap artifact
-      if: inputs.artifact != ''
-      uses: actions/download-artifact@v4
-      with:
-        name: ${{ inputs.artifact }}
-        path: ${{ github.workspace }}
 
     - name: Download snap channel
       if: inputs.channel != ''
@@ -50,11 +33,7 @@ runs:
       shell: bash
       id: retrieve-path
       run: |
-        if [[ -n "${{ inputs.artifact }}" ]]; then
-          snap_path="${{ github.workspace }}/${{ inputs.artifact }}"
-        else
-          snap_path="${{ github.workspace }}/k8s.snap"
-        fi
+        snap_path="${{ github.workspace }}/k8s.snap"
         echo "snap-path=$snap_path" >> "$GITHUB_OUTPUT"
 
         echo "Output snap: $snap_path"
