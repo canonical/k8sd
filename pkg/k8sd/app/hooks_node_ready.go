@@ -8,7 +8,7 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 // onNodeReady is called when the node is ready, right after the wait group is released.

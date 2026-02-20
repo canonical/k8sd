@@ -11,8 +11,8 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/api/impl"
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/state"
 )
 
 func (e *Endpoints) getNodeStatus(s state.State, r *http.Request) response.Response {
