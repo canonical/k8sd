@@ -20,7 +20,6 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/microcluster/v3/microcluster"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
-	"github.com/canonical/microcluster/v3/state"
 )
 
 // Config defines configuration for the k8sd app.
@@ -237,9 +236,9 @@ func New(cfg Config) (*App, error) {
 
 // Run starts the microcluster node and waits until it terminates.
 // any non-nil customHooks override the default hooks.
-func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
+func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 	// TODO: consider improving API for overriding hooks.
-	hooks := &state.Hooks{
+	hooks := &mctypes.Hooks{
 		PreInit:       a.onPreInit,
 		PostBootstrap: a.onBootstrap,
 		PostJoin:      a.onPostJoin,
@@ -284,7 +283,7 @@ func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
 		}()
 	}
 
-	err := a.cluster.Start(ctx, microcluster.DaemonArgs{
+	err := a.cluster.Start(mctypes.ContextWithLogger(ctx), microcluster.DaemonArgs{
 		Version:                 string(apiv2.K8sdAPIVersion),
 		Hooks:                   hooks,
 		ExtensionServers:        api.New(ctx, a, a.config.DrainConnectionsTimeout),
@@ -303,7 +302,7 @@ func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
 // - the kubernetes endpoint is reachable.
 // - the onNodeReady hook succeeds.
 // - snap services are started.
-func (a *App) markNodeReady(ctx context.Context, s state.State) error {
+func (a *App) markNodeReady(ctx context.Context, s mctypes.State) error {
 	log := log.FromContext(ctx).WithValues("startup", "waitForReady")
 
 	log.Info("Waiting for database to be open")

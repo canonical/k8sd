@@ -15,19 +15,18 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/k8sd/pkg/utils/node"
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // postClusterRemove handles requests to remove a node from the cluster.
 // It will remove the node from etcd, microcluster and from Kubernetes.
 // If force is true, the node is removed on a best-effort basis even if it is not reachable.
-func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.Response {
 	snap := e.provider.Snap()
 
 	req := apiv2.RemoveNodeRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	ctx, cancel := context.WithCancel(r.Context())
@@ -41,7 +40,7 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 
 	cfg, err := databaseutil.GetClusterConfig(ctx, s)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
 
 	isControlPlane, err := node.IsControlPlaneNode(ctx, s, req.Name, e.provider.Snap())
@@ -49,7 +48,7 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 		if req.Force {
 			log.Error(err, "Failed to determine if node is control-plane, but continuing due to force=true")
 		} else {
-			return response.InternalError(fmt.Errorf("failed to determine if node is control-plane: %w", err))
+			return mctypes.InternalError(fmt.Errorf("failed to determine if node is control-plane: %w", err))
 		}
 	}
 
@@ -62,7 +61,7 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 				// So we log the error, but continue.
 				log.Error(err, "Failed to remove node from Kubernetes, but continuing due to force=true")
 			} else {
-				return response.InternalError(fmt.Errorf("failed to remove node from Kubernetes: %w", err))
+				return mctypes.InternalError(fmt.Errorf("failed to remove node from Kubernetes: %w", err))
 			}
 		}
 	} else {
@@ -80,7 +79,7 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 				// So we log the error, but continue.
 				log.Error(err, "Failed to remove node from datastore, but continuing due to force=true; ignore error for workers", "datastore", cfg.Datastore.GetType())
 			} else {
-				return response.InternalError(fmt.Errorf("failed to delete node from datastore: %w", err))
+				return mctypes.InternalError(fmt.Errorf("failed to delete node from datastore: %w", err))
 			}
 		}
 
@@ -89,15 +88,15 @@ func (e *Endpoints) postClusterRemove(s state.State, r *http.Request) response.R
 			if req.Force {
 				log.Error(err, "Failed to remove node from microcluster, but continuing due to force=true; ignore error for workers")
 			} else {
-				return response.InternalError(fmt.Errorf("failed to delete node from microcluster: %w", err))
+				return mctypes.InternalError(fmt.Errorf("failed to delete node from microcluster: %w", err))
 			}
 		}
 	}
 
-	return response.SyncResponse(true, &apiv2.RemoveNodeResponse{})
+	return mctypes.SyncResponse(true, &apiv2.RemoveNodeResponse{})
 }
 
-func removeNodeFromDatastore(ctx context.Context, s state.State, snap snap.Snap, nodeName string, clusterConfig types.ClusterConfig) error {
+func removeNodeFromDatastore(ctx context.Context, s mctypes.State, snap snap.Snap, nodeName string, clusterConfig types.ClusterConfig) error {
 	switch clusterConfig.Datastore.GetType() {
 	case "etcd":
 		if err := removeNodeFromEtcd(ctx, snap, s, clusterConfig, nodeName); err != nil {
@@ -111,7 +110,7 @@ func removeNodeFromDatastore(ctx context.Context, s state.State, snap snap.Snap,
 	return nil
 }
 
-func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s state.State, cfg types.ClusterConfig, nodeName string) error {
+func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s mctypes.State, cfg types.ClusterConfig, nodeName string) error {
 	c, err := snap.K8sdClient("")
 	if err != nil {
 		return fmt.Errorf("failed to get k8sd client: %w", err)
@@ -146,7 +145,7 @@ func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s state.State, cfg 
 	return nil
 }
 
-func removeNodeFromMicrocluster(ctx context.Context, s state.State, nodeName string, force bool, snap snap.Snap) error {
+func removeNodeFromMicrocluster(ctx context.Context, s mctypes.State, nodeName string, force bool, snap snap.Snap) error {
 	log := log.FromContext(ctx).WithValues("name", nodeName)
 
 	c, err := snap.K8sdClient("")
@@ -194,7 +193,7 @@ func removeNodeFromMicrocluster(ctx context.Context, s state.State, nodeName str
 	// The cancellation happens after the `RunPreRemoveHook` call and before the `DeleteCoreClusterMember` call
 	// in `clusterMemberDelete` endpoint of microcluster. This is a workaround to avoid the cancellation.
 	// keep in mind that this failure is flaky and might not happen in every run.
-	deleteCtx, deleteCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	deleteCtx, deleteCancel := context.WithTimeout(mctypes.ContextWithLogger(context.Background()), 2*time.Minute)
 	defer deleteCancel()
 	log.Info("Deleting node from Microcluster cluster, for real")
 	if err := c.RemoveClusterMember(deleteCtx, nodeName, nodeAddr, force); err != nil {

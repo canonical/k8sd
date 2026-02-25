@@ -11,24 +11,23 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/api/impl"
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) getNodeStatus(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) getNodeStatus(s types.State, r *http.Request) types.Response {
 	snap := e.provider.Snap()
 
 	status, err := impl.GetLocalNodeStatus(r.Context(), s, snap)
 	if err != nil {
-		return response.InternalError(err)
+		return types.InternalError(err)
 	}
 
 	taints, err := getNodeTaints(snap)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to get node taints: %w", err))
+		return types.InternalError(fmt.Errorf("failed to get node taints: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv2.NodeStatusResponse{
+	return types.SyncResponse(true, &apiv2.NodeStatusResponse{
 		NodeStatus: status,
 		Taints:     taints,
 	})

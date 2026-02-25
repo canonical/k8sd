@@ -23,14 +23,14 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
 	"github.com/canonical/k8sd/pkg/version"
 	"github.com/canonical/lxd/shared/revert"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 )
 
 // onPostJoin is called when a control plane node joins the cluster.
 // onPostJoin retrieves the cluster config from the database and configures local services.
-func (a *App) onPostJoin(ctx context.Context, s state.State, initConfig map[string]string) (rerr error) {
+func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[string]string) (rerr error) {
 	log := log.FromContext(ctx).WithValues("hook", "postJoin")
 
 	snap := a.Snap()
@@ -372,7 +372,7 @@ func registerK8sNodeDeletionReverter(k8sClient *kubernetes.Client, nodeName stri
 	})
 }
 
-func handleRollOutUpgrade(ctx context.Context, snap snap.Snap, s state.State, k8sClient *kubernetes.Client) error {
+func handleRollOutUpgrade(ctx context.Context, snap snap.Snap, s mctypes.State, k8sClient *kubernetes.Client) error {
 	log := log.FromContext(ctx).WithValues("step", "rollout-upgrade")
 
 	log.Info("Checking if an upgrade is in progress")
@@ -407,7 +407,7 @@ func getNodeVersion(ctx context.Context, snap snap.Snap) (*versionutil.Version, 
 	return v, nil
 }
 
-func handleNoUpgradeInProgress(ctx context.Context, snap snap.Snap, s state.State, k8sClient *kubernetes.Client, thisNodeVersion *versionutil.Version, nodeVersions map[string]*versionutil.Version) error {
+func handleNoUpgradeInProgress(ctx context.Context, snap snap.Snap, s mctypes.State, k8sClient *kubernetes.Client, thisNodeVersion *versionutil.Version, nodeVersions map[string]*versionutil.Version) error {
 	var clusterK8sVersion *versionutil.Version
 	for node, version := range nodeVersions {
 		if node == s.Name() {
@@ -440,7 +440,7 @@ func handleNoUpgradeInProgress(ctx context.Context, snap snap.Snap, s state.Stat
 	return nil
 }
 
-func initiateRollingUpgrade(ctx context.Context, snap snap.Snap, s state.State, k8sClient *kubernetes.Client, thisNodeVersion, clusterK8sVersion *versionutil.Version) error {
+func initiateRollingUpgrade(ctx context.Context, snap snap.Snap, s mctypes.State, k8sClient *kubernetes.Client, thisNodeVersion, clusterK8sVersion *versionutil.Version) error {
 	log := log.FromContext(ctx)
 	log.Info("Minor version mismatch between joining node and cluster")
 
@@ -476,7 +476,7 @@ func initiateRollingUpgrade(ctx context.Context, snap snap.Snap, s state.State, 
 	return nil
 }
 
-func handleUpgradeInProgress(ctx context.Context, s state.State, k8sClient *kubernetes.Client, upgrade *upgradesv1alpha.Upgrade, thisNodeVersion *versionutil.Version, nodeVersions map[string]*versionutil.Version) error {
+func handleUpgradeInProgress(ctx context.Context, s mctypes.State, k8sClient *kubernetes.Client, upgrade *upgradesv1alpha.Upgrade, thisNodeVersion *versionutil.Version, nodeVersions map[string]*versionutil.Version) error {
 	log := log.FromContext(ctx)
 	nodeName := s.Name()
 	lowest, highest := lowestHighestK8sVersions(nodeVersions)

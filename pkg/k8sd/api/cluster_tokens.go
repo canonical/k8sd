@@ -15,8 +15,7 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/microcluster/v3/microcluster"
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -25,27 +24,27 @@ var (
 	errFailedToCheckNodeName = errors.New("failed to check whether node name is available in cluster")
 )
 
-func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) postClusterJoinTokens(s mctypes.State, r *http.Request) mctypes.Response {
 	req := apiv2.GetJoinTokenRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	hostname, err := utils.CleanHostname(req.Name)
 	if err != nil {
-		return response.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
+		return mctypes.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
 	}
 
 	// Verify that the node name is not already in use by an existing node
 	k8sClient, err := e.provider.Snap().KubernetesClient("")
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
 	if err = checkNodeNameAvailable(r.Context(), k8sClient, hostname); err != nil {
 		if errors.Is(err, errFailedToCheckNodeName) {
-			return response.BadRequest(err)
+			return mctypes.BadRequest(err)
 		}
-		return response.InternalError(err)
+		return mctypes.InternalError(err)
 	}
 
 	var token string
@@ -62,10 +61,10 @@ func (e *Endpoints) postClusterJoinTokens(s state.State, r *http.Request) respon
 		token, err = getOrCreateJoinToken(r.Context(), e.provider.MicroCluster(), hostname, ttl)
 	}
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to create token: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to create token: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv2.GetJoinTokenResponse{EncodedToken: token})
+	return mctypes.SyncResponse(true, &apiv2.GetJoinTokenResponse{EncodedToken: token})
 }
 
 func checkNodeNameAvailable(ctx context.Context, k8sClient *kubernetes.Client, nodeName string) error {
@@ -103,7 +102,7 @@ func getOrCreateJoinToken(ctx context.Context, m *microcluster.MicroCluster, tok
 	return token, nil
 }
 
-func getOrCreateWorkerToken(ctx context.Context, s state.State, nodeName string, ttl time.Duration) (string, error) {
+func getOrCreateWorkerToken(ctx context.Context, s mctypes.State, nodeName string, ttl time.Duration) (string, error) {
 	var token string
 	if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error

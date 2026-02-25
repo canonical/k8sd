@@ -8,20 +8,19 @@ import (
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) getKubeconfig(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) getKubeconfig(s types.State, r *http.Request) types.Response {
 	req := apiv2.KubeConfigRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return types.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	// Fetch pieces needed to render an admin kubeconfig: ca, server, token
 	config, err := databaseutil.GetClusterConfig(r.Context(), s)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to retrieve cluster config: %w", err))
+		return types.InternalError(fmt.Errorf("failed to retrieve cluster config: %w", err))
 	}
 	server := req.Server
 	if req.Server == "" {
@@ -30,10 +29,10 @@ func (e *Endpoints) getKubeconfig(s state.State, r *http.Request) response.Respo
 
 	kubeconfig, err := setup.KubeconfigString(server, config.Certificates.GetCACert(), config.Certificates.GetAdminClientCert(), config.Certificates.GetAdminClientKey())
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to get kubeconfig: %w", err))
+		return types.InternalError(fmt.Errorf("failed to get kubeconfig: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv2.KubeConfigResponse{
+	return types.SyncResponse(true, &apiv2.KubeConfigResponse{
 		KubeConfig: kubeconfig,
 	})
 }

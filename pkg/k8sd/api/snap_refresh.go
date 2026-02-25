@@ -7,25 +7,24 @@ import (
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) postSnapRefresh(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) postSnapRefresh(s mctypes.State, r *http.Request) mctypes.Response {
 	req := apiv2.SnapRefreshRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	refreshOpts, err := types.RefreshOptsFromAPI(req)
 	if err != nil {
-		return response.BadRequest(fmt.Errorf("invalid refresh options: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("invalid refresh options: %w", err))
 	}
 
 	id, err := e.provider.Snap().Refresh(e.Context(), refreshOpts)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to refresh snap: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to refresh snap: %w", err))
 	}
 
-	return response.SyncResponse(true, apiv2.SnapRefreshResponse{ChangeID: id})
+	return mctypes.SyncResponse(true, apiv2.SnapRefreshResponse{ChangeID: id})
 }

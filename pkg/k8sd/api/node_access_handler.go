@@ -6,26 +6,25 @@ import (
 	"os"
 	"strings"
 
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) ValidateNodeTokenAccessHandler(tokenHeaderName string) func(s state.State, r *http.Request) (bool, response.Response) {
-	return func(s state.State, r *http.Request) (bool, response.Response) {
+func (e *Endpoints) ValidateNodeTokenAccessHandler(tokenHeaderName string) func(s types.State, r *http.Request) (bool, types.Response) {
+	return func(s types.State, r *http.Request) (bool, types.Response) {
 		token := r.Header.Get(tokenHeaderName)
 		if token == "" {
-			return false, response.Unauthorized(fmt.Errorf("missing header %q", tokenHeaderName))
+			return false, types.Unauthorized(fmt.Errorf("missing header %q", tokenHeaderName))
 		}
 
 		snap := e.provider.Snap()
 
 		nodeToken, err := os.ReadFile(snap.NodeTokenFile())
 		if err != nil {
-			return false, response.InternalError(fmt.Errorf("failed to read node access token: %w", err))
+			return false, types.InternalError(fmt.Errorf("failed to read node access token: %w", err))
 		}
 
 		if strings.TrimSpace(string(nodeToken)) != token {
-			return false, response.Unauthorized(fmt.Errorf("invalid token"))
+			return false, types.Unauthorized(fmt.Errorf("invalid token"))
 		}
 
 		return true, nil

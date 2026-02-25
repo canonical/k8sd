@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // JSONResponse marshals the response to JSON and sets the status code.
-func JSONResponse(status int, v any) response.Response {
+func JSONResponse(status int, v any) types.Response {
 	b, _ := json.Marshal(v)
-	return response.ManualResponse(func(w http.ResponseWriter) error {
+	return types.ManualResponse(func(w http.ResponseWriter) error {
 		w.WriteHeader(status)
 		w.Write(b)
 		w.Write([]byte("\n"))
@@ -24,8 +24,8 @@ type responseRenderer func(w http.ResponseWriter, r *http.Request) error
 
 // manualResponseWithSignal creates a manual response that flushes the response to
 // the client and signals completion on the given channel.
-func manualResponseWithSignal(readyCh chan error, r *http.Request, renderer responseRenderer) response.Response {
-	return response.ManualResponse(func(w http.ResponseWriter) (rerr error) {
+func manualResponseWithSignal(readyCh chan error, r *http.Request, renderer responseRenderer) types.Response {
+	return types.ManualResponse(func(w http.ResponseWriter) (rerr error) {
 		defer func() {
 			readyCh <- rerr
 			close(readyCh)
@@ -47,8 +47,8 @@ func manualResponseWithSignal(readyCh chan error, r *http.Request, renderer resp
 
 // SyncManualResponseWithSignal is a convenience wrapper for manualResponseWithSignal
 // that renders a standard SyncResponse.
-func SyncManualResponseWithSignal(req *http.Request, readyCh chan error, result any) response.Response {
+func SyncManualResponseWithSignal(req *http.Request, readyCh chan error, result any) types.Response {
 	return manualResponseWithSignal(readyCh, req, func(w http.ResponseWriter, r *http.Request) error {
-		return response.SyncResponse(true, result).Render(w, r)
+		return types.SyncResponse(true, result).Render(w, r)
 	})
 }

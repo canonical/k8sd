@@ -8,12 +8,11 @@ import (
 
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/shared"
-	microclusterTypes "github.com/canonical/microcluster/v3/microcluster/types"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // onPreInit is called before we bootstrap or join a node.
-func (a *App) onPreInit(ctx context.Context, s state.State, bootstrap bool, initConfig map[string]string) error {
+func (a *App) onPreInit(ctx context.Context, s mctypes.State, bootstrap bool, initConfig map[string]string) error {
 	if bootstrap {
 		return nil
 	}
@@ -34,7 +33,7 @@ func (a *App) onPreInit(ctx context.Context, s state.State, bootstrap bool, init
 
 	cert, err := shared.KeyPairAndCA(
 		s.FileSystem().StateDir(),
-		string(microclusterTypes.ServerCertificateName),
+		string(mctypes.ServerCertificateName),
 		shared.CertServer,
 		shared.CertOptions{
 			AddHosts:                true,
@@ -45,11 +44,11 @@ func (a *App) onPreInit(ctx context.Context, s state.State, bootstrap bool, init
 		return err
 	}
 
-	if err := a.cluster.UpdateCertificates(ctx, microclusterTypes.ServerCertificateName, microclusterTypes.KeyPair{
+	if err := a.cluster.UpdateCertificates(ctx, mctypes.ServerCertificateName, mctypes.KeyPair{
 		Cert: string(cert.PublicKey()),
 		Key:  string(cert.PrivateKey()),
 	}); err != nil {
-		return fmt.Errorf("failed to update certificate %s: %w", microclusterTypes.ServerCertificateName, err)
+		return fmt.Errorf("failed to update certificate %s: %w", mctypes.ServerCertificateName, err)
 	}
 
 	return nil

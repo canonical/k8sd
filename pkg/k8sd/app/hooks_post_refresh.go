@@ -18,14 +18,14 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
 	"github.com/canonical/k8sd/pkg/version"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // postRefreshHook is executed after the node is ready after a `snap refresh` operation
 // See nodeReadyHook for details on when a node is considered ready.
 // Note that the postRefreshHook is NOT executed after a `snap install` operation which is
 // different to the underlying snap hook.
-func (a *App) postRefreshHook(ctx context.Context, s state.State) error {
+func (a *App) postRefreshHook(ctx context.Context, s mctypes.State) error {
 	log := log.FromContext(ctx).WithValues("hook", "post-refresh")
 	log.Info("Running post-refresh hook")
 
@@ -77,7 +77,7 @@ func (a *App) postRefreshHook(ctx context.Context, s state.State) error {
 }
 
 // performPostUpgrade adds the node name to the list of upgradedNodes in the upgrade custom resource.
-func (a *App) performPostUpgrade(ctx context.Context, s state.State) error {
+func (a *App) performPostUpgrade(ctx context.Context, s mctypes.State) error {
 	log := log.FromContext(ctx).WithValues("step", "post-upgrade")
 	k8sClient, err := a.snap.KubernetesClient("")
 	if err != nil {
@@ -135,7 +135,7 @@ func (a *App) performPostUpgrade(ctx context.Context, s state.State) error {
 	return nil
 }
 
-func (a *App) updateNodeIPAddresses(ctx context.Context, s state.State) error {
+func (a *App) updateNodeIPAddresses(ctx context.Context, s mctypes.State) error {
 	snap := a.Snap()
 	nodeIP := net.ParseIP(s.Address().Hostname())
 	if nodeIP == nil {

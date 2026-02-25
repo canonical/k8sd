@@ -7,12 +7,12 @@ import (
 
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	. "github.com/onsi/gomega"
 )
 
 func TestKubernetesAuthTokens(t *testing.T) {
-	testenv.WithState(t, func(ctx context.Context, s state.State) {
+	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
 		var token1, token2 string
 
 		t.Run("GetOrCreateToken", func(t *testing.T) {

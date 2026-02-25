@@ -6,8 +6,7 @@ import (
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 	"golang.org/x/sync/errgroup"
 	certv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -26,22 +25,22 @@ import (
 // any control plane node to approve the CSR.
 // 4. The /x/capi/refresh-certs/run endpoint completes and returns once the
 // certificate is approved and signed.
-func (e *Endpoints) postApproveWorkerCSR(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) postApproveWorkerCSR(s types.State, r *http.Request) types.Response {
 	snap := e.provider.Snap()
 
 	req := apiv2.ClusterAPIApproveWorkerCSRRequest{}
 
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return types.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	if err := r.Body.Close(); err != nil {
-		return response.InternalError(fmt.Errorf("failed to close request body: %w", err))
+		return types.InternalError(fmt.Errorf("failed to close request body: %w", err))
 	}
 
 	client, err := snap.KubernetesClient("")
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to get Kubernetes client: %w", err))
+		return types.InternalError(fmt.Errorf("failed to get Kubernetes client: %w", err))
 	}
 
 	g, ctx := errgroup.WithContext(r.Context())
@@ -80,8 +79,8 @@ func (e *Endpoints) postApproveWorkerCSR(s state.State, r *http.Request) respons
 	}
 
 	if err := g.Wait(); err != nil {
-		return response.InternalError(fmt.Errorf("failed to approve worker node CSR: %w", err))
+		return types.InternalError(fmt.Errorf("failed to approve worker node CSR: %w", err))
 	}
 
-	return response.SyncResponse(true, apiv2.ClusterAPIApproveWorkerCSRResponse{})
+	return types.SyncResponse(true, apiv2.ClusterAPIApproveWorkerCSRResponse{})
 }

@@ -7,15 +7,14 @@ import (
 	"net/http"
 
 	"github.com/canonical/k8sd/pkg/k8sd/database"
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func ValidateCAPIAuthTokenAccessHandler(tokenHeaderName string) func(s state.State, r *http.Request) (bool, response.Response) {
-	return func(s state.State, r *http.Request) (bool, response.Response) {
+func ValidateCAPIAuthTokenAccessHandler(tokenHeaderName string) func(s types.State, r *http.Request) (bool, types.Response) {
+	return func(s types.State, r *http.Request) (bool, types.Response) {
 		token := r.Header.Get(tokenHeaderName)
 		if token == "" {
-			return false, response.Unauthorized(fmt.Errorf("missing header %q", tokenHeaderName))
+			return false, types.Unauthorized(fmt.Errorf("missing header %q", tokenHeaderName))
 		}
 
 		var tokenIsValid bool
@@ -27,10 +26,10 @@ func ValidateCAPIAuthTokenAccessHandler(tokenHeaderName string) func(s state.Sta
 			}
 			return nil
 		}); err != nil {
-			return false, response.InternalError(fmt.Errorf("check CAPI auth token database transaction failed: %w", err))
+			return false, types.InternalError(fmt.Errorf("check CAPI auth token database transaction failed: %w", err))
 		}
 		if !tokenIsValid {
-			return false, response.Unauthorized(fmt.Errorf("invalid token"))
+			return false, types.Unauthorized(fmt.Errorf("invalid token"))
 		}
 
 		return true, nil

@@ -14,13 +14,13 @@ import (
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	"github.com/canonical/k8sd/pkg/snap/util/cleanup"
 	"github.com/canonical/k8sd/pkg/utils/control"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // NOTE(ben): the pre-remove performs a series of cleanup steps on a best-effort basis.
 // If any step fails, the error is logged, and the cleanup continues, skipping dependent tasks.
 // All steps need to be blocking as the context is cancelled after the hook returned.
-func (a *App) onPreRemove(ctx context.Context, s state.State, force bool) (rerr error) {
+func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rerr error) {
 	snap := a.Snap()
 
 	log := log.FromContext(ctx).WithValues("hook", "preremove", "node", s.Name())

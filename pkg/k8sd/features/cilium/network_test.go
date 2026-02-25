@@ -15,7 +15,7 @@ import (
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/k8sd/pkg/utils"
 	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	. "github.com/onsi/gomega"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/ktesting"
@@ -30,7 +30,7 @@ var annotations = types.Annotations{
 }
 
 func TestNetworkDisabled(t *testing.T) {
-	testenv.WithState(t, func(ctx context.Context, s state.State) {
+	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
 		t.Run("HelmApplyFails", func(t *testing.T) {
 			g := NewWithT(t)
 
@@ -97,7 +97,7 @@ func TestNetworkDisabled(t *testing.T) {
 }
 
 func TestNetworkEnabled(t *testing.T) {
-	testenv.WithState(t, func(ctx context.Context, s state.State) {
+	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
 		t.Run("InvalidCIDR", func(t *testing.T) {
 			g := NewWithT(t)
 
@@ -268,7 +268,7 @@ func TestNetworkEnabled(t *testing.T) {
 }
 
 func TestNetworkMountPath(t *testing.T) {
-	testenv.WithState(t, func(ctx context.Context, s state.State) {
+	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
 		for _, tc := range []struct {
 			name string
 		}{
@@ -314,7 +314,7 @@ func TestNetworkMountPath(t *testing.T) {
 }
 
 func TestNetworkMountPropagationType(t *testing.T) {
-	testenv.WithState(t, func(ctx context.Context, s state.State) {
+	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
 		t.Run("failedGetMountSys", func(t *testing.T) {
 			g := NewWithT(t)
 

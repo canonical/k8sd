@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 const (
@@ -11,10 +11,10 @@ const (
 	StatusNodeInUse = 521
 )
 
-func NodeUnavailable(err error) response.Response {
-	return response.ErrorResponse(StatusNodeUnavailable, err.Error())
+func NodeUnavailable(err error) types.Response {
+	return types.ErrorResponse(StatusNodeUnavailable, err.Error())
 }
 
-func NodeInUse(err error) response.Response {
-	return response.ErrorResponse(StatusNodeInUse, err.Error())
+func NodeInUse(err error) types.Response {
+	return types.ErrorResponse(StatusNodeInUse, err.Error())
 }

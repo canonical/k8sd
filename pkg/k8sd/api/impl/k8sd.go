@@ -8,12 +8,12 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	nodeutil "github.com/canonical/k8sd/pkg/utils/node"
-	"github.com/canonical/microcluster/v3/state"
+	"github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // GetClusterMembers retrieves information about the members of the cluster.
 
-func GetClusterMembers(ctx context.Context, s state.State, snap snap.Snap) ([]apiv2.NodeStatus, error) {
+func GetClusterMembers(ctx context.Context, s types.State, snap snap.Snap) ([]apiv2.NodeStatus, error) {
 	c, err := snap.K8sdClient("")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get k8sd client: %w", err)
@@ -39,7 +39,7 @@ func GetClusterMembers(ctx context.Context, s state.State, snap snap.Snap) ([]ap
 
 // GetLocalNodeStatus retrieves the status of the local node, including its roles within the cluster.
 // Unlike "GetClusterMembers" this also works on a worker node.
-func GetLocalNodeStatus(ctx context.Context, s state.State, snap snap.Snap) (apiv2.NodeStatus, error) {
+func GetLocalNodeStatus(ctx context.Context, s types.State, snap snap.Snap) (apiv2.NodeStatus, error) {
 	// Determine cluster role.
 	clusterRole := apiv2.ClusterRoleUnknown
 	isWorker, err := snaputil.IsWorker(snap)

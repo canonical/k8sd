@@ -8,12 +8,12 @@ import (
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
+
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
-	"github.com/canonical/microcluster/v3/microcluster/rest/response"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -47,11 +47,11 @@ var (
 	}
 )
 
-func (e *Endpoints) getCertificatesStatus(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) getCertificatesStatus(s mctypes.State, r *http.Request) mctypes.Response {
 	snap := e.provider.Snap()
 	isWorker, err := snaputil.IsWorker(snap)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to check if node is a worker: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to check if node is a worker: %w", err))
 	}
 	if isWorker {
 		return getCertsStatusWorker(s, r, snap)
@@ -62,24 +62,24 @@ func (e *Endpoints) getCertificatesStatus(s state.State, r *http.Request) respon
 // getCertsStatusControlPlane collects certificate status information for
 // control plane nodes. It reads control plane certificates, kubeconfig
 // certificates, and certificate authority statuses.
-func getCertsStatusControlPlane(s state.State, r *http.Request, snap snap.Snap) response.Response {
+func getCertsStatusControlPlane(s mctypes.State, r *http.Request, snap snap.Snap) mctypes.Response {
 	clusterConfig, err := databaseutil.GetClusterConfig(r.Context(), s)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to retrieve cluster configuration: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to retrieve cluster configuration: %w", err))
 	}
 	authorities, err := readCertificateAuthorities(&clusterConfig)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to read certificates authorities: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to read certificates authorities: %w", err))
 	}
 
 	nodeCerts, err := loadCertificateStatusesFromDir(snap.KubernetesPKIDir(), controlPlaneCertificateNames)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to read node certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to read node certificates: %w", err))
 	}
 
 	kubeConfigCerts, err := readKubeconfigCertificates(snap.KubernetesConfigDir(), controlPlaneKubeconfigs)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to read kubeconfig certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to read kubeconfig certificates: %w", err))
 	}
 
 	var certificates []apiv2.CertificateStatus
@@ -89,13 +89,13 @@ func getCertsStatusControlPlane(s state.State, r *http.Request, snap snap.Snap) 
 	if clusterConfig.Datastore.GetType() == "external" {
 		dataStoreCerts, err := loadCertificateStatusesFromDir(snap.EtcdPKIDir(), dataStoreCertificateNames)
 		if err != nil {
-			return response.InternalError(fmt.Errorf("failed to read datastore certificates: %w", err))
+			return mctypes.InternalError(fmt.Errorf("failed to read datastore certificates: %w", err))
 		}
 		certificates = append(certificates, dataStoreCerts...)
 	}
 
 	updateExternallyManaged(authorities, certificates)
-	return response.SyncResponse(true, apiv2.CertificatesStatusResponse{
+	return mctypes.SyncResponse(true, apiv2.CertificatesStatusResponse{
 		Certificates:           certificates,
 		CertificateAuthorities: authorities,
 	})
@@ -103,15 +103,15 @@ func getCertsStatusControlPlane(s state.State, r *http.Request, snap snap.Snap) 
 
 // getCertsStatusWorker collects certificate status information for worker
 // nodes. It reads worker certificates and kubeconfig certificates.
-func getCertsStatusWorker(s state.State, r *http.Request, snap snap.Snap) response.Response {
+func getCertsStatusWorker(s mctypes.State, r *http.Request, snap snap.Snap) mctypes.Response {
 	nodeCerts, err := loadCertificateStatusesFromDir(snap.KubernetesPKIDir(), workerCertificateNames)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to read node certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to read node certificates: %w", err))
 	}
 
 	kubeConfigCerts, err := readKubeconfigCertificates(snap.KubernetesConfigDir(), workerKubeconfigs)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to read kubeconfig certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to read kubeconfig certificates: %w", err))
 	}
 
 	var certificates []apiv2.CertificateStatus
@@ -124,7 +124,7 @@ func getCertsStatusWorker(s state.State, r *http.Request, snap snap.Snap) respon
 		cert.ExternallyManaged = true
 	}
 
-	return response.SyncResponse(true, apiv2.CertificatesStatusResponse{
+	return mctypes.SyncResponse(true, apiv2.CertificatesStatusResponse{
 		Certificates:           certificates,
 		CertificateAuthorities: []apiv2.CertificateAuthorityStatus{},
 	})

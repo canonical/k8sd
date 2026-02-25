@@ -23,12 +23,12 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
-	"github.com/canonical/microcluster/v3/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // onBootstrap is called after we bootstrap the first cluster node.
 // onBootstrap configures local services then writes the cluster config on the database.
-func (a *App) onBootstrap(ctx context.Context, s state.State, initConfig map[string]string) error {
+func (a *App) onBootstrap(ctx context.Context, s mctypes.State, initConfig map[string]string) error {
 	// NOTE(neoaggelos): context timeout is passed over configuration, so that hook failures are propagated to the client
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -53,7 +53,7 @@ func (a *App) onBootstrap(ctx context.Context, s state.State, initConfig map[str
 	return a.onBootstrapControlPlane(ctx, s, bootstrapConfig)
 }
 
-func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedToken string, joinConfig apiv2.WorkerJoinConfig) (rerr error) {
+func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encodedToken string, joinConfig apiv2.WorkerJoinConfig) (rerr error) {
 	snap := a.Snap()
 
 	log := log.FromContext(ctx).WithValues("hook", "join")
@@ -291,7 +291,7 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s state.State, encodedT
 	return nil
 }
 
-func (a *App) onBootstrapControlPlane(ctx context.Context, s state.State, bootstrapConfig apiv2.BootstrapConfig) (rerr error) {
+func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, bootstrapConfig apiv2.BootstrapConfig) (rerr error) {
 	snap := a.Snap()
 
 	log := log.FromContext(ctx).WithValues("hook", "bootstrap")
