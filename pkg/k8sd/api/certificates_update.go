@@ -16,14 +16,14 @@ import (
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	"github.com/canonical/k8sd/pkg/utils"
 	nodeutil "github.com/canonical/k8sd/pkg/utils/node"
-	"github.com/canonical/microcluster/v3/microcluster/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) postRefreshCertsUpdate(s types.State, r *http.Request) types.Response {
+func (e *Endpoints) postRefreshCertsUpdate(s mctypes.State, r *http.Request) mctypes.Response {
 	snap := e.provider.Snap()
 	isWorker, err := snaputil.IsWorker(snap)
 	if err != nil {
-		return types.InternalError(fmt.Errorf("failed to check if node is a worker: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to check if node is a worker: %w", err))
 	}
 	if isWorker {
 		return refreshCertsUpdateWorker(s, r, snap)
@@ -32,27 +32,27 @@ func (e *Endpoints) postRefreshCertsUpdate(s types.State, r *http.Request) types
 }
 
 // refreshCertsUpdateControlPlane updates the external certificates for a control plane node.
-func refreshCertsUpdateControlPlane(s types.State, r *http.Request, snap snap.Snap) types.Response {
+func refreshCertsUpdateControlPlane(s mctypes.State, r *http.Request, snap snap.Snap) mctypes.Response {
 	log := log.FromContext(r.Context())
 
 	req := apiv2.RefreshCertificatesUpdateRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return types.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	clusterConfig, err := databaseutil.GetClusterConfig(r.Context(), s)
 	if err != nil {
-		return types.InternalError(fmt.Errorf("failed to recover cluster config: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to recover cluster config: %w", err))
 	}
 
 	nodeIP := net.ParseIP(s.Address().Hostname())
 	if nodeIP == nil {
-		return types.InternalError(fmt.Errorf("failed to parse node IP address %q", s.Address().Hostname()))
+		return mctypes.InternalError(fmt.Errorf("failed to parse node IP address %q", s.Address().Hostname()))
 	}
 
 	serviceIPs, err := utils.GetKubernetesServiceIPsFromServiceCIDRs(clusterConfig.Network.GetServiceCIDR())
 	if err != nil {
-		return types.InternalError(fmt.Errorf("failed to get IP address(es) from ServiceCIDR %q: %w", clusterConfig.Network.GetServiceCIDR(), err))
+		return mctypes.InternalError(fmt.Errorf("failed to get IP address(es) from ServiceCIDR %q: %w", clusterConfig.Network.GetServiceCIDR(), err))
 	}
 
 	certificates := pki.NewControlPlanePKI(pki.ControlPlanePKIOpts{
@@ -62,7 +62,7 @@ func refreshCertsUpdateControlPlane(s types.State, r *http.Request, snap snap.Sn
 	})
 
 	if err := setup.ReadControlPlanePKI(snap, certificates, true); err != nil {
-		return types.InternalError(fmt.Errorf("failed to read managed control plane certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to read managed control plane certificates: %w", err))
 	}
 
 	certificates.CACert = clusterConfig.Certificates.GetCACert()
@@ -95,15 +95,15 @@ func refreshCertsUpdateControlPlane(s types.State, r *http.Request, snap snap.Sn
 	certificates.FrontProxyClientKey = req.GetFrontProxyClientKey()
 
 	if err := certificates.CompleteCertificates(); err != nil {
-		return types.InternalError(fmt.Errorf("failed to verify certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to verify certificates: %w", err))
 	}
 
 	if _, err := setup.EnsureControlPlanePKI(snap, certificates); err != nil {
-		return types.InternalError(fmt.Errorf("failed to write control plane certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to write control plane certificates: %w", err))
 	}
 
 	if err := setup.SetupControlPlaneKubeconfigs(snap.KubernetesConfigDir(), clusterConfig.APIServer.GetSecurePort(), *certificates); err != nil {
-		return types.InternalError(fmt.Errorf("failed to generate control plane kubeconfigs: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to generate control plane kubeconfigs: %w", err))
 	}
 
 	restartFn := func(ctx context.Context) error {
@@ -118,22 +118,22 @@ func refreshCertsUpdateControlPlane(s types.State, r *http.Request, snap snap.Sn
 }
 
 // refreshCertsUpdateWorker updates the external certificates for a worker node.
-func refreshCertsUpdateWorker(s types.State, r *http.Request, snap snap.Snap) types.Response {
+func refreshCertsUpdateWorker(s mctypes.State, r *http.Request, snap snap.Snap) mctypes.Response {
 	log := log.FromContext(r.Context())
 
 	req := apiv2.RefreshCertificatesUpdateRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return types.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	clusterConfig, err := databaseutil.GetClusterConfig(r.Context(), s)
 	if err != nil {
-		return types.InternalError(fmt.Errorf("failed to recover cluster config: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to recover cluster config: %w", err))
 	}
 
 	nodeIP := net.ParseIP(s.Address().Hostname())
 	if nodeIP == nil {
-		return types.InternalError(fmt.Errorf("failed to parse node IP address %q", s.Address().Hostname()))
+		return mctypes.InternalError(fmt.Errorf("failed to parse node IP address %q", s.Address().Hostname()))
 	}
 
 	var certificates pki.WorkerNodePKI
@@ -148,15 +148,15 @@ func refreshCertsUpdateWorker(s types.State, r *http.Request, snap snap.Snap) ty
 	certificates.KubeProxyClientKey = req.GetKubeProxyClientKey()
 
 	if err := certificates.CompleteCertificates(); err != nil {
-		return types.InternalError(fmt.Errorf("failed to verify certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to verify certificates: %w", err))
 	}
 
 	if _, err := setup.EnsureWorkerPKI(snap, &certificates); err != nil {
-		return types.InternalError(fmt.Errorf("failed to write worker certificates: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to write worker certificates: %w", err))
 	}
 
 	if err := setup.SetupWorkerKubeconfigs(snap.KubernetesConfigDir(), clusterConfig.APIServer.GetSecurePort(), certificates); err != nil {
-		return types.InternalError(fmt.Errorf("failed to generate worker kubeconfigs: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to generate worker kubeconfigs: %w", err))
 	}
 
 	restartFn := func(ctx context.Context) error {

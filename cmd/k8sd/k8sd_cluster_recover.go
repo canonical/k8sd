@@ -15,7 +15,7 @@ import (
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/termios"
 	"github.com/canonical/microcluster/v3/microcluster"
-	"github.com/canonical/microcluster/v3/microcluster/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v2"
@@ -286,7 +286,7 @@ func recoverK8sd() (string, error) {
 		}
 	}
 
-	newMembers := []types.DqliteMember{}
+	newMembers := []mctypes.DqliteMember{}
 	if err = yaml.Unmarshal(clusterYamlContent, &newMembers); err != nil {
 		return "", fmt.Errorf("couldn't parse cluster.yaml, error: %w", err)
 	}

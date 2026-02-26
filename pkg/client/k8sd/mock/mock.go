@@ -5,7 +5,7 @@ import (
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/k8sd"
-	"github.com/canonical/microcluster/v3/microcluster/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // Mock is a mock implementation of k8sd.Client.
@@ -21,10 +21,10 @@ type Mock struct {
 	JoinClusterErr             error
 	RemoveNodeCalledWith       apiv2.RemoveNodeRequest
 	RemoveNodeErr              error
-	GetClusterMembersResponse  []types.ClusterMember
+	GetClusterMembersResponse  []mctypes.ClusterMember
 	GetClusterMembersErr       error
 	GetClusterMemberCalledWith string
-	GetClusterMemberResponse   types.ClusterMember
+	GetClusterMemberResponse   mctypes.ClusterMember
 	GetClusterMemberErr        error
 	RemoveClusterMemberName    string
 	RemoveClusterMemberAddr    string
@@ -134,11 +134,11 @@ func (m *Mock) SetClusterAPIAuthToken(_ context.Context, request apiv2.ClusterAP
 	return m.SetClusterAPIAuthTokenErr
 }
 
-func (m *Mock) GetClusterMembers(_ context.Context) ([]types.ClusterMember, error) {
+func (m *Mock) GetClusterMembers(_ context.Context) ([]mctypes.ClusterMember, error) {
 	return m.GetClusterMembersResponse, m.GetClusterMembersErr
 }
 
-func (m *Mock) GetClusterMember(_ context.Context, name string) (types.ClusterMember, error) {
+func (m *Mock) GetClusterMember(_ context.Context, name string) (mctypes.ClusterMember, error) {
 	m.GetClusterMemberCalledWith = name
 	return m.GetClusterMemberResponse, m.GetClusterMemberErr
 }

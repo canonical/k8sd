@@ -8,7 +8,6 @@ import (
 
 	"github.com/canonical/k8sd/pkg/k8sd/app"
 	"github.com/canonical/k8sd/pkg/snap/mock"
-	"github.com/canonical/microcluster/v3/microcluster/types"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
@@ -43,7 +42,7 @@ var nextIdx int
 //			})
 //		})
 //	}
-func WithState(t *testing.T, f func(context.Context, types.State)) {
+func WithState(t *testing.T, f func(context.Context, mctypes.State)) {
 	ctx, cancel := context.WithCancel(mctypes.ContextWithLogger(context.Background()))
 	defer cancel()
 
@@ -58,19 +57,19 @@ func WithState(t *testing.T, f func(context.Context, types.State)) {
 		t.Fatalf("failed to create microcluster app: %v", err)
 	}
 
-	stateChan := make(chan types.State, 1)
+	stateChan := make(chan mctypes.State, 1)
 	doneCh := make(chan error, 1)
 	defer close(stateChan)
 	defer close(doneCh)
 
 	// app.Run() is blocking, so we get the state handle through a channel
 	go func() {
-		doneCh <- app.Run(ctx, &types.Hooks{
-			PostBootstrap: func(ctx context.Context, s types.State, initConfig map[string]string) error {
+		doneCh <- app.Run(ctx, &mctypes.Hooks{
+			PostBootstrap: func(ctx context.Context, s mctypes.State, initConfig map[string]string) error {
 				stateChan <- s
 				return nil
 			},
-			OnStart: func(ctx context.Context, s types.State) error {
+			OnStart: func(ctx context.Context, s mctypes.State) error {
 				return nil
 			},
 		})

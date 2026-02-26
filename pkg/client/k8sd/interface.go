@@ -4,7 +4,7 @@ import (
 	"context"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
-	"github.com/canonical/microcluster/v3/microcluster/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // ClusterClient implements methods for managing the cluster members.
@@ -18,9 +18,9 @@ type ClusterClient interface {
 	// RemoveNode removes a node from the cluster.
 	RemoveNode(context.Context, apiv2.RemoveNodeRequest) error
 	// GetClusterMembers retrieves a list of cluster members.
-	GetClusterMembers(ctx context.Context) ([]types.ClusterMember, error)
+	GetClusterMembers(ctx context.Context) ([]mctypes.ClusterMember, error)
 	// GetClusterMember retrieves a cluster member by name.
-	GetClusterMember(ctx context.Context, name string) (types.ClusterMember, error)
+	GetClusterMember(ctx context.Context, name string) (mctypes.ClusterMember, error)
 	// RemoveClusterMember removes a cluster member by name.
 	RemoveClusterMember(ctx context.Context, name string, addr string, force bool) error
 }

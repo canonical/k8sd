@@ -8,13 +8,13 @@ import (
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
-	"github.com/canonical/microcluster/v3/microcluster/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) postCertificatesExpiry(s types.State, r *http.Request) types.Response {
+func (e *Endpoints) postCertificatesExpiry(s mctypes.State, r *http.Request) mctypes.Response {
 	config, err := databaseutil.GetClusterConfig(r.Context(), s)
 	if err != nil {
-		return types.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
 
 	certificates := []string{
@@ -35,7 +35,7 @@ func (e *Endpoints) postCertificatesExpiry(s types.State, r *http.Request) types
 
 		cert, _, err := pkiutil.LoadCertificate(cert, "")
 		if err != nil {
-			return types.InternalError(fmt.Errorf("failed to load certificate: %w", err))
+			return mctypes.InternalError(fmt.Errorf("failed to load certificate: %w", err))
 		}
 
 		if earliestExpiry.IsZero() || cert.NotAfter.Before(earliestExpiry) {
@@ -43,7 +43,7 @@ func (e *Endpoints) postCertificatesExpiry(s types.State, r *http.Request) types
 		}
 	}
 
-	return types.SyncResponse(true, &apiv2.CertificatesExpiryResponse{
+	return mctypes.SyncResponse(true, &apiv2.CertificatesExpiryResponse{
 		ExpiryDate: earliestExpiry.Format(time.RFC3339),
 	})
 }

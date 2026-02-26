@@ -12,40 +12,40 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/microcluster/v3/microcluster/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) postKubernetesAuthTokens(s types.State, r *http.Request) types.Response {
+func (e *Endpoints) postKubernetesAuthTokens(s mctypes.State, r *http.Request) mctypes.Response {
 	request := apiv2.GenerateKubernetesAuthTokenRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		return types.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	token, err := databaseutil.GetOrCreateAuthToken(r.Context(), s, request.Username, request.Groups)
 	if err != nil {
-		return types.InternalError(err)
+		return mctypes.InternalError(err)
 	}
 
-	return types.SyncResponse(true, apiv2.GenerateKubernetesAuthTokenResponse{Token: token})
+	return mctypes.SyncResponse(true, apiv2.GenerateKubernetesAuthTokenResponse{Token: token})
 }
 
-func (e *Endpoints) deleteKubernetesAuthTokens(s types.State, r *http.Request) types.Response {
+func (e *Endpoints) deleteKubernetesAuthTokens(s mctypes.State, r *http.Request) mctypes.Response {
 	request := apiv2.RevokeKubernetesAuthTokenRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		return types.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	err := databaseutil.RevokeAuthToken(r.Context(), s, request.Token)
 	if err != nil {
-		return types.InternalError(fmt.Errorf("failed to revoke auth token: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to revoke auth token: %w", err))
 	}
 
-	return types.SyncResponse(true, nil)
+	return mctypes.SyncResponse(true, nil)
 }
 
 // postKubernetesAuthWebhook is used by kube-apiserver to handle TokenReview objects.
 // Note that we do not use the normal types.SyncResponse here, because it breaks the response format that kube-apiserver expects.
-func (e *Endpoints) postKubernetesAuthWebhook(s types.State, r *http.Request) types.Response {
+func (e *Endpoints) postKubernetesAuthWebhook(s mctypes.State, r *http.Request) mctypes.Response {
 	review := apiv2.TokenReview{
 		APIVersion: "authentication.k8s.io/v1",
 		Kind:       "TokenReview",

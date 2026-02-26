@@ -4,13 +4,13 @@ import (
 	"fmt"
 
 	"github.com/canonical/microcluster/v3/microcluster"
-	"github.com/canonical/microcluster/v3/microcluster/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // k8sd implements Client.
 type k8sd struct {
 	app    *microcluster.MicroCluster
-	client types.Client
+	client mctypes.Client
 }
 
 // New creates a new k8sd client.
@@ -24,7 +24,7 @@ func New(stateDir string, address string) (*k8sd, error) {
 		return nil, fmt.Errorf("failed to initialize microcluster app: %w", err)
 	}
 
-	var client types.Client
+	var client mctypes.Client
 	if address == "" {
 		if client, err = app.LocalClient(); err != nil {
 			return nil, fmt.Errorf("failed to create local microcluster client: %w", err)

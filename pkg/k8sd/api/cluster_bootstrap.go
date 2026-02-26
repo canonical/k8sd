@@ -9,35 +9,35 @@ import (
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/microcluster/v3/microcluster/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) postClusterBootstrap(_ types.State, r *http.Request) types.Response {
+func (e *Endpoints) postClusterBootstrap(_ mctypes.State, r *http.Request) mctypes.Response {
 	req := apiv2.BootstrapClusterRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return types.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	// Convert Bootstrap config to map
 	config, err := utils.MicroclusterMapWithBootstrapConfig(nil, req.Config)
 	if err != nil {
-		return types.BadRequest(fmt.Errorf("failed to prepare bootstrap config: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to prepare bootstrap config: %w", err))
 	}
 
 	// Clean hostname
 	hostname, err := utils.CleanHostname(req.Name)
 	if err != nil {
-		return types.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
+		return mctypes.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
 	}
 
 	// Check if the cluster is already bootstrapped
 	status, err := e.provider.MicroCluster().Status(r.Context())
 	if err != nil {
-		return types.BadRequest(fmt.Errorf("failed to get boostrap status: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to get boostrap status: %w", err))
 	}
 
 	if status.Ready {
-		return types.BadRequest(fmt.Errorf("cluster is already bootstrapped"))
+		return mctypes.BadRequest(fmt.Errorf("cluster is already bootstrapped"))
 	}
 
 	// If not set, leave the default base dir location.
@@ -55,10 +55,10 @@ func (e *Endpoints) postClusterBootstrap(_ types.State, r *http.Request) types.R
 
 	// Bootstrap the cluster
 	if err := e.provider.MicroCluster().NewCluster(ctx, hostname, req.Address, config); err != nil {
-		return types.BadRequest(fmt.Errorf("failed to bootstrap new cluster: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to bootstrap new cluster: %w", err))
 	}
 
-	return types.SyncResponse(true, &apiv2.BootstrapClusterResponse{
+	return mctypes.SyncResponse(true, &apiv2.BootstrapClusterResponse{
 		Name:    hostname,
 		Address: req.Address,
 	})
