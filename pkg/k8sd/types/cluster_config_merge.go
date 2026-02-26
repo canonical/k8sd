@@ -124,6 +124,7 @@ func MergeClusterConfig(existing ClusterConfig, new ClusterConfig) (ClusterConfi
 	}{
 		// network
 		{name: "network enabled", val: &config.Network.Enabled, old: existing.Network.Enabled, new: new.Network.Enabled, allowChange: true},
+		{name: "network kube-proxy-free", val: &config.Network.KubeProxyFree, old: existing.Network.KubeProxyFree, new: new.Network.KubeProxyFree, allowChange: true},
 		// DNS
 		{name: "DNS enabled", val: &config.DNS.Enabled, old: existing.DNS.Enabled, new: new.DNS.Enabled, allowChange: true},
 		// gateway

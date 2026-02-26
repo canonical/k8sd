@@ -17,6 +17,7 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
+	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	upgradepkg "github.com/canonical/k8sd/pkg/upgrade"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
@@ -280,11 +281,23 @@ func (a *App) onPostJoin(ctx context.Context, s state.State, initConfig map[stri
 		return fmt.Errorf("failed to set snapd configuration from k8sd: %w", err)
 	}
 
+	// Write local state file for control-plane node
+	localState := snaputil.NewControlPlaneLocalState(cfg.Datastore.GetType())
+
+	// Disable kube-proxy in local state if kube-proxy-free mode is enabled
+	if cfg.Network.GetKubeProxyFree() {
+		localState.SetServiceEnabled(snaputil.ServiceKubeProxy, false)
+	}
+
+	if err := snaputil.WriteLocalState(snap, localState); err != nil {
+		return fmt.Errorf("failed to write local state: %w", err)
+	}
+
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	log.Info("Starting control-plane services")
 	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-		if err := startControlPlaneServices(ctx, snap, cfg.Datastore.GetType()); err != nil {
+		if err := snaputil.StartEnabledServices(ctx, snap, localState); err != nil {
 			return fmt.Errorf("failed to start services: %w", err)
 		}
 		return nil
