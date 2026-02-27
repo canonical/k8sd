@@ -1,0 +1,62 @@
+name: TICS Analysis
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0" # runs every sunday at 00:00
+  pull_request:
+    paths:
+      - .github/workflows/tics.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  TICS:
+    permissions:
+      contents: read
+    runs-on: [self-hosted, linux, amd64, tiobe, jammy]
+
+    steps:
+      - name: Checking out repo
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go mod download
+        run: |
+          go mod download
+
+      - name: Prepare Go coverage and build
+        run: |
+          set -ex
+
+          # TICS requires us to have the test results in cobertura xml format under the
+          # directory use below
+          sudo env "PATH=$PATH" make go.unit
+          go install github.com/boumenot/gocover-cobertura@v1.2.0
+          gocover-cobertura < coverage.txt > coverage.xml
+          mkdir .coverage
+          mv ./coverage.xml ./.coverage/
+
+          # Install staticcheck
+          go install honnef.co/go/tools/cmd/staticcheck@v0.6.1
+
+          # We need to have our project built
+          sudo env "PATH=$PATH" make bin/static/k8s
+
+      - name: Run TICS
+        uses: tiobe/tics-github-action@v3
+        with:
+          mode: qserver
+          project: ${{ github.event.repository.name }}
+          viewerUrl: https://canonical.tiobe.com/tiobeweb/TICS/api/cfg?name=GoProjects
+          ticsAuthToken: ${{ secrets.TICSAUTHTOKEN }}
+          installTics: true
