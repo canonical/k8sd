@@ -40,7 +40,7 @@ jobs:
 
           # TICS requires us to have the test results in cobertura xml format under the
           # directory use below
-          sudo make go.unit
+          sudo env "PATH=$PATH" make go.unit
           go install github.com/boumenot/gocover-cobertura@v1.2.0
           gocover-cobertura < coverage.txt > coverage.xml
           mkdir .coverage
@@ -50,7 +50,7 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@v0.6.1
 
           # We need to have our project built
-          sudo make bin/static/k8s
+          sudo env "PATH=$PATH" make bin/static/k8s
 
       - name: Run TICS
         uses: tiobe/tics-github-action@v3
