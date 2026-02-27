@@ -18,16 +18,19 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils/control"
-	"github.com/canonical/microcluster/v2/client"
-	"github.com/canonical/microcluster/v2/microcluster"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/microcluster/v3/microcluster"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // Config defines configuration for the k8sd app.
 type Config struct {
 	// Debug increases log message verbosity.
+	//
+	// Deprecated: No longer affects the underlying Microcluster.
 	Debug bool
 	// Verbose increases log message verbosity.
+	//
+	// Deprecated: No longer affects the underlying Microcluster.
 	Verbose bool
 	// StateDir is the local directory to store the state of the node.
 	StateDir string
@@ -62,7 +65,7 @@ type Config struct {
 type App struct {
 	config  Config
 	cluster *microcluster.MicroCluster
-	client  *client.Client
+	client  mctypes.Client
 	snap    snap.Snap
 
 	// profilingAddress
@@ -233,9 +236,9 @@ func New(cfg Config) (*App, error) {
 
 // Run starts the microcluster node and waits until it terminates.
 // any non-nil customHooks override the default hooks.
-func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
+func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 	// TODO: consider improving API for overriding hooks.
-	hooks := &state.Hooks{
+	hooks := &mctypes.Hooks{
 		PreInit:       a.onPreInit,
 		PostBootstrap: a.onBootstrap,
 		PostJoin:      a.onPostJoin,
@@ -280,10 +283,8 @@ func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
 		}()
 	}
 
-	err := a.cluster.Start(ctx, microcluster.DaemonArgs{
+	err := a.cluster.Start(mctypes.ContextWithLogger(ctx), microcluster.DaemonArgs{
 		Version:                 string(apiv2.K8sdAPIVersion),
-		Verbose:                 a.config.Verbose,
-		Debug:                   a.config.Debug,
 		Hooks:                   hooks,
 		ExtensionServers:        api.New(ctx, a, a.config.DrainConnectionsTimeout),
 		ExtensionsSchema:        database.SchemaExtensions,
@@ -301,7 +302,7 @@ func (a *App) Run(ctx context.Context, customHooks *state.Hooks) error {
 // - the kubernetes endpoint is reachable.
 // - the onNodeReady hook succeeds.
 // - snap services are started.
-func (a *App) markNodeReady(ctx context.Context, s state.State) error {
+func (a *App) markNodeReady(ctx context.Context, s mctypes.State) error {
 	log := log.FromContext(ctx).WithValues("startup", "waitForReady")
 
 	log.Info("Waiting for database to be open")

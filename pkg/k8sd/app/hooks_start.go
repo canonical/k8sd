@@ -15,10 +15,10 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (a *App) onStart(ctx context.Context, s state.State) error {
+func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 	if err := a.ensureRunningServices(ctx); err != nil {
 		return fmt.Errorf("failed to ensure running services: %w", err)
 	}
@@ -91,7 +91,7 @@ func (a *App) onStart(ctx context.Context, s state.State) error {
 			func(ctx context.Context) (types.ClusterConfig, error) {
 				return databaseutil.GetClusterConfig(ctx, s)
 			},
-			func() state.State {
+			func() mctypes.State {
 				return s
 			},
 			func(ctx context.Context, dnsIP string) error {

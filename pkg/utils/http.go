@@ -5,20 +5,15 @@ import (
 	"fmt"
 	"net/http"
 
-	lxd "github.com/canonical/lxd/lxd/response"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // JSONResponse marshals the response to JSON and sets the status code.
-func JSONResponse(status int, v any) lxd.Response {
+func JSONResponse(status int, v any) mctypes.Response {
 	b, _ := json.Marshal(v)
-	return response(status, b)
-}
-
-// Response writes the response and sets the status code.
-func response(status int, v []byte) lxd.Response {
-	return lxd.ManualResponse(func(w http.ResponseWriter) error {
+	return mctypes.ManualResponse(func(w http.ResponseWriter) error {
 		w.WriteHeader(status)
-		w.Write(v)
+		w.Write(b)
 		w.Write([]byte("\n"))
 		return nil
 	})
@@ -29,8 +24,8 @@ type responseRenderer func(w http.ResponseWriter, r *http.Request) error
 
 // manualResponseWithSignal creates a manual response that flushes the response to
 // the client and signals completion on the given channel.
-func manualResponseWithSignal(readyCh chan error, r *http.Request, renderer responseRenderer) lxd.Response {
-	return lxd.ManualResponse(func(w http.ResponseWriter) (rerr error) {
+func manualResponseWithSignal(readyCh chan error, r *http.Request, renderer responseRenderer) mctypes.Response {
+	return mctypes.ManualResponse(func(w http.ResponseWriter) (rerr error) {
 		defer func() {
 			readyCh <- rerr
 			close(readyCh)
@@ -52,8 +47,8 @@ func manualResponseWithSignal(readyCh chan error, r *http.Request, renderer resp
 
 // SyncManualResponseWithSignal is a convenience wrapper for manualResponseWithSignal
 // that renders a standard SyncResponse.
-func SyncManualResponseWithSignal(req *http.Request, readyCh chan error, result any) lxd.Response {
+func SyncManualResponseWithSignal(req *http.Request, readyCh chan error, result any) mctypes.Response {
 	return manualResponseWithSignal(readyCh, req, func(w http.ResponseWriter, r *http.Request) error {
-		return lxd.SyncResponse(true, result).Render(w, r)
+		return mctypes.SyncResponse(true, result).Render(w, r)
 	})
 }

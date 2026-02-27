@@ -14,8 +14,8 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/lxd/shared"
 	"github.com/canonical/lxd/shared/termios"
-	"github.com/canonical/microcluster/v2/cluster"
-	"github.com/canonical/microcluster/v2/microcluster"
+	"github.com/canonical/microcluster/v3/microcluster"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v2"
@@ -223,7 +223,7 @@ func recoverK8sd() (string, error) {
 		return "", fmt.Errorf("could not serialize cluster members, error: %w", err)
 	}
 
-	clusterYamlPath := path.Join(m.FileSystem.DatabaseDir, "cluster.yaml")
+	clusterYamlPath := path.Join(m.FileSystem.DatabaseDir(), "cluster.yaml")
 	clusterYamlCommentHeader := fmt.Sprintf("# K8sd cluster configuration\n# (based on the trust store and %s)\n", clusterYamlPath)
 
 	clusterYamlContent := oldMembersYaml
@@ -247,7 +247,7 @@ func recoverK8sd() (string, error) {
 			return "", fmt.Errorf("interactive text editor failed, error: %w", err)
 		}
 
-		infoYamlPath := path.Join(m.FileSystem.DatabaseDir, "info.yaml")
+		infoYamlPath := path.Join(m.FileSystem.DatabaseDir(), "info.yaml")
 		infoYamlCommentHeader := fmt.Sprintf("# K8sd info.yaml\n# (%s)\n", infoYamlPath)
 		_, err = yamlEditorGuide(
 			infoYamlPath,
@@ -266,7 +266,7 @@ func recoverK8sd() (string, error) {
 			return "", fmt.Errorf("interactive text editor failed, error: %w", err)
 		}
 
-		daemonYamlPath := path.Join(m.FileSystem.StateDir, "daemon.yaml")
+		daemonYamlPath := path.Join(m.FileSystem.StateDir(), "daemon.yaml")
 		daemonYamlCommentHeader := fmt.Sprintf("# K8sd daemon.yaml\n# (%s)\n", daemonYamlPath)
 		_, err = yamlEditorGuide(
 			daemonYamlPath,
@@ -286,7 +286,7 @@ func recoverK8sd() (string, error) {
 		}
 	}
 
-	newMembers := []cluster.DqliteMember{}
+	newMembers := []mctypes.DqliteMember{}
 	if err = yaml.Unmarshal(clusterYamlContent, &newMembers); err != nil {
 		return "", fmt.Errorf("couldn't parse cluster.yaml, error: %w", err)
 	}

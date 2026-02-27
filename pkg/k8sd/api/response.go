@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/canonical/lxd/lxd/response"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 const (
@@ -11,10 +11,10 @@ const (
 	StatusNodeInUse = 521
 )
 
-func NodeUnavailable(err error) response.Response {
-	return response.ErrorResponse(StatusNodeUnavailable, err.Error())
+func NodeUnavailable(err error) mctypes.Response {
+	return mctypes.ErrorResponse(StatusNodeUnavailable, err.Error())
 }
 
-func NodeInUse(err error) response.Response {
-	return response.ErrorResponse(StatusNodeInUse, err.Error())
+func NodeInUse(err error) mctypes.Response {
+	return mctypes.ErrorResponse(StatusNodeInUse, err.Error())
 }

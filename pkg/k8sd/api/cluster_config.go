@@ -11,23 +11,22 @@ import (
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) putClusterConfig(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) putClusterConfig(s mctypes.State, r *http.Request) mctypes.Response {
 	var req apiv2.SetClusterConfigRequest
 
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to decode request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to decode request: %w", err))
 	}
 
 	requestedConfig, err := types.ClusterConfigFromUserFacing(req.Config)
 	if err != nil {
-		return response.BadRequest(fmt.Errorf("invalid configuration: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("invalid configuration: %w", err))
 	}
 	if requestedConfig.Datastore, err = types.DatastoreConfigFromUserFacing(req.Datastore); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse datastore config: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse datastore config: %w", err))
 	}
 
 	if err := s.Database().Transaction(r.Context(), func(ctx context.Context, tx *sql.Tx) error {
@@ -36,7 +35,7 @@ func (e *Endpoints) putClusterConfig(s state.State, r *http.Request) response.Re
 		}
 		return nil
 	}); err != nil {
-		return response.InternalError(fmt.Errorf("database transaction to update cluster configuration failed: %w", err))
+		return mctypes.InternalError(fmt.Errorf("database transaction to update cluster configuration failed: %w", err))
 	}
 
 	e.provider.NotifyUpdateNodeConfigController()
@@ -50,16 +49,16 @@ func (e *Endpoints) putClusterConfig(s state.State, r *http.Request) response.Re
 		!requestedConfig.DNS.Empty() || !requestedConfig.Kubelet.Empty(),
 	)
 
-	return response.SyncResponse(true, &apiv2.SetClusterConfigResponse{})
+	return mctypes.SyncResponse(true, &apiv2.SetClusterConfigResponse{})
 }
 
-func (e *Endpoints) getClusterConfig(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) getClusterConfig(s mctypes.State, r *http.Request) mctypes.Response {
 	config, err := databaseutil.GetClusterConfig(r.Context(), s)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to retrieve cluster configuration: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to retrieve cluster configuration: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv2.GetClusterConfigResponse{
+	return mctypes.SyncResponse(true, &apiv2.GetClusterConfigResponse{
 		Config:      config.ToUserFacing(),
 		Datastore:   config.Datastore.ToUserFacing(),
 		PodCIDR:     config.Network.PodCIDR,

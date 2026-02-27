@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/k8sd/pkg/k8sd/types"
-	"github.com/canonical/microcluster/v2/cluster"
+	"github.com/canonical/microcluster/v3/microcluster/db"
 )
 
 var clusterConfigsStmts = map[string]int{
@@ -32,7 +32,7 @@ func SetClusterConfig(ctx context.Context, tx *sql.Tx, new types.ClusterConfig) 
 	if err != nil {
 		return types.ClusterConfig{}, fmt.Errorf("failed to encode cluster config: %w", err)
 	}
-	insertTxStmt, err := cluster.Stmt(tx, clusterConfigsStmts["insert-v1alpha2"])
+	insertTxStmt, err := db.Stmt(tx, clusterConfigsStmts["insert-v1alpha2"])
 	if err != nil {
 		return types.ClusterConfig{}, fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
@@ -44,7 +44,7 @@ func SetClusterConfig(ctx context.Context, tx *sql.Tx, new types.ClusterConfig) 
 
 // GetClusterConfig retrieves the cluster configuration from the database.
 func GetClusterConfig(ctx context.Context, tx *sql.Tx) (types.ClusterConfig, error) {
-	txStmt, err := cluster.Stmt(tx, clusterConfigsStmts["select-v1alpha2"])
+	txStmt, err := db.Stmt(tx, clusterConfigsStmts["select-v1alpha2"])
 	if err != nil {
 		return types.ClusterConfig{}, fmt.Errorf("failed to prepare statement: %w", err)
 	}

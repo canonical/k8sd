@@ -12,33 +12,32 @@ import (
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
-func (e *Endpoints) getClusterStatus(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.Response {
 	// fail if node is not initialized yet
 	if err := s.Database().IsOpen(r.Context()); err != nil {
-		return response.Unavailable(fmt.Errorf("daemon not yet initialized"))
+		return mctypes.Unavailable(fmt.Errorf("daemon not yet initialized"))
 	}
 
-	members, err := impl.GetClusterMembers(r.Context(), s)
+	members, err := impl.GetClusterMembers(r.Context(), s, e.provider.Snap())
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to get cluster members: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to get cluster members: %w", err))
 	}
 	config, err := databaseutil.GetClusterConfig(r.Context(), s)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
 
 	client, err := e.provider.Snap().KubernetesClient("")
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
 
 	ready, err := client.HasReadyNodes(r.Context())
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to check if cluster has ready nodes: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to check if cluster has ready nodes: %w", err))
 	}
 
 	var statuses map[types.FeatureName]types.FeatureStatus
@@ -50,10 +49,10 @@ func (e *Endpoints) getClusterStatus(s state.State, r *http.Request) response.Re
 		}
 		return nil
 	}); err != nil {
-		return response.InternalError(fmt.Errorf("database transaction failed: %w", err))
+		return mctypes.InternalError(fmt.Errorf("database transaction failed: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv2.ClusterStatusResponse{
+	return mctypes.SyncResponse(true, &apiv2.ClusterStatusResponse{
 		ClusterStatus: apiv2.ClusterStatus{
 			Ready:   ready,
 			Members: members,

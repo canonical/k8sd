@@ -7,15 +7,14 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/canonical/lxd/lxd/db/schema"
-	"github.com/canonical/microcluster/v2/cluster"
+	"github.com/canonical/microcluster/v3/microcluster/db"
 )
 
 var (
 	// SchemaExtensions defines the schema updates for the database.
 	// SchemaExtensions are apply only.
 	// Note(ben): Never change the order or remove a migration as this would break the internal microcluster counter!
-	SchemaExtensions = []schema.Update{
+	SchemaExtensions = []db.Update{
 		schemaApplyMigration("kubernetes-auth-tokens", "000-create.sql"),
 		schemaApplyMigration("cluster-configs", "000-create.sql"),
 		schemaApplyMigration("worker-nodes", "000-create.sql"),
@@ -32,7 +31,7 @@ var (
 	sqlQueries embed.FS
 )
 
-func schemaApplyMigration(migrationPath ...string) schema.Update {
+func schemaApplyMigration(migrationPath ...string) db.Update {
 	path := filepath.Join(append([]string{"sql", "migrations"}, migrationPath...)...)
 	b, err := sqlMigrations.ReadFile(path)
 	if err != nil {
@@ -53,5 +52,5 @@ func MustPrepareStatement(queryPath ...string) int {
 	if err != nil {
 		panic(fmt.Errorf("invalid query file %s: %w", path, err))
 	}
-	return cluster.RegisterStmt(string(b))
+	return db.RegisterStmt(string(b))
 }
