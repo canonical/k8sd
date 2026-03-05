@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/canonical/microcluster/v2/cluster"
+	"github.com/canonical/microcluster/v3/microcluster/db"
 )
 
 var workerStmts = map[string]int{
@@ -22,7 +22,7 @@ var workerStmts = map[string]int{
 // CheckWorkerNodeToken will return true if the token is empty or if the token is associated with the specified node
 // and has not expired.
 func CheckWorkerNodeToken(ctx context.Context, tx *sql.Tx, nodeName string, token string) (bool, error) {
-	selectTxStmt, err := cluster.Stmt(tx, workerStmts["select-token"])
+	selectTxStmt, err := db.Stmt(tx, workerStmts["select-token"])
 	if err != nil {
 		return false, fmt.Errorf("failed to prepare select statement: %w", err)
 	}
@@ -39,7 +39,7 @@ func CheckWorkerNodeToken(ctx context.Context, tx *sql.Tx, nodeName string, toke
 // GetOrCreateWorkerNodeToken returns a token that can be used to join a worker node on the cluster.
 // GetOrCreateWorkerNodeToken will return the existing token, if one already exists for the node.
 func GetOrCreateWorkerNodeToken(ctx context.Context, tx *sql.Tx, nodeName string, expiry time.Time) (string, error) {
-	insertTxStmt, err := cluster.Stmt(tx, workerStmts["insert-token"])
+	insertTxStmt, err := db.Stmt(tx, workerStmts["insert-token"])
 	if err != nil {
 		return "", fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
@@ -58,7 +58,7 @@ func GetOrCreateWorkerNodeToken(ctx context.Context, tx *sql.Tx, nodeName string
 
 // DeleteWorkerNodeToken returns a token that can be used to join worker nodes on the cluster.
 func DeleteWorkerNodeToken(ctx context.Context, tx *sql.Tx, nodeName string) error {
-	deleteTxStmt, err := cluster.Stmt(tx, workerStmts["delete-token"])
+	deleteTxStmt, err := db.Stmt(tx, workerStmts["delete-token"])
 	if err != nil {
 		return fmt.Errorf("failed to prepare delete statement: %w", err)
 	}

@@ -15,7 +15,7 @@ import (
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	"github.com/canonical/k8sd/pkg/utils"
 	timeutils "github.com/canonical/k8sd/pkg/utils/time"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // FeatureController manages the lifecycle of built-in Canonical Kubernetes features on a running cluster.
@@ -137,7 +137,7 @@ func NewFeatureController(opts FeatureControllerOpts) *FeatureController {
 func (c *FeatureController) Run(
 	ctx context.Context,
 	getClusterConfig func(context.Context) (types.ClusterConfig, error),
-	getState func() state.State,
+	getState func() mctypes.State,
 	notifyDNSChangedIP func(ctx context.Context, dnsIP string) error,
 	setFeatureStatus func(ctx context.Context, name types.FeatureName, featureStatus types.FeatureStatus) error,
 ) {

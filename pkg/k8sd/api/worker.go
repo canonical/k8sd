@@ -13,29 +13,28 @@ import (
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
-func (e *Endpoints) postWorkerInfo(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) postWorkerInfo(s mctypes.State, r *http.Request) mctypes.Response {
 	snap := e.provider.Snap()
 
 	req := apiv2.GetWorkerJoinInfoRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	// Existence of this header is already checked in the access handler.
 	workerName := r.Header.Get("Worker-Name")
 	nodeIP := net.ParseIP(req.Address)
 	if nodeIP == nil {
-		return response.BadRequest(fmt.Errorf("failed to parse node IP address %s", req.Address))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse node IP address %s", req.Address))
 	}
 
 	cfg, err := databaseutil.GetClusterConfig(r.Context(), s)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
 
 	// NOTE: Set the notBefore certificate time to the current time.
@@ -49,39 +48,39 @@ func (e *Endpoints) postWorkerInfo(s state.State, r *http.Request) response.Resp
 	certificates.ClientCAKey = cfg.Certificates.GetClientCAKey()
 	workerCertificates, err := certificates.CompleteWorkerNodePKI(workerName, nodeIP, 2048)
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to generate worker PKI: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to generate worker PKI: %w", err))
 	}
 
 	client, err := snap.KubernetesClient("")
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to create kubernetes client: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to create kubernetes client: %w", err))
 	}
 	if err := client.WaitKubernetesEndpointAvailable(r.Context()); err != nil {
-		return response.InternalError(fmt.Errorf("kubernetes endpoints not ready yet: %w", err))
+		return mctypes.InternalError(fmt.Errorf("kubernetes endpoints not ready yet: %w", err))
 	}
 
 	// Check if the node name already exists in the cluster.
 	_, err = client.GetNode(r.Context(), workerName)
 	if err == nil {
-		return response.BadRequest(fmt.Errorf("node name already exists: %s", workerName))
+		return mctypes.BadRequest(fmt.Errorf("node name already exists: %s", workerName))
 	} else if !apierrors.IsNotFound(err) {
 		// Request to fetch node failed for some other reason
-		return response.InternalError(fmt.Errorf("failed to check whether worker node name is available %s: %w", workerName, err))
+		return mctypes.InternalError(fmt.Errorf("failed to check whether worker node name is available %s: %w", workerName, err))
 	}
 
 	servers, err := client.GetKubeAPIServerEndpoints(r.Context())
 	if err != nil {
-		return response.InternalError(fmt.Errorf("failed to retrieve list of known kube-apiserver endpoints: %w", err))
+		return mctypes.InternalError(fmt.Errorf("failed to retrieve list of known kube-apiserver endpoints: %w", err))
 	}
 
 	workerToken := r.Header.Get("Worker-Token")
 	if err := s.Database().Transaction(r.Context(), func(ctx context.Context, tx *sql.Tx) error {
 		return database.DeleteWorkerNodeToken(ctx, tx, workerToken)
 	}); err != nil {
-		return response.InternalError(fmt.Errorf("delete worker node token transaction failed: %w", err))
+		return mctypes.InternalError(fmt.Errorf("delete worker node token transaction failed: %w", err))
 	}
 
-	return response.SyncResponse(true, &apiv2.GetWorkerJoinInfoResponse{
+	return mctypes.SyncResponse(true, &apiv2.GetWorkerJoinInfoResponse{
 		CACert:              cfg.Certificates.GetCACert(),
 		ClientCACert:        cfg.Certificates.GetClientCACert(),
 		APIServers:          servers,

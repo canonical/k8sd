@@ -7,11 +7,11 @@ import (
 
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // GetClusterConfig is a convenience wrapper around the database call to get the cluster config.
-func GetClusterConfig(ctx context.Context, state state.State) (types.ClusterConfig, error) {
+func GetClusterConfig(ctx context.Context, state mctypes.State) (types.ClusterConfig, error) {
 	var clusterConfig types.ClusterConfig
 	var err error
 

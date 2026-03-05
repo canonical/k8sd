@@ -9,7 +9,7 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/api"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	. "github.com/onsi/gomega"
 )
 
@@ -60,7 +60,7 @@ func TestValidateCAPIAuthTokenAccessHandler(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			testenv.WithState(t, func(ctx context.Context, s state.State) {
+			testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
 				var err error
 				if tc.tokenDBContent != "" {
 					err = s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
@@ -72,6 +72,7 @@ func TestValidateCAPIAuthTokenAccessHandler(t *testing.T) {
 				req := &http.Request{
 					Header: make(http.Header),
 				}
+				req = req.WithContext(mctypes.ContextWithLogger(ctx))
 				req.Header.Set("Capi-Auth-Token", tc.tokenHeaderContent)
 
 				handler := api.ValidateCAPIAuthTokenAccessHandler("Capi-Auth-Token")

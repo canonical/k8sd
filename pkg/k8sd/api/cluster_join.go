@@ -10,25 +10,24 @@ import (
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/lxd/lxd/response"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"gopkg.in/yaml.v2"
 )
 
-func (e *Endpoints) postClusterJoin(s state.State, r *http.Request) response.Response {
+func (e *Endpoints) postClusterJoin(s mctypes.State, r *http.Request) mctypes.Response {
 	req := apiv2.JoinClusterRequest{}
 	if err := utils.NewStrictJSONDecoder(r.Body).Decode(&req); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse request: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
 	hostname, err := utils.CleanHostname(req.Name)
 	if err != nil {
-		return response.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
+		return mctypes.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
 	}
 	// Check if the cluster is already bootstrapped
 	status, err := e.provider.MicroCluster().Status(r.Context())
 	if err != nil {
-		return response.BadRequest(fmt.Errorf("failed to get microcluster status: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to get microcluster status: %w", err))
 	}
 
 	if status.Ready {
@@ -43,7 +42,7 @@ func (e *Endpoints) postClusterJoin(s state.State, r *http.Request) response.Res
 	}{}
 
 	if err := yaml.Unmarshal([]byte(req.Config), &joinConfig); err != nil {
-		return response.BadRequest(fmt.Errorf("failed to parse request config: %w", err))
+		return mctypes.BadRequest(fmt.Errorf("failed to parse request config: %w", err))
 	}
 
 	if joinConfig.ContainerdBaseDir != "" {
@@ -67,15 +66,15 @@ func (e *Endpoints) postClusterJoin(s state.State, r *http.Request) response.Res
 		// The validation of the token is done when fetching the cluster information.
 		config = utils.MicroclusterMapWithWorkerJoinConfig(config, req.Token, req.Config)
 		if err := e.provider.MicroCluster().NewCluster(ctx, hostname, req.Address, config); err != nil {
-			return response.InternalError(fmt.Errorf("failed to join k8sd cluster as worker: %w", err))
+			return mctypes.InternalError(fmt.Errorf("failed to join k8sd cluster as worker: %w", err))
 		}
 	} else {
 		// Is not a worker token. let microcluster check if it is a valid control-plane token.
 		config = utils.MicroclusterMapWithControlPlaneJoinConfig(config, req.Config)
 		if err := e.provider.MicroCluster().JoinCluster(ctx, hostname, req.Address, req.Token, config); err != nil {
-			return response.InternalError(fmt.Errorf("failed to join k8sd cluster as control plane: %w", err))
+			return mctypes.InternalError(fmt.Errorf("failed to join k8sd cluster as control plane: %w", err))
 		}
 	}
 
-	return response.SyncResponse(true, &apiv2.JoinClusterResponse{})
+	return mctypes.SyncResponse(true, &apiv2.JoinClusterResponse{})
 }

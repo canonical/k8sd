@@ -8,7 +8,7 @@ import (
 
 	"github.com/canonical/k8sd/pkg/k8sd/app"
 	"github.com/canonical/k8sd/pkg/snap/mock"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 const (
@@ -29,7 +29,7 @@ var nextIdx int
 //	func TestKubernetesAuthTokens(t *testing.T) {
 //		t.Run("ValidToken", func(t *testing.T) {
 //			g := NewWithT(t)
-//			WithState(t, func(ctx context.Context, s state.State) {
+//			WithState(t, func(ctx context.Context, s types.State) {
 //				err := db.Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 //					token, err := s.Database().GetOrCreateToken(ctx, tx, "user1", []string{"group1", "group2"})
 //					if !g.Expect(err).To(Not(HaveOccurred())) {
@@ -42,8 +42,8 @@ var nextIdx int
 //			})
 //		})
 //	}
-func WithState(t *testing.T, f func(context.Context, state.State)) {
-	ctx, cancel := context.WithCancel(context.Background())
+func WithState(t *testing.T, f func(context.Context, mctypes.State)) {
+	ctx, cancel := context.WithCancel(mctypes.ContextWithLogger(context.Background()))
 	defer cancel()
 
 	snapMock := mock.Snap{
@@ -57,19 +57,19 @@ func WithState(t *testing.T, f func(context.Context, state.State)) {
 		t.Fatalf("failed to create microcluster app: %v", err)
 	}
 
-	stateChan := make(chan state.State, 1)
+	stateChan := make(chan mctypes.State, 1)
 	doneCh := make(chan error, 1)
 	defer close(stateChan)
 	defer close(doneCh)
 
 	// app.Run() is blocking, so we get the state handle through a channel
 	go func() {
-		doneCh <- app.Run(ctx, &state.Hooks{
-			PostBootstrap: func(ctx context.Context, s state.State, initConfig map[string]string) error {
+		doneCh <- app.Run(ctx, &mctypes.Hooks{
+			PostBootstrap: func(ctx context.Context, s mctypes.State, initConfig map[string]string) error {
 				stateChan <- s
 				return nil
 			},
-			OnStart: func(ctx context.Context, s state.State) error {
+			OnStart: func(ctx context.Context, s mctypes.State) error {
 				return nil
 			},
 		})

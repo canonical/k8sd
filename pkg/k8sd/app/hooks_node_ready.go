@@ -8,7 +8,7 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // onNodeReady is called when the node is ready, right after the wait group is released.
@@ -16,7 +16,7 @@ import (
 // - the microcluster database is accessible
 // - the kubernetes endpoint is reachable.
 // Note that this is not a microcluster hook, but a custom k8sd hook.
-func (a *App) onNodeReady(ctx context.Context, s state.State) error {
+func (a *App) onNodeReady(ctx context.Context, s mctypes.State) error {
 	log := log.FromContext(ctx).WithValues("hook", "onNodeReady")
 
 	// Apply all custom CRDs on startup

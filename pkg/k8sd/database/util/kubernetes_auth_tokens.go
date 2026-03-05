@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	"github.com/canonical/k8sd/pkg/k8sd/database"
-	"github.com/canonical/microcluster/v2/state"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // GetOrCreateAuthToken returns a k8s auth token based on the provided username/groups.
-func GetOrCreateAuthToken(ctx context.Context, state state.State, username string, groups []string) (string, error) {
+func GetOrCreateAuthToken(ctx context.Context, state mctypes.State, username string, groups []string) (string, error) {
 	var token string
 	if err := state.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
@@ -22,7 +22,7 @@ func GetOrCreateAuthToken(ctx context.Context, state state.State, username strin
 	return token, nil
 }
 
-func RevokeAuthToken(ctx context.Context, state state.State, token string) error {
+func RevokeAuthToken(ctx context.Context, state mctypes.State, token string) error {
 	if err := state.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		if err := database.DeleteToken(ctx, tx, token); err != nil {
 			return fmt.Errorf("failed to delete token from database: %w", err)

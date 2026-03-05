@@ -9,7 +9,7 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/lxd/shared/api"
-	"github.com/canonical/microcluster/v2/rest/types"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // query is a helper method for sending requests to the k8sd client with common error checking and automatic retries.
@@ -21,7 +21,7 @@ func query[T any](ctx context.Context, c *k8sd, method, path string, in any, out
 	}
 
 	retryErr := control.WaitUntilReady(ctx, func() (bool, error) {
-		err := c.client.Query(ctx, method, apiv2.K8sdAPIVersion, api.NewURL().Path(strings.Split(path, "/")...), in, out)
+		err := c.client.Query(ctx, method, apiv2.K8sdAPIVersion, &api.NewURL().Path(strings.Split(path, "/")...).URL, in, out)
 		if err != nil {
 			if isTemporary(err) {
 				log.FromContext(ctx).Info("Temporary error from k8sd: %v", err)
@@ -48,7 +48,7 @@ func query[T any](ctx context.Context, c *k8sd, method, path string, in any, out
 // This function is tightly coupled with the error messages returned by microcluster and
 // should not contain any generic error checks.
 func isTemporary(err error) bool {
-	if strings.Contains(err.Error(), string(types.DatabaseStarting)) ||
+	if strings.Contains(err.Error(), string(mctypes.DatabaseStarting)) ||
 		strings.Contains(err.Error(), "Database is not yet ready") {
 		return true
 	}

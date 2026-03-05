@@ -5,18 +5,19 @@ import (
 	"fmt"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
-	"github.com/canonical/microcluster/v2/state"
+	"github.com/canonical/k8sd/pkg/snap"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 // GetControlPlaneNode returns the node information if the given node name
 // belongs to a control-plane in the cluster or nil if not.
-func GetControlPlaneNode(ctx context.Context, s state.State, name string) (*apiv2.NodeStatus, error) {
-	client, err := s.Leader()
+func GetControlPlaneNode(ctx context.Context, s mctypes.State, name string, snap snap.Snap) (*apiv2.NodeStatus, error) {
+	c, err := snap.K8sdClient("")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get microcluster leader client: %w", err)
+		return nil, fmt.Errorf("failed to get k8sd client: %w", err)
 	}
 
-	members, err := client.GetClusterMembers(ctx)
+	members, err := c.GetClusterMembers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get microcluster members: %w", err)
 	}
@@ -35,8 +36,8 @@ func GetControlPlaneNode(ctx context.Context, s state.State, name string) (*apiv
 }
 
 // IsControlPlaneNode returns true if the given node name belongs to a control-plane node in the cluster.
-func IsControlPlaneNode(ctx context.Context, s state.State, name string) (bool, error) {
-	node, err := GetControlPlaneNode(ctx, s, name)
+func IsControlPlaneNode(ctx context.Context, s mctypes.State, name string, snap snap.Snap) (bool, error) {
+	node, err := GetControlPlaneNode(ctx, s, name, snap)
 	if err != nil {
 		return false, fmt.Errorf("failed to get control-plane node: %w", err)
 	}
