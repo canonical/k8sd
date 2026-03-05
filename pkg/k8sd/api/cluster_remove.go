@@ -184,7 +184,8 @@ func removeNodeFromMicrocluster(ctx context.Context, s mctypes.State, nodeName s
 	} else {
 		// NOTE(Hue): It's okay if we pass an empty string to the `RemoveClusterMember` call below
 		// since the nodeAddr is only being used for specific edge cases on the Microcluster side.
-		// e.g. when the name is no longer resolvable by dqlite.
+		// e.g. when we need the address to remove the node from
+		// dqlite and microcluster's name -> address mapping is unavailable.
 		nodeAddr = toBeRemovedMember.Address.String()
 	}
 

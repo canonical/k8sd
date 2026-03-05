@@ -6,7 +6,7 @@ require (
 	dario.cat/mergo v1.0.2
 	github.com/canonical/k8s-snap-api/v2 v2.0.0
 	github.com/canonical/lxd v0.0.0-20260224152359-d936c90d47cf
-	github.com/canonical/microcluster/v3 v3.0.0-20260225144347-2494a74b0da5
+	github.com/canonical/microcluster/v3 v3.0.2
 	github.com/go-logr/logr v1.4.3
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/sys/mountinfo v0.7.2

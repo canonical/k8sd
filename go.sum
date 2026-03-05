@@ -36,8 +36,8 @@ github.com/canonical/k8s-snap-api/v2 v2.0.0 h1:yR2xHd1RTv0s83aKHBmUvVSxSgQn4Tywi
 github.com/canonical/k8s-snap-api/v2 v2.0.0/go.mod h1:M+SGUcYDAM0zmHS0xMg7lWI1/kzNtwPHR++OZ2ejQnQ=
 github.com/canonical/lxd v0.0.0-20260224152359-d936c90d47cf h1:DFDQBnSrj2GHBhAR7D+TPJjZAmXZX6mlcT6nooS0vZo=
 github.com/canonical/lxd v0.0.0-20260224152359-d936c90d47cf/go.mod h1:T5HIfwBSsoZdbH32v5zLmN7pJZNFkfPfooqO4f4pI48=
-github.com/canonical/microcluster/v3 v3.0.0-20260225144347-2494a74b0da5 h1:Rx2neZ4ppTsS9hU+6VP52RojLdb5358P/TszowHboDU=
-github.com/canonical/microcluster/v3 v3.0.0-20260225144347-2494a74b0da5/go.mod h1:51SGm0L8T1ihKqllE/EH75DxOip4IW+eO7JJBsBnTGI=
+github.com/canonical/microcluster/v3 v3.0.2 h1:/wPrReFuQu6clY0OlpXBV2nYXmywYXVOjTx7T6Kj7YY=
+github.com/canonical/microcluster/v3 v3.0.2/go.mod h1:51SGm0L8T1ihKqllE/EH75DxOip4IW+eO7JJBsBnTGI=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
