@@ -1,9 +1,5 @@
 {
     "extends": [
       "config:go"
-    ],
-    "go": {
-      "enabled": true,
-      "baseDir": "."
-    }
+    ]
 }
