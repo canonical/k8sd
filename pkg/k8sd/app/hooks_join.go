@@ -238,8 +238,10 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 
 		learnerID := memberAddResp.Member.ID
 
-		// Register reverter for safe member removal on join failure
-		registerEtcdMemberReverter(snap, s.Name(), endpoints, reverter)
+		// Register reverter for safe learner removal on join failure.
+		// Learners do not count toward quorum, so removal is always safe
+		// regardless of cluster size.
+		registerEtcdMemberReverter(snap, s.Name(), endpoints, true, reverter)
 
 		// Build initial cluster members map from etcd members
 		initialClusterMembers := buildInitialClusterMembers(memberAddResp.Members)
@@ -253,6 +255,19 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		if err := snaputil.StartEtcdServices(ctx, snap); err != nil {
 			return fmt.Errorf("failed to start etcd learner: %w", err)
 		}
+
+		// Register a reverter to stop the etcd learner if promotion fails.
+		// Reverters run in LIFO order, so this runs before the member-removal
+		// reverter registered above, ensuring etcd is stopped before we
+		// remove the member from the cluster.
+		reverter.Add(func() {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			stopLog := log.FromContext(stopCtx).WithValues("step", "etcd-learner-stop", "node", s.Name())
+			if err := snaputil.StopEtcdServices(stopCtx, snap); err != nil {
+				stopLog.Error(err, "failed to stop etcd learner during join revert")
+			}
+		})
 
 		// Promote the learner to a full voting member once it has caught up.
 		// The etcd server will reject the promotion if the learner is not
@@ -343,8 +358,14 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 }
 
 // RegisterEtcdMemberReverter registers the reverter for etcd member removal on join failure.
-// It safely removes the member only if there are >2 endpoints to avoid quorum loss.
-func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []string, reverter *revert.Reverter) {
+//
+// For voting members (isLearner=false), removal requires >2 endpoints to ensure
+// the remaining cluster still has a majority and can maintain quorum.
+//
+// For learner members (isLearner=true), removal is always safe because learners
+// do not count toward quorum. Removal is attempted as long as at least one peer
+// endpoint is available to reach the cluster.
+func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []string, isLearner bool, reverter *revert.Reverter) {
 	reverter.Add(func() {
 		// Use an independent short-lived context for revert operations so
 		// they have a chance to complete even if the join hook's ctx has
@@ -353,11 +374,13 @@ func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []str
 		defer cancel()
 
 		log := log.FromContext(rmCtx).WithValues("step", "etcd-member-removal", "node", nodeName)
-		// Only remove the member if we have more than 2 endpoints,
-		// otherwise we lose quorum in etcd when removing a member.
-		// In such cases the join revert will be manual to avoid
-		// quorum loss.
-		if len(endpoints) > 2 {
+
+		// For voting members, only remove when there are >2 endpoints so
+		// that the remaining cluster keeps its majority (quorum protection).
+		// For learner members, any available endpoint is sufficient since
+		// learners do not affect quorum.
+		canRemove := (isLearner && len(endpoints) > 0) || len(endpoints) > 2
+		if canRemove {
 			etcdClient, err := snap.EtcdClient(endpoints)
 			if err != nil {
 				log.Error(err, "failed to create etcd client for member removal using peer endpoints")
