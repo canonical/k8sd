@@ -12,10 +12,16 @@ import (
 )
 
 // GetUpgrade returns the latest upgrade CR that matches the given filter function.
-// If multiple upgrades match, the latest one (sorted by name) is returned and a warning is logged.
+// If multiple upgrades match, the most recently created one is returned and a warning is logged.
 // If no upgrades match, nil is returned.
+// If filterFunc is nil, all upgrades are considered matching.
 func (c *Client) GetUpgrade(ctx context.Context, filterFunc func(upgradesv1alpha.Upgrade) bool) (*upgradesv1alpha.Upgrade, error) {
 	log := log.FromContext(ctx).WithValues("upgrades", "GetUpgrade")
+
+	// Default to a match-all predicate if no filter function is provided.
+	if filterFunc == nil {
+		filterFunc = func(upgradesv1alpha.Upgrade) bool { return true }
+	}
 
 	result := &upgradesv1alpha.UpgradeList{}
 	if err := c.List(ctx, result); err != nil {
@@ -38,9 +44,9 @@ func (c *Client) GetUpgrade(ctx context.Context, filterFunc func(upgradesv1alpha
 	if lenMatches > 1 {
 		log.Info("Warning: Found multiple matching upgrades", "matches", lenMatches)
 	}
-	// Sort matches by name
+	// Sort matches by creation timestamp
 	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].Name < matches[j].Name
+		return matches[i].CreationTimestamp.Before(&matches[j].CreationTimestamp)
 	})
 
 	// Return the latest
