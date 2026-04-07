@@ -379,7 +379,7 @@ func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []str
 		// that the remaining cluster keeps its majority (quorum protection).
 		// For learner members, any available endpoint is sufficient since
 		// learners do not affect quorum.
-		canRemove := (isLearner && len(endpoints) > 0) || len(endpoints) > 2
+		canRemove := (isLearner && len(endpoints) > 0) || (!isLearner && len(endpoints) > 2)
 		if canRemove {
 			etcdClient, err := snap.EtcdClient(endpoints)
 			if err != nil {
