@@ -11,13 +11,14 @@ import (
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/lxd/shared/revert"
 	. "github.com/onsi/gomega"
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-// TestRegisterEtcdMemberReverter_NotEnoughEndpoints tests that cleanup is skipped when <3 endpoints.
+// TestRegisterEtcdMemberReverter_NotEnoughEndpoints tests that cleanup is skipped when <3 endpoints for a voting member.
 func TestRegisterEtcdMemberReverter_NotEnoughEndpoints(t *testing.T) {
 	g := NewWithT(t)
 
@@ -29,7 +30,7 @@ func TestRegisterEtcdMemberReverter_NotEnoughEndpoints(t *testing.T) {
 	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
 	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
 
-	// Only 2 endpoints - RegisterEtcdMemberReverter skips etcd operations when <3
+	// Only 2 endpoints - RegisterEtcdMemberReverter skips etcd operations when <3 for voting members
 	endpoints := []string{"https://node1:2379", "https://node2:2379"}
 
 	mockSnap := &snapmock.Snap{
@@ -40,13 +41,13 @@ func TestRegisterEtcdMemberReverter_NotEnoughEndpoints(t *testing.T) {
 	}
 	reverter := revert.New()
 
-	registerEtcdMemberReverter(mockSnap, "node2", endpoints, reverter)
+	registerEtcdMemberReverter(mockSnap, "node2", endpoints, false, reverter)
 
 	// Trigger reverter
 	reverter.Fail()
 
 	// Verify directory was NOT cleaned up (quorum protection)
-	g.Expect(etcdDir).To(BeAnExistingFile())
+	g.Expect(etcdDir).To(BeADirectory())
 }
 
 // TestRegisterEtcdMemberReverter_ClientCreationFailure tests error handling when EtcdClient creation fails.
@@ -73,13 +74,81 @@ func TestRegisterEtcdMemberReverter_ClientCreationFailure(t *testing.T) {
 	}
 	reverter := revert.New()
 
-	registerEtcdMemberReverter(mockSnap, nodeName, endpoints, reverter)
+	registerEtcdMemberReverter(mockSnap, nodeName, endpoints, false, reverter)
 
 	// Trigger reverter
 	reverter.Fail()
 
 	// Verify directory was NOT cleaned up when client creation fails
-	g.Expect(etcdDir).To(BeAnExistingFile(), "etcd directory should NOT be removed when client creation fails")
+	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when client creation fails")
+}
+
+// TestRegisterEtcdMemberReverter_Learner_NoEndpoints tests that cleanup is skipped
+// for a learner when no peer endpoints are available.
+func TestRegisterEtcdMemberReverter_Learner_NoEndpoints(t *testing.T) {
+	g := NewWithT(t)
+
+	tmpDir := t.TempDir()
+	etcdDir := filepath.Join(tmpDir, "etcd")
+	g.Expect(os.MkdirAll(etcdDir, 0o755)).To(Succeed())
+
+	testFile := filepath.Join(etcdDir, "member/snap/db")
+	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
+	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
+
+	// No endpoints available - nothing to connect to
+	endpoints := []string{}
+
+	mockSnap := &snapmock.Snap{
+		Mock: snapmock.Mock{
+			EtcdDir: etcdDir,
+		},
+	}
+	reverter := revert.New()
+
+	registerEtcdMemberReverter(mockSnap, "node2", endpoints, true, reverter)
+
+	reverter.Fail()
+
+	// Verify directory was NOT cleaned up (no endpoints to reach the cluster)
+	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when no endpoints are available")
+}
+
+// TestRegisterEtcdMemberReverter_Learner_WithEndpoints_ClientError tests that
+// for a learner, removal is attempted even with a single endpoint (no quorum
+// guard), and handles client creation errors gracefully.
+func TestRegisterEtcdMemberReverter_Learner_WithEndpoints_ClientError(t *testing.T) {
+	g := NewWithT(t)
+
+	tmpDir := t.TempDir()
+	etcdDir := filepath.Join(tmpDir, "etcd")
+	g.Expect(os.MkdirAll(etcdDir, 0o755)).To(Succeed())
+
+	testFile := filepath.Join(etcdDir, "member/snap/db")
+	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
+	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
+
+	// Single endpoint - sufficient for a learner (no quorum impact)
+	endpoints := []string{"https://node1:2379"}
+	nodeName := "node2"
+
+	mockSnap := &snapmock.Snap{
+		Mock: snapmock.Mock{
+			EtcdDir:       etcdDir,
+			EtcdClientErr: fmt.Errorf("failed to create etcd client"),
+		},
+	}
+	reverter := revert.New()
+
+	registerEtcdMemberReverter(mockSnap, nodeName, endpoints, true, reverter)
+
+	// Should not panic; errors are logged but do not propagate
+	reverter.Fail()
+
+	// Directory is not removed because client creation failed, but the code
+	// must have attempted to create the client (isLearner=true bypasses the
+	// endpoint count guard).
+	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when client creation fails")
 }
 
 // TestRegisterK8sNodeDeletionReverter_FailDeletesNode ensures a failed join triggers Node deletion.
@@ -124,4 +193,117 @@ func TestRegisterK8sNodeDeletionReverter_Success(t *testing.T) {
 	// Node should still exist
 	_, err := clientset.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 	g.Expect(err).NotTo(HaveOccurred(), "node should remain when join succeeds")
+}
+
+func TestBuildInitialClusterMembers(t *testing.T) {
+	tests := []struct {
+		name     string
+		members  []*etcdserverpb.Member
+		expected map[string]string
+	}{
+		{
+			name:     "nil members returns empty map",
+			members:  nil,
+			expected: map[string]string{},
+		},
+		{
+			name:     "empty members returns empty map",
+			members:  []*etcdserverpb.Member{},
+			expected: map[string]string{},
+		},
+		{
+			name: "single started voting member is included",
+			members: []*etcdserverpb.Member{
+				{ID: 1, Name: "node1", PeerURLs: []string{"https://10.0.0.1:2380"}, IsLearner: false},
+			},
+			expected: map[string]string{
+				"node1": "https://10.0.0.1:2380",
+			},
+		},
+		{
+			name: "started learner member is included",
+			members: []*etcdserverpb.Member{
+				{ID: 1, Name: "node1", PeerURLs: []string{"https://10.0.0.1:2380"}, IsLearner: false},
+				{ID: 2, Name: "learner1", PeerURLs: []string{"https://10.0.0.2:2380"}, IsLearner: true},
+			},
+			expected: map[string]string{
+				"node1":    "https://10.0.0.1:2380",
+				"learner1": "https://10.0.0.2:2380",
+			},
+		},
+		{
+			name: "unstarted member with no name is excluded",
+			members: []*etcdserverpb.Member{
+				{ID: 1, Name: "node1", PeerURLs: []string{"https://10.0.0.1:2380"}, IsLearner: false},
+				{ID: 2, Name: "", PeerURLs: []string{"https://10.0.0.2:2380"}, IsLearner: true},
+			},
+			expected: map[string]string{
+				"node1": "https://10.0.0.1:2380",
+			},
+		},
+		{
+			name: "member with no peer URLs is excluded",
+			members: []*etcdserverpb.Member{
+				{ID: 1, Name: "node1", PeerURLs: []string{"https://10.0.0.1:2380"}, IsLearner: false},
+				{ID: 2, Name: "node2", PeerURLs: nil, IsLearner: false},
+			},
+			expected: map[string]string{
+				"node1": "https://10.0.0.1:2380",
+			},
+		},
+		{
+			name: "member with empty peer URLs is excluded",
+			members: []*etcdserverpb.Member{
+				{ID: 1, Name: "node1", PeerURLs: []string{"https://10.0.0.1:2380"}, IsLearner: false},
+				{ID: 2, Name: "node2", PeerURLs: []string{}, IsLearner: false},
+			},
+			expected: map[string]string{
+				"node1": "https://10.0.0.1:2380",
+			},
+		},
+		{
+			name: "typical learner join: existing leader + unstarted learner self",
+			members: []*etcdserverpb.Member{
+				// Existing leader (voting member, started)
+				{ID: 1, Name: "node1", PeerURLs: []string{"https://10.0.0.1:2380"}, IsLearner: false},
+				// Newly added learner (self, not started yet - no name)
+				{ID: 2, Name: "", PeerURLs: nil, IsLearner: true},
+			},
+			expected: map[string]string{
+				"node1": "https://10.0.0.1:2380",
+			},
+		},
+		{
+			name: "three node cluster with one learner joining",
+			members: []*etcdserverpb.Member{
+				{ID: 1, Name: "node1", PeerURLs: []string{"https://10.0.0.1:2380"}, IsLearner: false},
+				{ID: 2, Name: "node2", PeerURLs: []string{"https://10.0.0.2:2380"}, IsLearner: false},
+				{ID: 3, Name: "node3", PeerURLs: []string{"https://10.0.0.3:2380"}, IsLearner: false},
+				// Newly added learner (self, not started)
+				{ID: 4, Name: "", PeerURLs: nil, IsLearner: true},
+			},
+			expected: map[string]string{
+				"node1": "https://10.0.0.1:2380",
+				"node2": "https://10.0.0.2:2380",
+				"node3": "https://10.0.0.3:2380",
+			},
+		},
+		{
+			name: "uses first peer URL when multiple are present",
+			members: []*etcdserverpb.Member{
+				{ID: 1, Name: "node1", PeerURLs: []string{"https://10.0.0.1:2380", "https://10.0.0.1:2381"}, IsLearner: false},
+			},
+			expected: map[string]string{
+				"node1": "https://10.0.0.1:2380",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			result := buildInitialClusterMembers(tt.members)
+			g.Expect(result).To(Equal(tt.expected))
+		})
+	}
 }
