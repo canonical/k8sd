@@ -47,7 +47,7 @@ func TestRegisterEtcdMemberReverter_NotEnoughEndpoints(t *testing.T) {
 	reverter.Fail()
 
 	// Verify directory was NOT cleaned up (quorum protection)
-	g.Expect(etcdDir).To(BeAnExistingFile())
+	g.Expect(etcdDir).To(BeADirectory())
 }
 
 // TestRegisterEtcdMemberReverter_ClientCreationFailure tests error handling when EtcdClient creation fails.
@@ -80,7 +80,7 @@ func TestRegisterEtcdMemberReverter_ClientCreationFailure(t *testing.T) {
 	reverter.Fail()
 
 	// Verify directory was NOT cleaned up when client creation fails
-	g.Expect(etcdDir).To(BeAnExistingFile(), "etcd directory should NOT be removed when client creation fails")
+	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when client creation fails")
 }
 
 // TestRegisterEtcdMemberReverter_Learner_NoEndpoints tests that cleanup is skipped
@@ -111,7 +111,7 @@ func TestRegisterEtcdMemberReverter_Learner_NoEndpoints(t *testing.T) {
 	reverter.Fail()
 
 	// Verify directory was NOT cleaned up (no endpoints to reach the cluster)
-	g.Expect(etcdDir).To(BeAnExistingFile(), "etcd directory should NOT be removed when no endpoints are available")
+	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when no endpoints are available")
 }
 
 // TestRegisterEtcdMemberReverter_Learner_WithEndpoints_ClientError tests that
@@ -148,7 +148,7 @@ func TestRegisterEtcdMemberReverter_Learner_WithEndpoints_ClientError(t *testing
 	// Directory is not removed because client creation failed, but the code
 	// must have attempted to create the client (isLearner=true bypasses the
 	// endpoint count guard).
-	g.Expect(etcdDir).To(BeAnExistingFile(), "etcd directory should NOT be removed when client creation fails")
+	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when client creation fails")
 }
 
 // TestRegisterK8sNodeDeletionReverter_FailDeletesNode ensures a failed join triggers Node deletion.

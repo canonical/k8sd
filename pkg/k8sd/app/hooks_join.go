@@ -237,11 +237,69 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		}
 
 		learnerID := memberAddResp.Member.ID
+		promoted := false
+		etcdStarted := false
 
-		// Register reverter for safe learner removal on join failure.
-		// Learners do not count toward quorum, so removal is always safe
-		// regardless of cluster size.
-		registerEtcdMemberReverter(snap, s.Name(), endpoints, true, reverter)
+		// Register a single reverter that handles all etcd cleanup on join
+		// failure. The reverter adapts its behavior based on whether the
+		// learner has been promoted to a voting member.
+		//
+		// We remove by member ID rather than name, because a learner added
+		// via MemberAddAsLearner may not have its Name populated until the
+		// local etcd instance starts.
+		//
+		// Ordering matters for quorum safety:
+		//   - Learner (not promoted): stop etcd first, then remove the
+		//     learner by ID. Learners do not count toward quorum, so
+		//     removal is always safe.
+		//   - Voting member (promoted): remove the member by ID FIRST
+		//     while local etcd is still running to preserve quorum
+		//     (critical for 2-node clusters), then stop local etcd.
+		reverter.Add(func() {
+			rmCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cleanupLog := log.WithValues("step", "etcd-cleanup", "node", s.Name(), "memberID", learnerID, "promoted", promoted)
+
+			removeMember := func() bool {
+				if len(endpoints) == 0 {
+					cleanupLog.Info("Skipping etcd member removal: no client endpoints available")
+					return false
+				}
+				cleanupClient, err := snap.EtcdClient(endpoints)
+				if err != nil {
+					cleanupLog.Error(err, "Failed to create etcd client for member removal")
+					return false
+				}
+				defer cleanupClient.Close()
+				if _, err := cleanupClient.MemberRemove(rmCtx, learnerID); err != nil {
+					cleanupLog.Error(err, "Failed to remove etcd member")
+					return false
+				}
+				return true
+			}
+
+			// For a promoted (voting) member, remove it from the cluster
+			// before stopping local etcd to preserve quorum.
+			if promoted {
+				removeMember()
+			}
+
+			if etcdStarted {
+				if err := snaputil.StopEtcdServices(rmCtx, snap); err != nil {
+					cleanupLog.Error(err, "Failed to stop etcd during join revert")
+				}
+			}
+
+			// For a learner, removal is safe after stopping local etcd
+			// because learners do not affect quorum.
+			if !promoted {
+				removeMember()
+			}
+
+			if err := os.RemoveAll(snap.EtcdDir()); err != nil {
+				cleanupLog.Error(err, "Failed to cleanup etcd state directory")
+			}
+		})
 
 		// Build initial cluster members map from etcd members
 		initialClusterMembers := buildInitialClusterMembers(memberAddResp.Members)
@@ -255,19 +313,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		if err := snaputil.StartEtcdServices(ctx, snap); err != nil {
 			return fmt.Errorf("failed to start etcd learner: %w", err)
 		}
-
-		// Register a reverter to stop the etcd learner if promotion fails.
-		// Reverters run in LIFO order, so this runs before the member-removal
-		// reverter registered above, ensuring etcd is stopped before we
-		// remove the member from the cluster.
-		reverter.Add(func() {
-			stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			stopLog := log.WithValues("step", "etcd-learner-stop", "node", s.Name())
-			if err := snaputil.StopEtcdServices(stopCtx, snap); err != nil {
-				stopLog.Error(err, "failed to stop etcd learner during join revert")
-			}
-		})
+		etcdStarted = true
 
 		// Promote the learner to a full voting member once it has caught up.
 		// The etcd server will reject the promotion if the learner is not
@@ -281,6 +327,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		}); err != nil {
 			return fmt.Errorf("failed to promote etcd learner after retries: %w", err)
 		}
+		promoted = true
 		log.Info("Successfully promoted etcd learner to voting member")
 	case "external":
 	default:
@@ -363,7 +410,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 // the remaining cluster still has a majority and can maintain quorum.
 //
 // For learner members (isLearner=true), removal is always safe because learners
-// do not count toward quorum. Removal is attempted as long as at least one peer
+// do not count toward quorum. Removal is attempted as long as at least one client
 // endpoint is available to reach the cluster.
 func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []string, isLearner bool, reverter *revert.Reverter) {
 	reverter.Add(func() {
@@ -383,11 +430,11 @@ func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []str
 		if canRemove {
 			etcdClient, err := snap.EtcdClient(endpoints)
 			if err != nil {
-				log.Error(err, "failed to create etcd client for member removal using peer endpoints")
+				log.Error(err, "failed to create etcd client for member removal")
 			} else {
 				defer etcdClient.Close()
 				if err := etcdClient.RemoveNodeByName(rmCtx, nodeName); err != nil {
-					log.Error(err, "failed to remove node from etcd cluster using peer endpoints")
+					log.Error(err, "failed to remove node from etcd cluster")
 				} else {
 					if err := os.RemoveAll(snap.EtcdDir()); err != nil {
 						log.Error(err, "failed to cleanup etcd state directory")
