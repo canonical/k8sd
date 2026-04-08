@@ -263,7 +263,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		reverter.Add(func() {
 			stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			stopLog := log.FromContext(stopCtx).WithValues("step", "etcd-learner-stop", "node", s.Name())
+			stopLog := log.WithValues("step", "etcd-learner-stop", "node", s.Name())
 			if err := snaputil.StopEtcdServices(stopCtx, snap); err != nil {
 				stopLog.Error(err, "failed to stop etcd learner during join revert")
 			}
