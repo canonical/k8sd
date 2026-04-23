@@ -102,8 +102,70 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 // RestartServices restarts k8s services. The names can be either prefixed or not.
 func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
 	log.FromContext(ctx).V(1).WithCallDepth(1).Info("Restarting services", "services", names)
-	cmd := s.buildServiceCommand("restart", names, extraSnapArgs...)
-	return s.runCommand(ctx, cmd)
+	for _, svc := range names {
+		// ensure service is marked to be restarted. this will persist the need for getting restarted,
+		// and we're safe in case k8sd crashes or restarts.
+		if err := s.MarkServiceToBeRestarted(svc); err != nil {
+			return fmt.Errorf("failed to mark %q to be restarted: %w", svc, err)
+		}
+
+		cmd := s.buildServiceCommand("restart", []string{svc}, extraSnapArgs...)
+		if err := s.runCommand(ctx, cmd); err != nil {
+			return fmt.Errorf("failed to run command: %w", err)
+		}
+
+		if err := s.MarkServiceAsRestarted(svc); err != nil {
+			return fmt.Errorf("failed to mark %q as restarted: %w", svc, err)
+		}
+	}
+
+	return nil
+}
+
+func (s *snap) serviceNeedsRestartLockPath(name string) string {
+	return filepath.Join(s.LockFilesDir(), fmt.Sprintf("%s-needs-restart", name))
+}
+
+func (s *snap) MarkServiceToBeRestarted(name string) error {
+	fPath := s.serviceNeedsRestartLockPath(name)
+	exists, err := utils.FileExists(fPath)
+	if err != nil {
+		return fmt.Errorf("failed to check if restart lock file for %q exists: %w", name, err)
+	}
+	if exists {
+		// lock file already exists, return early
+		return nil
+	}
+
+	if err := utils.WriteFile(fPath, nil, 0o600); err != nil {
+		return fmt.Errorf("failed to write restart lock file for %q: %w", name, err)
+	}
+
+	return nil
+}
+
+func (s *snap) ServiceNeedsRestart(name string) (bool, error) {
+	exists, err := utils.FileExists(s.serviceNeedsRestartLockPath(name))
+	if err != nil {
+		return false, fmt.Errorf("failed to check if restart lock file for %q exists: %w", name, err)
+	}
+	return exists, nil
+}
+
+func (s *snap) MarkServiceAsRestarted(name string) error {
+	fPath := s.serviceNeedsRestartLockPath(name)
+	exists, err := utils.FileExists(fPath)
+	if err != nil {
+		return fmt.Errorf("failed to check if restart lock file for %q exists: %w", name, err)
+	}
+
+	if exists {
+		if err := os.Remove(fPath); err != nil {
+			return fmt.Errorf("failed to remove restart lock file for %q: %w", name, err)
+		}
+	}
+
+	return nil
 }
 
 // Refresh refreshes the snap to a different track, revision or custom snap.
