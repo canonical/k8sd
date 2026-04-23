@@ -65,9 +65,11 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 
 	return mctypes.SyncResponse(true, &apiv2.ClusterStatusResponse{
 		ClusterStatus: apiv2.ClusterStatus{
-			Ready:   hasReadyNodes && hasCoreDNSClusterIP,
-			Members: members,
-			Config:  config.ToUserFacing(),
+			Ready:               hasReadyNodes && hasCoreDNSClusterIP,
+			HasReadyNodes:       hasReadyNodes,
+			HasCoreDNSClusterIP: hasCoreDNSClusterIP,
+			Members:             members,
+			Config:              config.ToUserFacing(),
 			Datastore: apiv2.Datastore{
 				Type:    config.Datastore.GetType(),
 				Servers: config.Datastore.GetExternalServers(),

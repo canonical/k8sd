@@ -30,7 +30,22 @@ func (c ClusterStatus) String() string {
 	if c.Ready {
 		result.WriteString(fmt.Sprintf("%-25s %s", "cluster status:", "ready"))
 	} else {
-		result.WriteString(fmt.Sprintf("%-25s %s", "cluster status:", "not ready"))
+		reason := ""
+		if !c.HasReadyNodes {
+			reason += "waiting for at least 1 ready node"
+		}
+		if !c.HasCoreDNSClusterIP {
+			if reason != "" {
+				reason += " & "
+			}
+			reason += "waiting for coredns service cluster IP"
+		}
+		if reason == "" {
+			// this shouldn't happen
+			reason = "unknown reason, check logs"
+		}
+		result.WriteString(fmt.Sprintf("%-25s %s", "cluster status:", fmt.Sprintf("not ready - %s", reason)))
+
 	}
 	result.WriteString("\n")
 
