@@ -80,6 +80,7 @@ func TestUpdateServiceArguments(t *testing.T) {
 		changed, err := snaputil.UpdateServiceArguments(s, "service", map[string]string{"--key": "value"}, nil)
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(changed).To(BeTrue())
+		g.Expect(s.MarkServiceToBeRestartedCalledWith).To(ConsistOf("service"))
 
 		value, err := snaputil.GetServiceArgument(s, "service", "--key")
 		g.Expect(err).To(Not(HaveOccurred()))
@@ -185,21 +186,39 @@ func TestUpdateServiceArguments(t *testing.T) {
 			changed, err := snaputil.UpdateServiceArguments(s, "service", initialArguments, nil)
 			g.Expect(err).To(Not(HaveOccurred()))
 			g.Expect(changed).To(BeTrue())
+			g.Expect(s.MarkServiceToBeRestartedCalledWith).To(ConsistOf("service"))
 
 			changed, err = snaputil.UpdateServiceArguments(s, "service", tc.update, tc.delete)
 			g.Expect(err).To(Not(HaveOccurred()))
 			g.Expect(changed).To(Equal(tc.expectedChange))
-
-			for key, expectedValue := range tc.expectedValues {
-				g.Expect(snaputil.GetServiceArgument(s, "service", key)).To(Equal(expectedValue))
+			if tc.expectedChange {
+				g.Expect(s.MarkServiceToBeRestartedCalledWith).To(HaveLen(2))
+			} else {
+				g.Expect(s.MarkServiceToBeRestartedCalledWith).To(HaveLen(1))
 			}
 
 			t.Run("Reapply", func(t *testing.T) {
 				g := NewWithT(t)
+				prevLen := len(s.MarkServiceToBeRestartedCalledWith)
 				changed, err := snaputil.UpdateServiceArguments(s, "service", tc.update, tc.delete)
 				g.Expect(err).To(Not(HaveOccurred()))
 				g.Expect(changed).To(BeFalse())
+				g.Expect(s.MarkServiceToBeRestartedCalledWith).To(HaveLen(prevLen))
 			})
 		})
 	}
+
+	t.Run("MarkServiceToBeRestarted error is propagated", func(t *testing.T) {
+		g := NewWithT(t)
+		s := &mock.Snap{
+			Mock: mock.Mock{
+				ServiceArgumentsDir: t.TempDir(),
+			},
+			MarkServiceToBeRestartedErr: fmt.Errorf("mark failed"),
+		}
+
+		_, err := snaputil.UpdateServiceArguments(s, "service", map[string]string{"--key": "value"}, nil)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("mark failed"))
+	})
 }

@@ -129,7 +129,7 @@ func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, fai
 	log := log.FromContext(ctx)
 
 	k8sdDbStateDir := filepath.Join(c.snap.K8sdStateDir(), "database")
-	modified, err := snaputil.UpdateDqliteFailureDomain(failureDomain, k8sdDbStateDir)
+	modified, err := snaputil.UpdateDqliteFailureDomain(c.snap, failureDomain, k8sdDbStateDir)
 	if err != nil {
 		return fmt.Errorf("failed to update k8sd failure domain: %w", err)
 	}

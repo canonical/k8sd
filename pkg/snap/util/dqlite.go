@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils"
 )
 
@@ -50,7 +51,7 @@ func GetDqliteFailureDomain(dbStateDir string) (uint64, error) {
 // with the given state directory and returns a (boolean, error) tuple,
 // specifying whether any changes were made. If the failure domain was modified,
 // a service restart is required.
-func UpdateDqliteFailureDomain(failureDomain uint64, dbStateDir string) (bool, error) {
+func UpdateDqliteFailureDomain(snap snap.Snap, failureDomain uint64, dbStateDir string) (bool, error) {
 	failureDomainStr := fmt.Sprintf("%v", failureDomain)
 	failureDomainFile := GetDqliteFailureDomainFile(dbStateDir)
 	fileExists, err := utils.FileExists(failureDomainFile)
@@ -59,6 +60,12 @@ func UpdateDqliteFailureDomain(failureDomain uint64, dbStateDir string) (bool, e
 	}
 	if !fileExists {
 		var modified bool = failureDomain != 0
+		if modified {
+			if err := snap.MarkServiceToBeRestarted("k8sd"); err != nil {
+				return false, fmt.Errorf("failed to mark 'k8sd' to be restarted: %w", err)
+			}
+		}
+
 		err := os.WriteFile(failureDomainFile, []byte(failureDomainStr), 0o644)
 		if err != nil {
 			return false, fmt.Errorf("failed to update failure-domain file %s: %w", failureDomainFile, err)
@@ -74,6 +81,9 @@ func UpdateDqliteFailureDomain(failureDomain uint64, dbStateDir string) (bool, e
 		// Failure domain already set.
 		return false, nil
 	} else {
+		if err := snap.MarkServiceToBeRestarted("k8sd"); err != nil {
+			return false, fmt.Errorf("failed to mark 'k8sd' to be restarted: %w", err)
+		}
 		// Updating failure domain.
 		if err := os.WriteFile(failureDomainFile, []byte(failureDomainStr), 0o644); err != nil {
 			return false, fmt.Errorf("failed to update failure-domain file %s: %w", failureDomainFile, err)
