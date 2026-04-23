@@ -45,7 +45,10 @@ func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(co
 			log.Error(err, "Failed to create a Kubernetes client")
 		}
 
-		if err := client.WatchConfigMap(ctx, "kube-system", "k8sd-config", func(configMap *v1.ConfigMap) error {
+		// Bound each watch iteration so the seed Get re-runs periodically even
+		// when the ConfigMap is in steady state and no watch events arrive.
+		watchCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		if err := client.WatchConfigMap(watchCtx, "kube-system", "k8sd-config", func(configMap *v1.ConfigMap) error {
 			err := c.reconcile(ctx, configMap, getRSAKey)
 			c.notifyReconciled()
 			return err
@@ -54,6 +57,7 @@ func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(co
 			// So the watch requests get connection refused replies
 			log.WithValues("name", "k8sd-config", "namespace", "kube-system").Error(err, "Failed to watch configmap")
 		}
+		cancel()
 
 		select {
 		case c.reconciledCh <- struct{}{}:
@@ -69,6 +73,8 @@ func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(co
 }
 
 func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *v1.ConfigMap, getRSAKey func(context.Context) (*rsa.PublicKey, error)) error {
+	log := log.FromContext(ctx)
+
 	key, err := getRSAKey(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load the RSA public key: %w", err)
@@ -107,6 +113,7 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 	}
 
 	if mustRestartKubelet {
+		log.Info("Kubelet arguments changed, restarting kubelet", "updateArgs", updateArgs, "deleteArgs", deleteArgs)
 		// This may fail if other controllers try to restart the services at the same time, hence the retry.
 		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
 			if err := c.snap.RestartServices(ctx, []string{"kubelet"}); err != nil {
