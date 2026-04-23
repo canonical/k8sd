@@ -12,10 +12,13 @@ import (
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
 func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.Response {
+	log := log.FromContext(r.Context())
+
 	// fail if node is not initialized yet
 	if err := s.Database().IsOpen(r.Context()); err != nil {
 		return mctypes.Unavailable(fmt.Errorf("daemon not yet initialized"))
@@ -38,6 +41,18 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 	ready, err := client.HasReadyNodes(r.Context())
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to check if cluster has ready nodes: %w", err))
+	}
+
+	// If dns is disabled, we only rely on ready nodes to report the cluster status as ready
+	if config.DNS.Enabled != nil && *config.DNS.Enabled {
+		// this is similar to what we do in the coredns feature to get the cluster IP and update kubelet.
+		// note that this is a bit brittle and might break if we change e.g. the coredns service name or namespace.
+		corednsClusterIP, err := client.GetServiceClusterIP(r.Context(), "coredns", "kube-system")
+		if err != nil {
+			// we only log the error because we want the status to be returned regardless.
+			log.Error(err, "Failed to get coredns service cluster IP. Reporting cluster as not ready.")
+		}
+		ready = ready && corednsClusterIP != ""
 	}
 
 	var statuses map[types.FeatureName]types.FeatureStatus
