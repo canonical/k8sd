@@ -72,10 +72,89 @@ gateway                   disabled`,
 				Config:    apiv2.UserFacingClusterConfig{},
 				Datastore: apiv2.Datastore{},
 			},
-			expectedOutput: `cluster status:           not ready
+			expectedOutput: `cluster status:           not ready - waiting for at least 1 ready node & waiting for coredns service cluster IP
 control plane nodes:      none
 high availability:        no
 datastore:                disabled
+network:                  disabled
+dns:                      disabled
+ingress:                  disabled
+load-balancer:            disabled
+local-storage:            disabled
+gateway                   disabled`,
+		},
+		{
+			name: "Cluster not ready, missing ready nodes only",
+			clusterStatus: apiv2.ClusterStatus{
+				Ready:               false,
+				HasReadyNodes:       false,
+				HasCoreDNSClusterIP: true,
+				Members:             []apiv2.NodeStatus{},
+			},
+			expectedOutput: `cluster status:           not ready - waiting for at least 1 ready node
+control plane nodes:      none
+high availability:        no
+datastore:                disabled
+network:                  disabled
+dns:                      disabled
+ingress:                  disabled
+load-balancer:            disabled
+local-storage:            disabled
+gateway                   disabled`,
+		},
+		{
+			name: "Cluster not ready, missing CoreDNS cluster IP only",
+			clusterStatus: apiv2.ClusterStatus{
+				Ready:               false,
+				HasReadyNodes:       true,
+				HasCoreDNSClusterIP: false,
+				Members:             []apiv2.NodeStatus{},
+			},
+			expectedOutput: `cluster status:           not ready - waiting for coredns service cluster IP
+control plane nodes:      none
+high availability:        no
+datastore:                disabled
+network:                  disabled
+dns:                      disabled
+ingress:                  disabled
+load-balancer:            disabled
+local-storage:            disabled
+gateway                   disabled`,
+		},
+		{
+			name: "Cluster not ready, unknown reason",
+			clusterStatus: apiv2.ClusterStatus{
+				Ready:               false,
+				HasReadyNodes:       true,
+				HasCoreDNSClusterIP: true,
+				Members:             []apiv2.NodeStatus{},
+			},
+			expectedOutput: `cluster status:           not ready - unknown reason, check logs
+control plane nodes:      none
+high availability:        no
+datastore:                disabled
+network:                  disabled
+dns:                      disabled
+ingress:                  disabled
+load-balancer:            disabled
+local-storage:            disabled
+gateway                   disabled`,
+		},
+		{
+			name: "Cluster ready, HA with 3 voters",
+			clusterStatus: apiv2.ClusterStatus{
+				Ready: true,
+				Members: []apiv2.NodeStatus{
+					{DatastoreRole: apiv2.DatastoreRoleVoter, Address: "10.0.0.1"},
+					{DatastoreRole: apiv2.DatastoreRoleVoter, Address: "10.0.0.2"},
+					{DatastoreRole: apiv2.DatastoreRoleVoter, Address: "10.0.0.3"},
+				},
+				Datastore: apiv2.Datastore{Type: "dqlite"},
+			},
+			expectedOutput: `cluster status:           ready
+control plane nodes:      10.0.0.1 (voter), 10.0.0.2 (voter), 10.0.0.3 (voter)
+high availability:        yes
+datastore:                dqlite
 network:                  disabled
 dns:                      disabled
 ingress:                  disabled
