@@ -100,6 +100,12 @@ func UpdateServiceArguments(snap snap.Snap, serviceName string, updateMap map[st
 		}
 	}
 
+	if changed {
+		if err := snap.MarkServiceToBeRestarted(serviceName); err != nil {
+			return false, fmt.Errorf("failed to mark %q to be restarted: %w", serviceName, err)
+		}
+	}
+
 	// sort arguments so that output is consistent
 	sort.Strings(newArguments)
 

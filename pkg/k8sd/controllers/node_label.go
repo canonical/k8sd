@@ -125,11 +125,13 @@ func (c *NodeLabelController) reconcileVersionAnnotation(ctx context.Context, cl
 	return nil
 }
 
-func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, failureDomain uint64, availabilityZone string, getDatastoreType func(ctx context.Context) (string, error)) error {
+func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, failureDomain uint64,
+	availabilityZone string, getDatastoreType func(ctx context.Context) (string, error),
+) error {
 	log := log.FromContext(ctx)
 
 	k8sdDbStateDir := filepath.Join(c.snap.K8sdStateDir(), "database")
-	modified, err := snaputil.UpdateDqliteFailureDomain(failureDomain, k8sdDbStateDir)
+	modified, err := snaputil.UpdateDqliteFailureDomain(c.snap, failureDomain, k8sdDbStateDir)
 	if err != nil {
 		return fmt.Errorf("failed to update k8sd failure domain: %w", err)
 	}
