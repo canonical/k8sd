@@ -19,6 +19,12 @@ import (
 )
 
 func (a *App) onStart(ctx context.Context, s mctypes.State) error {
+	// NOTE: running this periodically in a loop might look like a good idea,
+	// but it will interfere with other parallel and concurrent restarts and might end up in a broken state.
+	if err := a.ensureServicesRestarted(ctx); err != nil {
+		return fmt.Errorf("failed to ensure services are restarted: %w", err)
+	}
+
 	if err := a.ensureRunningServices(ctx); err != nil {
 		return fmt.Errorf("failed to ensure running services: %w", err)
 	}
@@ -199,6 +205,43 @@ func (a *App) ensureRunningServices(ctx context.Context) error {
 	}
 
 	log.Info("Successfully started services")
+
+	return nil
+}
+
+// ensureServicesRestarted ensures that the snap services are restarted if necessary.
+func (a *App) ensureServicesRestarted(ctx context.Context) error {
+	log := log.FromContext(ctx).WithValues("func", "ensureServicesRestarted")
+
+	isWorker, err := snaputil.IsWorker(a.snap)
+	if err != nil {
+		return fmt.Errorf("failed to determine if the node is a worker: %w", err)
+	}
+
+	var svcs []string
+	if isWorker {
+		svcs = snaputil.WorkerK8sServices()
+	} else {
+		svcs = snaputil.ControlPlaneK8sServices()
+	}
+
+	log.Info("checking for services that need to be restarted", "services", svcs)
+	var needRestart []string
+	for _, svc := range svcs {
+		if needs, err := a.snap.ServiceNeedsRestart(svc); err != nil {
+			return fmt.Errorf("failed to check if %q needs to be restarted: %w", svc, err)
+		} else if needs {
+			needRestart = append(needRestart, svc)
+		}
+	}
+
+	log.Info("restarting services", "services", needRestart)
+
+	if err := a.snap.RestartServices(ctx, needRestart); err != nil {
+		return fmt.Errorf("failed to restart services: %w", err)
+	}
+
+	log.Info("restarted services", "services", needRestart)
 
 	return nil
 }

@@ -38,6 +38,24 @@ var (
 	}
 )
 
+func WorkerK8sServices() []string {
+	var dst []string
+	copy(dst, workerK8sServices)
+	return dst
+}
+
+func ControlPlaneK8sServices() []string {
+	var dst []string
+	copy(dst, controlPlaneK8sServices)
+	return dst
+}
+
+func K8sServices() []string {
+	var dst []string
+	copy(dst, k8sServices)
+	return dst
+}
+
 // RestartControlPlaneServices restarts the control plane services.
 // RestartControlPlaneServices will return on the first failing service.
 func RestartControlPlaneServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
