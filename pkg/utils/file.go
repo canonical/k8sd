@@ -335,6 +335,7 @@ func CreateTarball(tarballPath string, rootDir string, walkDir string, excludeFi
 // WriteFile writes data to a file with the given name and permissions.
 // The file is written to a temporary file in the same directory as the target file
 // and then renamed to the target file to avoid partial writes in case of a crash.
+// data can be empty in order to just create an empty file.
 func WriteFile(name string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(name)
 	tmpFile, err := os.CreateTemp(dir, "tmp-*")
@@ -343,9 +344,11 @@ func WriteFile(name string, data []byte, perm fs.FileMode) error {
 	}
 	defer os.Remove(tmpFile.Name())
 
-	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("failed to write to temp file: %w", err)
+	if len(data) != 0 {
+		if _, err := tmpFile.Write(data); err != nil {
+			tmpFile.Close()
+			return fmt.Errorf("failed to write to temp file: %w", err)
+		}
 	}
 
 	if err := tmpFile.Chmod(perm); err != nil {
