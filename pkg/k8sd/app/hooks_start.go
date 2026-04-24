@@ -213,26 +213,31 @@ func (a *App) ensureRunningServices(ctx context.Context) error {
 func (a *App) ensureServicesRestarted(ctx context.Context) error {
 	log := log.FromContext(ctx).WithValues("func", "ensureServicesRestarted")
 
-	isWorker, err := snaputil.IsWorker(a.snap)
-	if err != nil {
-		return fmt.Errorf("failed to determine if the node is a worker: %w", err)
-	}
-
-	var svcs []string
-	if isWorker {
-		svcs = snaputil.WorkerK8sServices()
-	} else {
-		svcs = snaputil.ControlPlaneK8sServices()
-	}
-
-	log.Info("checking for services that need to be restarted", "services", svcs)
-	var needRestart []string
-	for _, svc := range svcs {
-		if needs, err := a.snap.ServiceNeedsRestart(svc); err != nil {
-			return fmt.Errorf("failed to check if %q needs to be restarted: %w", svc, err)
-		} else if needs {
-			needRestart = append(needRestart, svc)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info("context cancelled, stopping.")
+				return
+				// TODO: make configurable
+			case <-time.After(30 * time.Second):
+				log.Info("checking if services need to be restarted")
+				if err := a.restartServices(ctx); err != nil {
+					log.Error(err, "failed to restart services")
+				}
+			}
 		}
+	}()
+
+	return nil
+}
+
+func (a *App) restartServices(ctx context.Context) error {
+	log := log.FromContext(ctx).WithValues("func", "restartServices")
+
+	needRestart, err := a.snap.ServicesToRestart()
+	if err != nil {
+		return fmt.Errorf("failed to get services to restart: %w", err)
 	}
 
 	if len(needRestart) == 0 {

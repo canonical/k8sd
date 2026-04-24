@@ -185,28 +185,6 @@ func TestSnap(t *testing.T) {
 			g.Expect(s.MarkServiceToBeRestarted("kube-apiserver")).To(Succeed())
 		})
 
-		t.Run("ServiceNeedsRestart returns false when no lock file", func(t *testing.T) {
-			g := NewWithT(t)
-			s, lockDir := newSnapWithLockDir(t)
-			defer os.RemoveAll(lockDir)
-
-			needs, err := s.ServiceNeedsRestart("kube-apiserver")
-			g.Expect(err).To(Not(HaveOccurred()))
-			g.Expect(needs).To(BeFalse())
-		})
-
-		t.Run("ServiceNeedsRestart returns true when lock file exists", func(t *testing.T) {
-			g := NewWithT(t)
-			s, lockDir := newSnapWithLockDir(t)
-			defer os.RemoveAll(lockDir)
-
-			g.Expect(s.MarkServiceToBeRestarted("kube-apiserver")).To(Succeed())
-
-			needs, err := s.ServiceNeedsRestart("kube-apiserver")
-			g.Expect(err).To(Not(HaveOccurred()))
-			g.Expect(needs).To(BeTrue())
-		})
-
 		t.Run("MarkServiceAsRestarted removes lock file", func(t *testing.T) {
 			g := NewWithT(t)
 			s, lockDir := newSnapWithLockDir(t)
@@ -215,9 +193,9 @@ func TestSnap(t *testing.T) {
 			g.Expect(s.MarkServiceToBeRestarted("kube-apiserver")).To(Succeed())
 			g.Expect(s.MarkServiceAsRestarted("kube-apiserver")).To(Succeed())
 
-			needs, err := s.ServiceNeedsRestart("kube-apiserver")
-			g.Expect(err).To(Not(HaveOccurred()))
-			g.Expect(needs).To(BeFalse())
+			lockFile := filepath.Join(lockDir, "lock", "kube-apiserver-needs-restart")
+			_, err := os.Stat(lockFile)
+			g.Expect(os.IsNotExist(err)).To(BeTrue())
 		})
 
 		t.Run("MarkServiceAsRestarted is idempotent", func(t *testing.T) {

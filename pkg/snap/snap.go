@@ -41,11 +41,12 @@ type SnapOpts struct {
 
 // snap implements the Snap interface.
 type snap struct {
-	snapDir           string
-	snapCommonDir     string
-	snapInstanceName  string
-	runCommand        func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
-	containerdBaseDir string
+	snapDir               string
+	snapCommonDir         string
+	snapInstanceName      string
+	runCommand            func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
+	containerdBaseDir     string
+	restartLockFileSuffix string
 }
 
 // NewSnap creates a new interface with the K8s snap.
@@ -56,10 +57,11 @@ func NewSnap(opts SnapOpts) *snap {
 		runCommand = opts.RunCommand
 	}
 	s := &snap{
-		snapDir:          opts.SnapDir,
-		snapCommonDir:    opts.SnapCommonDir,
-		snapInstanceName: opts.SnapInstanceName,
-		runCommand:       runCommand,
+		snapDir:               opts.SnapDir,
+		snapCommonDir:         opts.SnapCommonDir,
+		snapInstanceName:      opts.SnapInstanceName,
+		runCommand:            runCommand,
+		restartLockFileSuffix: "-needs-restart",
 	}
 
 	containerdBaseDir := opts.ContainerdBaseDir
@@ -123,10 +125,17 @@ func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArg
 }
 
 func (s *snap) serviceNeedsRestartLockPath(name string) string {
-	return filepath.Join(s.LockFilesDir(), fmt.Sprintf("%s-needs-restart", name))
+	return filepath.Join(s.LockFilesDir(), fmt.Sprintf("%s%s", name, s.restartLockFileSuffix))
 }
 
 func (s *snap) MarkServiceToBeRestarted(name string) error {
+	// We don't use the same restart lock file mechanism for k8sd, as restarting k8sd from
+	// within itself may not reliably remove the lock file and we might end up with a stale lock file
+	// and possibly a never-ending restart loop.
+	if name == "k8sd" {
+		return nil
+	}
+
 	fPath := s.serviceNeedsRestartLockPath(name)
 	exists, err := utils.FileExists(fPath)
 	if err != nil {
@@ -144,15 +153,14 @@ func (s *snap) MarkServiceToBeRestarted(name string) error {
 	return nil
 }
 
-func (s *snap) ServiceNeedsRestart(name string) (bool, error) {
-	exists, err := utils.FileExists(s.serviceNeedsRestartLockPath(name))
-	if err != nil {
-		return false, fmt.Errorf("failed to check if restart lock file for %q exists: %w", name, err)
-	}
-	return exists, nil
-}
-
 func (s *snap) MarkServiceAsRestarted(name string) error {
+	// We don't use the same restart lock file mechanism for k8sd, as restarting k8sd from
+	// within itself may not reliably remove the lock file and we might end up with a stale lock file
+	// and possibly a never-ending restart loop.
+	if name == "k8sd" {
+		return nil
+	}
+
 	fPath := s.serviceNeedsRestartLockPath(name)
 	exists, err := utils.FileExists(fPath)
 	if err != nil {
@@ -166,6 +174,21 @@ func (s *snap) MarkServiceAsRestarted(name string) error {
 	}
 
 	return nil
+}
+
+func (s *snap) ServicesToRestart() ([]string, error) {
+	files, err := os.ReadDir(s.LockFilesDir())
+	if err != nil {
+		return nil, fmt.Errorf("failed to read lock files directory: %w", err)
+	}
+
+	var services []string
+	for _, file := range files {
+		if svc, hasSuffix := strings.CutSuffix(file.Name(), s.restartLockFileSuffix); hasSuffix {
+			services = append(services, svc)
+		}
+	}
+	return services, nil
 }
 
 // Refresh refreshes the snap to a different track, revision or custom snap.

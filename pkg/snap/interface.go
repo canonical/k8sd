@@ -84,5 +84,5 @@ type Snap interface {
 
 	MarkServiceToBeRestarted(service string) error
 	MarkServiceAsRestarted(service string) error
-	ServiceNeedsRestart(name string) (bool, error)
+	ServicesToRestart() ([]string, error)
 }

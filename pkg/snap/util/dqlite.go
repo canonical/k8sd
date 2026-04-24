@@ -60,12 +60,6 @@ func UpdateDqliteFailureDomain(snap snap.Snap, failureDomain uint64, dbStateDir 
 	}
 	if !fileExists {
 		var modified bool = failureDomain != 0
-		if modified {
-			if err := snap.MarkServiceToBeRestarted("k8sd"); err != nil {
-				return false, fmt.Errorf("failed to mark 'k8sd' to be restarted: %w", err)
-			}
-		}
-
 		err := os.WriteFile(failureDomainFile, []byte(failureDomainStr), 0o644)
 		if err != nil {
 			return false, fmt.Errorf("failed to update failure-domain file %s: %w", failureDomainFile, err)
@@ -81,9 +75,6 @@ func UpdateDqliteFailureDomain(snap snap.Snap, failureDomain uint64, dbStateDir 
 		// Failure domain already set.
 		return false, nil
 	} else {
-		if err := snap.MarkServiceToBeRestarted("k8sd"); err != nil {
-			return false, fmt.Errorf("failed to mark 'k8sd' to be restarted: %w", err)
-		}
 		// Updating failure domain.
 		if err := os.WriteFile(failureDomainFile, []byte(failureDomainStr), 0o644); err != nil {
 			return false, fmt.Errorf("failed to update failure-domain file %s: %w", failureDomainFile, err)

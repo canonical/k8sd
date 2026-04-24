@@ -89,6 +89,8 @@ type Snap struct {
 	ServiceNeedsRestartCalledWith      []string
 	ServiceNeedsRestartResult          bool
 	ServiceNeedsRestartErr             error
+	ServicesToRestartResult            []string
+	ServicesToRestartErr               error
 
 	Mock Mock
 }
@@ -338,6 +340,10 @@ func (s *Snap) MarkServiceAsRestarted(name string) error {
 func (s *Snap) ServiceNeedsRestart(name string) (bool, error) {
 	s.ServiceNeedsRestartCalledWith = append(s.ServiceNeedsRestartCalledWith, name)
 	return s.ServiceNeedsRestartResult, s.ServiceNeedsRestartErr
+}
+
+func (s *Snap) ServicesToRestart() ([]string, error) {
+	return s.ServicesToRestartResult, s.ServicesToRestartErr
 }
 
 var _ snap.Snap = &Snap{}

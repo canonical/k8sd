@@ -38,24 +38,6 @@ var (
 	}
 )
 
-// WorkerK8sServices returns the worker-node Kubernetes services, excluding k8sd.
-// WorkerK8sServices returns a defensive copy of the worker service slice.
-func WorkerK8sServices() []string {
-	return append([]string{}, workerK8sServices...)
-}
-
-// ControlPlaneK8sServices returns the control-plane Kubernetes services, excluding k8sd.
-// ControlPlaneK8sServices returns a defensive copy of the control-plane service slice.
-func ControlPlaneK8sServices() []string {
-	return append([]string{}, controlPlaneK8sServices...)
-}
-
-// K8sServices returns all Kubernetes services, excluding k8sd.
-// K8sServices returns a defensive copy of the complete service slice.
-func K8sServices() []string {
-	return append([]string{}, k8sServices...)
-}
-
 // RestartControlPlaneServices restarts the control plane services.
 // RestartControlPlaneServices will return on the first failing service.
 func RestartControlPlaneServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
