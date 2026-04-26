@@ -152,6 +152,10 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 		go a.serviceRestartController.Run(ctx)
 	}
 
+	if a.serviceArgsController != nil {
+		go a.serviceArgsController.Run(ctx)
+	}
+
 	return nil
 }
 

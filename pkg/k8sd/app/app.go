@@ -64,6 +64,11 @@ type Config struct {
 	// ServiceRestartInterval is the interval at which the service restart controller checks for
 	// services marked for restart. Defaults to 30 seconds.
 	ServiceRestartInterval time.Duration
+	// DisableServiceArgsController is a bool flag to disable the service args controller.
+	DisableServiceArgsController bool
+	// ServiceArgsCheckInterval is the interval at which the service args controller checks for
+	// argument drift between the args file and the running process. Defaults to 30 seconds.
+	ServiceArgsCheckInterval time.Duration
 }
 
 // App is the k8sd microcluster instance.
@@ -83,6 +88,7 @@ type App struct {
 	nodeLabelController          *controllers.NodeLabelController
 	controlPlaneConfigController *controllers.ControlPlaneConfigurationController
 	serviceRestartController     *controllers.ServiceRestartController
+	serviceArgsController        *controllers.ServiceArgsController
 	controllerCoordinator        *controllers.Coordinator
 
 	// updateNodeConfigController
@@ -171,6 +177,19 @@ func New(cfg Config) (*App, error) {
 		)
 	} else {
 		log.L().Info("service-restart-controller disabled via config")
+	}
+
+	if !cfg.DisableServiceArgsController {
+		serviceArgsCheckInterval := cfg.ServiceArgsCheckInterval
+		if serviceArgsCheckInterval <= 0 {
+			serviceArgsCheckInterval = 30 * time.Second
+		}
+		app.serviceArgsController = controllers.NewServiceArgsController(controllers.ServiceArgsControllerOpts{
+			Snap:      cfg.Snap,
+			TriggerCh: time.NewTicker(serviceArgsCheckInterval).C,
+		})
+	} else {
+		log.L().Info("service-args-controller disabled via config")
 	}
 
 	app.triggerUpdateNodeConfigControllerCh = make(chan struct{}, 1)
