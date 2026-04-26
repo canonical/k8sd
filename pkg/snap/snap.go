@@ -179,6 +179,10 @@ func (s *snap) MarkServiceAsRestarted(name string) error {
 func (s *snap) ServicesToRestart() ([]string, error) {
 	files, err := os.ReadDir(s.LockFilesDir())
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// lock files dir doesn't exist for some reason. skip.
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to read lock files directory: %w", err)
 	}
 

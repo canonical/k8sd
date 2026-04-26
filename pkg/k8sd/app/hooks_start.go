@@ -19,12 +19,6 @@ import (
 )
 
 func (a *App) onStart(ctx context.Context, s mctypes.State) error {
-	// NOTE: running this periodically in a loop might look like a good idea,
-	// but it will interfere with other parallel and concurrent restarts and might end up in a broken state.
-	if err := a.ensureServicesRestarted(ctx); err != nil {
-		return fmt.Errorf("failed to ensure services are restarted: %w", err)
-	}
-
 	if err := a.ensureRunningServices(ctx); err != nil {
 		return fmt.Errorf("failed to ensure running services: %w", err)
 	}
@@ -154,6 +148,10 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 	// when k8sd gets restarted before getting the chance to reconcile features.
 	a.NotifyFeatureController(true, true, true, true, true, true, true)
 
+	if a.serviceRestartController != nil {
+		go a.serviceRestartController.Run(ctx)
+	}
+
 	return nil
 }
 
@@ -205,53 +203,6 @@ func (a *App) ensureRunningServices(ctx context.Context) error {
 	}
 
 	log.Info("Successfully started services")
-
-	return nil
-}
-
-// ensureServicesRestarted ensures that the snap services are restarted if necessary.
-func (a *App) ensureServicesRestarted(ctx context.Context) error {
-	log := log.FromContext(ctx).WithValues("func", "ensureServicesRestarted")
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info("context cancelled, stopping.")
-				return
-				// TODO: make configurable
-			case <-time.After(30 * time.Second):
-				log.Info("checking if services need to be restarted")
-				if err := a.restartServices(ctx); err != nil {
-					log.Error(err, "failed to restart services")
-				}
-			}
-		}
-	}()
-
-	return nil
-}
-
-func (a *App) restartServices(ctx context.Context) error {
-	log := log.FromContext(ctx).WithValues("func", "restartServices")
-
-	needRestart, err := a.snap.ServicesToRestart()
-	if err != nil {
-		return fmt.Errorf("failed to get services to restart: %w", err)
-	}
-
-	if len(needRestart) == 0 {
-		log.Info("no services need to be restarted")
-		return nil
-	}
-
-	log.Info("restarting services", "services", needRestart)
-
-	if err := a.snap.RestartServices(ctx, needRestart); err != nil {
-		return fmt.Errorf("failed to restart services: %w", err)
-	}
-
-	log.Info("restarted services", "services", needRestart)
 
 	return nil
 }

@@ -59,6 +59,11 @@ type Config struct {
 	// FeatureControllerMaxRetryAttempts is the maximum number of retry attempts for the reconcile loop
 	// of the feature controller. Zero or negative values mean no limit.
 	FeatureControllerMaxRetryAttempts int
+	// DisableServiceRestartController is a bool flag to disable the service restart controller.
+	DisableServiceRestartController bool
+	// ServiceRestartInterval is the interval at which the service restart controller checks for
+	// services marked for restart. Defaults to 30 seconds.
+	ServiceRestartInterval time.Duration
 }
 
 // App is the k8sd microcluster instance.
@@ -77,6 +82,7 @@ type App struct {
 	nodeConfigController         *controllers.NodeConfigurationController
 	nodeLabelController          *controllers.NodeLabelController
 	controlPlaneConfigController *controllers.ControlPlaneConfigurationController
+	serviceRestartController     *controllers.ServiceRestartController
 	controllerCoordinator        *controllers.Coordinator
 
 	// updateNodeConfigController
@@ -152,6 +158,19 @@ func New(cfg Config) (*App, error) {
 		)
 	} else {
 		log.L().Info("control-plane-config-controller disabled via config")
+	}
+
+	if !cfg.DisableServiceRestartController {
+		serviceRestartInterval := cfg.ServiceRestartInterval
+		if serviceRestartInterval <= 0 {
+			serviceRestartInterval = 30 * time.Second
+		}
+		app.serviceRestartController = controllers.NewServiceRestartController(
+			cfg.Snap,
+			time.NewTicker(serviceRestartInterval).C,
+		)
+	} else {
+		log.L().Info("service-restart-controller disabled via config")
 	}
 
 	app.triggerUpdateNodeConfigControllerCh = make(chan struct{}, 1)
