@@ -82,6 +82,16 @@ type Snap struct {
 	PreInitChecksCalledWith []types.ClusterConfig
 	PreInitChecksErr        error
 
+	MarkServiceToBeRestartedCalledWith []string
+	MarkServiceToBeRestartedErr        error
+	MarkServiceAsRestartedCalledWith   []string
+	MarkServiceAsRestartedErr          error
+	ServiceNeedsRestartCalledWith      []string
+	ServiceNeedsRestartResult          bool
+	ServiceNeedsRestartErr             error
+	ServicesToRestartResult            []string
+	ServicesToRestartErr               error
+
 	Mock Mock
 }
 
@@ -315,6 +325,25 @@ func (s *Snap) SnapctlSet(ctx context.Context, args ...string) error {
 func (s *Snap) PreInitChecks(ctx context.Context, config types.ClusterConfig, serviceConfigs types.K8sServiceConfigs, isControlPlane bool) error {
 	s.PreInitChecksCalledWith = append(s.PreInitChecksCalledWith, config)
 	return s.PreInitChecksErr
+}
+
+func (s *Snap) MarkServiceToBeRestarted(name string) error {
+	s.MarkServiceToBeRestartedCalledWith = append(s.MarkServiceToBeRestartedCalledWith, name)
+	return s.MarkServiceToBeRestartedErr
+}
+
+func (s *Snap) MarkServiceAsRestarted(name string) error {
+	s.MarkServiceAsRestartedCalledWith = append(s.MarkServiceAsRestartedCalledWith, name)
+	return s.MarkServiceAsRestartedErr
+}
+
+func (s *Snap) ServiceNeedsRestart(name string) (bool, error) {
+	s.ServiceNeedsRestartCalledWith = append(s.ServiceNeedsRestartCalledWith, name)
+	return s.ServiceNeedsRestartResult, s.ServiceNeedsRestartErr
+}
+
+func (s *Snap) ServicesToRestart() ([]string, error) {
+	return s.ServicesToRestartResult, s.ServicesToRestartErr
 }
 
 var _ snap.Snap = &Snap{}

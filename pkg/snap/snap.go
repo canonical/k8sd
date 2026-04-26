@@ -41,11 +41,12 @@ type SnapOpts struct {
 
 // snap implements the Snap interface.
 type snap struct {
-	snapDir           string
-	snapCommonDir     string
-	snapInstanceName  string
-	runCommand        func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
-	containerdBaseDir string
+	snapDir               string
+	snapCommonDir         string
+	snapInstanceName      string
+	runCommand            func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
+	containerdBaseDir     string
+	restartLockFileSuffix string
 }
 
 // NewSnap creates a new interface with the K8s snap.
@@ -56,10 +57,11 @@ func NewSnap(opts SnapOpts) *snap {
 		runCommand = opts.RunCommand
 	}
 	s := &snap{
-		snapDir:          opts.SnapDir,
-		snapCommonDir:    opts.SnapCommonDir,
-		snapInstanceName: opts.SnapInstanceName,
-		runCommand:       runCommand,
+		snapDir:               opts.SnapDir,
+		snapCommonDir:         opts.SnapCommonDir,
+		snapInstanceName:      opts.SnapInstanceName,
+		runCommand:            runCommand,
+		restartLockFileSuffix: "-needs-restart",
 	}
 
 	containerdBaseDir := opts.ContainerdBaseDir
@@ -102,8 +104,95 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 // RestartServices restarts k8s services. The names can be either prefixed or not.
 func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
 	log.FromContext(ctx).V(1).WithCallDepth(1).Info("Restarting services", "services", names)
-	cmd := s.buildServiceCommand("restart", names, extraSnapArgs...)
-	return s.runCommand(ctx, cmd)
+	for _, svc := range names {
+		// ensure service is marked to be restarted. this will persist the need for getting restarted,
+		// and we're safe in case k8sd crashes or restarts.
+		if err := s.MarkServiceToBeRestarted(svc); err != nil {
+			return fmt.Errorf("failed to mark %q to be restarted: %w", svc, err)
+		}
+
+		cmd := s.buildServiceCommand("restart", []string{svc}, extraSnapArgs...)
+		if err := s.runCommand(ctx, cmd); err != nil {
+			return fmt.Errorf("failed to run command: %w", err)
+		}
+
+		if err := s.MarkServiceAsRestarted(svc); err != nil {
+			return fmt.Errorf("failed to mark %q as restarted: %w", svc, err)
+		}
+	}
+
+	return nil
+}
+
+func (s *snap) serviceNeedsRestartLockPath(name string) string {
+	return filepath.Join(s.LockFilesDir(), fmt.Sprintf("%s%s", name, s.restartLockFileSuffix))
+}
+
+func (s *snap) MarkServiceToBeRestarted(name string) error {
+	// We don't use the same restart lock file mechanism for k8sd, as restarting k8sd from
+	// within itself may not reliably remove the lock file and we might end up with a stale lock file
+	// and possibly a never-ending restart loop.
+	if name == "k8sd" {
+		return nil
+	}
+
+	fPath := s.serviceNeedsRestartLockPath(name)
+	exists, err := utils.FileExists(fPath)
+	if err != nil {
+		return fmt.Errorf("failed to check if restart lock file for %q exists: %w", name, err)
+	}
+	if exists {
+		// lock file already exists, return early
+		return nil
+	}
+
+	if err := utils.WriteFile(fPath, nil, 0o600); err != nil {
+		return fmt.Errorf("failed to write restart lock file for %q: %w", name, err)
+	}
+
+	return nil
+}
+
+func (s *snap) MarkServiceAsRestarted(name string) error {
+	// We don't use the same restart lock file mechanism for k8sd, as restarting k8sd from
+	// within itself may not reliably remove the lock file and we might end up with a stale lock file
+	// and possibly a never-ending restart loop.
+	if name == "k8sd" {
+		return nil
+	}
+
+	fPath := s.serviceNeedsRestartLockPath(name)
+	exists, err := utils.FileExists(fPath)
+	if err != nil {
+		return fmt.Errorf("failed to check if restart lock file for %q exists: %w", name, err)
+	}
+
+	if exists {
+		if err := os.Remove(fPath); err != nil {
+			return fmt.Errorf("failed to remove restart lock file for %q: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+func (s *snap) ServicesToRestart() ([]string, error) {
+	files, err := os.ReadDir(s.LockFilesDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// lock files dir doesn't exist for some reason. skip.
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read lock files directory: %w", err)
+	}
+
+	var services []string
+	for _, file := range files {
+		if svc, hasSuffix := strings.CutSuffix(file.Name(), s.restartLockFileSuffix); hasSuffix {
+			services = append(services, svc)
+		}
+	}
+	return services, nil
 }
 
 // Refresh refreshes the snap to a different track, revision or custom snap.

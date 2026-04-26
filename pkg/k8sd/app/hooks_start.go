@@ -148,6 +148,14 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 	// when k8sd gets restarted before getting the chance to reconcile features.
 	a.NotifyFeatureController(true, true, true, true, true, true, true)
 
+	if a.serviceRestartController != nil {
+		go a.serviceRestartController.Run(ctx)
+	}
+
+	if a.serviceArgsController != nil {
+		go a.serviceArgsController.Run(ctx)
+	}
+
 	return nil
 }
 

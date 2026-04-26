@@ -117,14 +117,21 @@ func TestSnap(t *testing.T) {
 
 	t.Run("Restart", func(t *testing.T) {
 		g := NewWithT(t)
+
+		snapCommonDir, err := os.MkdirTemp("", "test-snap-lock")
+		g.Expect(err).To(Not(HaveOccurred()))
+		defer os.RemoveAll(snapCommonDir)
+		err = os.MkdirAll(filepath.Join(snapCommonDir, "lock"), 0o700)
+		g.Expect(err).To(Not(HaveOccurred()))
+
 		mockRunner := &mock.Runner{}
 		snap := snap.NewSnap(snap.SnapOpts{
 			SnapDir:       "testdir",
-			SnapCommonDir: "testdir",
+			SnapCommonDir: snapCommonDir,
 			RunCommand:    mockRunner.Run,
 		})
 
-		err := snap.RestartServices(context.Background(), []string{"test-service"})
+		err = snap.RestartServices(context.Background(), []string{"test-service"})
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snap restart k8s.test-service"))
 
@@ -139,6 +146,65 @@ func TestSnap(t *testing.T) {
 
 			err := snap.StartServices(context.Background(), []string{"service"})
 			g.Expect(err).To(HaveOccurred())
+		})
+	})
+
+	t.Run("ServiceRestartLock", func(t *testing.T) {
+		newSnapWithLockDir := func(t *testing.T) (snap.Snap, string) {
+			t.Helper()
+			g := NewWithT(t)
+			snapCommonDir, err := os.MkdirTemp("", "test-snap-lock")
+			g.Expect(err).To(Not(HaveOccurred()))
+			err = os.MkdirAll(filepath.Join(snapCommonDir, "lock"), 0o700)
+			g.Expect(err).To(Not(HaveOccurred()))
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapCommonDir: snapCommonDir,
+			})
+			return s, snapCommonDir
+		}
+
+		t.Run("MarkServiceToBeRestarted creates lock file", func(t *testing.T) {
+			g := NewWithT(t)
+			s, lockDir := newSnapWithLockDir(t)
+			defer os.RemoveAll(lockDir)
+
+			err := s.MarkServiceToBeRestarted("kube-apiserver")
+			g.Expect(err).To(Not(HaveOccurred()))
+
+			lockFile := filepath.Join(lockDir, "lock", "kube-apiserver-needs-restart")
+			_, err = os.Stat(lockFile)
+			g.Expect(err).To(Not(HaveOccurred()))
+		})
+
+		t.Run("MarkServiceToBeRestarted is idempotent", func(t *testing.T) {
+			g := NewWithT(t)
+			s, lockDir := newSnapWithLockDir(t)
+			defer os.RemoveAll(lockDir)
+
+			g.Expect(s.MarkServiceToBeRestarted("kube-apiserver")).To(Succeed())
+			g.Expect(s.MarkServiceToBeRestarted("kube-apiserver")).To(Succeed())
+		})
+
+		t.Run("MarkServiceAsRestarted removes lock file", func(t *testing.T) {
+			g := NewWithT(t)
+			s, lockDir := newSnapWithLockDir(t)
+			defer os.RemoveAll(lockDir)
+
+			g.Expect(s.MarkServiceToBeRestarted("kube-apiserver")).To(Succeed())
+			g.Expect(s.MarkServiceAsRestarted("kube-apiserver")).To(Succeed())
+
+			lockFile := filepath.Join(lockDir, "lock", "kube-apiserver-needs-restart")
+			_, err := os.Stat(lockFile)
+			g.Expect(os.IsNotExist(err)).To(BeTrue())
+		})
+
+		t.Run("MarkServiceAsRestarted is idempotent", func(t *testing.T) {
+			g := NewWithT(t)
+			s, lockDir := newSnapWithLockDir(t)
+			defer os.RemoveAll(lockDir)
+
+			g.Expect(s.MarkServiceAsRestarted("kube-apiserver")).To(Succeed())
+			g.Expect(s.MarkServiceAsRestarted("kube-apiserver")).To(Succeed())
 		})
 	})
 

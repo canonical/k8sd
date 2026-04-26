@@ -34,7 +34,7 @@ func NewNodeLabelController(snap snap.Snap, waitReady func(), getNodeName func(c
 }
 
 func (c *NodeLabelController) Run(ctx context.Context, getDatastoreType func(ctx context.Context) (string, error)) {
-	ctx = log.NewContext(ctx, log.FromContext(ctx).WithValues("controller", "node-configuration"))
+	ctx = log.NewContext(ctx, log.FromContext(ctx).WithValues("controller", "node-label"))
 	log := log.FromContext(ctx)
 
 	log.Info("Waiting for node to be ready")
@@ -125,11 +125,13 @@ func (c *NodeLabelController) reconcileVersionAnnotation(ctx context.Context, cl
 	return nil
 }
 
-func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, failureDomain uint64, availabilityZone string, getDatastoreType func(ctx context.Context) (string, error)) error {
+func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, failureDomain uint64,
+	availabilityZone string, getDatastoreType func(ctx context.Context) (string, error),
+) error {
 	log := log.FromContext(ctx)
 
 	k8sdDbStateDir := filepath.Join(c.snap.K8sdStateDir(), "database")
-	modified, err := snaputil.UpdateDqliteFailureDomain(failureDomain, k8sdDbStateDir)
+	modified, err := snaputil.UpdateDqliteFailureDomain(c.snap, failureDomain, k8sdDbStateDir)
 	if err != nil {
 		return fmt.Errorf("failed to update k8sd failure domain: %w", err)
 	}

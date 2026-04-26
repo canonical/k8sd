@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils"
 )
 
@@ -50,7 +51,7 @@ func GetDqliteFailureDomain(dbStateDir string) (uint64, error) {
 // with the given state directory and returns a (boolean, error) tuple,
 // specifying whether any changes were made. If the failure domain was modified,
 // a service restart is required.
-func UpdateDqliteFailureDomain(failureDomain uint64, dbStateDir string) (bool, error) {
+func UpdateDqliteFailureDomain(snap snap.Snap, failureDomain uint64, dbStateDir string) (bool, error) {
 	failureDomainStr := fmt.Sprintf("%v", failureDomain)
 	failureDomainFile := GetDqliteFailureDomainFile(dbStateDir)
 	fileExists, err := utils.FileExists(failureDomainFile)

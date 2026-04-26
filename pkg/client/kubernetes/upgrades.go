@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
 	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/utils/control"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -17,12 +19,23 @@ func (c *Client) GetInProgressUpgrade(ctx context.Context) (*upgradesv1alpha.Upg
 	log := log.FromContext(ctx).WithValues("upgrades", "GetInProgressUpgrade")
 
 	result := &upgradesv1alpha.UpgradeList{}
-	if err := c.List(ctx, result); err != nil {
-		if apierrors.IsNotFound(err) {
-			// No upgrade in progress.
-			return nil, nil
+	var noUpgrades bool
+	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+		if err := c.List(ctx, result); err != nil {
+			if apierrors.IsNotFound(err) {
+				// No upgrade in progress.
+				noUpgrades = true
+				return nil
+			}
+			return fmt.Errorf("failed to get upgrades: %w", err)
 		}
-		return nil, fmt.Errorf("failed to get upgrades: %w", err)
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed after retry: %w", err)
+	}
+
+	if noUpgrades {
+		return nil, nil
 	}
 
 	var matches []upgradesv1alpha.Upgrade
