@@ -203,6 +203,7 @@ func TestConfigPropagation(t *testing.T) {
 
 	ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute)
 	initialState := snaputil.NewControlPlaneLocalState("etcd")
+	ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute)
 	g.Expect(snaputil.WriteLocalState(s, initialState)).To(Succeed())
 
 
