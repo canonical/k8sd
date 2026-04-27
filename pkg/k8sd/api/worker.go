@@ -13,6 +13,7 @@ import (
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/utils"
+	"github.com/canonical/k8sd/pkg/utils/control"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
@@ -68,9 +69,15 @@ func (e *Endpoints) postWorkerInfo(s mctypes.State, r *http.Request) mctypes.Res
 		return mctypes.InternalError(fmt.Errorf("failed to check whether worker node name is available %s: %w", workerName, err))
 	}
 
-	servers, err := client.GetKubeAPIServerEndpoints(r.Context())
-	if err != nil {
-		return mctypes.InternalError(fmt.Errorf("failed to retrieve list of known kube-apiserver endpoints: %w", err))
+	var servers []string
+	if err := control.RetryFor(r.Context(), 5, 5*time.Second, func() error {
+		servers, err = client.GetKubeAPIServerEndpoints(r.Context())
+		if err != nil {
+			return fmt.Errorf("failed to retrieve list of known kube-apiserver endpoints: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return mctypes.InternalError(fmt.Errorf("failed after retry: %w", err))
 	}
 
 	workerToken := r.Header.Get("Worker-Token")
