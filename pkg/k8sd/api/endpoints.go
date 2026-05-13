@@ -183,5 +183,11 @@ func (e *Endpoints) Endpoints() []mctypes.Endpoint {
 			Path: apiv2.SnapRefreshStatusRPC,
 			Post: mctypes.EndpointAction{Handler: e.postSnapRefreshStatus, AccessHandler: e.ValidateNodeTokenAccessHandler("node-token"), AllowUntrusted: true},
 		},
+		// Upgrade preflight
+		{
+			Name: "UpgradeCheck",
+			Path: "k8sd/upgrade-check",
+			Post: mctypes.EndpointAction{Handler: e.postUpgradeCheck},
+		},
 	}
 }

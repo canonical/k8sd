@@ -2,7 +2,6 @@ package k8sd
 
 import (
 	"context"
-	"fmt"
 )
 
 type UpgradeCheckRequest struct {
@@ -35,5 +34,5 @@ type UpgradeCheckResponse struct {
 }
 
 func (c *k8sd) UpgradeCheck(ctx context.Context, request UpgradeCheckRequest) (UpgradeCheckResponse, error) {
-	return UpgradeCheckResponse{}, fmt.Errorf("not yet implemented")
+	return query(ctx, c, "POST", "k8sd/upgrade-check", request, &UpgradeCheckResponse{})
 }
