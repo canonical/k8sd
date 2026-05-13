@@ -66,6 +66,11 @@ type ClusterAPIClient interface {
 	SetClusterAPIAuthToken(context.Context, apiv2.ClusterAPISetAuthTokenRequest) error
 }
 
+// UpgradeCheckClient implements methods for performing upgrade checks.
+type UpgradeCheckClient interface {
+	UpgradeCheck(context.Context, UpgradeCheckRequest) (UpgradeCheckResponse, error)
+}
+
 type Client interface {
 	ClusterClient
 	StatusClient
@@ -73,4 +78,5 @@ type Client interface {
 	ClusterMaintenanceClient
 	UserClient
 	ClusterAPIClient
+	UpgradeCheckClient
 }

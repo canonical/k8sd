@@ -67,6 +67,11 @@ type Mock struct {
 	// k8sd.ClusterAPIClient
 	SetClusterAPIAuthTokenCalledWith apiv2.ClusterAPISetAuthTokenRequest
 	SetClusterAPIAuthTokenErr        error
+
+	// k8sd.UpgradeCheckClient
+	UpgradeCheckCalledWith k8sd.UpgradeCheckRequest
+	UpgradeCheckResponse   k8sd.UpgradeCheckResponse
+	UpgradeCheckErr        error
 }
 
 func (m *Mock) BootstrapCluster(_ context.Context, request apiv2.BootstrapClusterRequest) (apiv2.BootstrapClusterResponse, error) {
@@ -148,6 +153,11 @@ func (m *Mock) RemoveClusterMember(_ context.Context, name string, addr string, 
 	m.RemoveClusterMemberAddr = addr
 	m.RemoveClusterMemberForce = force
 	return m.RemoveClusterMemberErr
+}
+
+func (m *Mock) UpgradeCheck(_ context.Context, request k8sd.UpgradeCheckRequest) (k8sd.UpgradeCheckResponse, error) {
+	m.UpgradeCheckCalledWith = request
+	return m.UpgradeCheckResponse, m.UpgradeCheckErr
 }
 
 var _ k8sd.Client = &Mock{}
