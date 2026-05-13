@@ -6,14 +6,11 @@ import (
 	"strings"
 )
 
-// componentMapping maps image repo sub-paths to component info.
 type componentMapping struct {
 	Name    string
 	RepoURL string
 }
 
-// componentMappings maps recognizable sub-paths in image URLs to component metadata.
-// Matches against the full image path using strings.Contains.
 var componentMappings = map[string]componentMapping{
 	"canonical/cilium-operator":           {Name: "cilium-operator", RepoURL: "https://github.com/cilium/cilium"},
 	"canonical/cilium":                    {Name: "cilium", RepoURL: "https://github.com/cilium/cilium"},
@@ -34,8 +31,7 @@ func CurrentComponents() []ComponentInfo {
 	if snapDir == "" {
 		return nil
 	}
-	imagesPath := filepath.Join(snapDir, "images.txt")
-	return readComponentsFromFile(imagesPath)
+	return readComponentsFromFile(filepath.Join(snapDir, "images.txt"))
 }
 
 // ParseImageLines parses raw image strings (one per line) into ComponentInfo list.
@@ -48,11 +44,9 @@ func readComponentsFromFile(path string) []ComponentInfo {
 	if err != nil {
 		return nil
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	return parseImageList(lines)
+	return parseImageList(strings.Split(strings.TrimSpace(string(data)), "\n"))
 }
 
-// parseImageList converts image strings into ComponentInfo entries.
 func parseImageList(lines []string) []ComponentInfo {
 	var result []ComponentInfo
 	seen := make(map[string]bool)
@@ -69,20 +63,32 @@ func parseImageList(lines []string) []ComponentInfo {
 		repoPath := parts[0]
 		tag := parts[1]
 
+		var name string
+		var repoURL string
+
 		for key, mapping := range componentMappings {
 			if strings.Contains(repoPath, key) {
-				if mapping.Name == "kubernetes" && seen[mapping.Name] {
-					continue
-				}
-				seen[mapping.Name] = true
-				result = append(result, ComponentInfo{
-					Name:    mapping.Name,
-					Version: tag,
-					RepoURL: mapping.RepoURL,
-				})
+				name = mapping.Name
+				repoURL = mapping.RepoURL
 				break
 			}
 		}
+
+		if name == "" {
+			segments := strings.Split(repoPath, "/")
+			name = segments[len(segments)-1]
+		}
+
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+
+		result = append(result, ComponentInfo{
+			Name:    name,
+			Version: tag,
+			RepoURL: repoURL,
+		})
 	}
 	return result
 }
