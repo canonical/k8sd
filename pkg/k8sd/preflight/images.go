@@ -19,6 +19,8 @@ var componentMappings = map[string]componentMapping{
 	"canonical/rawfile-localpv":           {Name: "localpv", RepoURL: "https://github.com/kubernetes-sigs/sig-storage-local-static-provisioner"},
 	"canonical/csi-node-driver-registrar": {Name: "csi-node-driver", RepoURL: "https://github.com/kubernetes-csi/node-driver-registrar"},
 	"canonical/csi-provisioner":           {Name: "csi-provisioner", RepoURL: "https://github.com/kubernetes-csi/external-provisioner"},
+	"canonical/csi-resizer":               {Name: "csi-resizer", RepoURL: "https://github.com/kubernetes-csi/external-resizer"},
+	"canonical/csi-snapshotter":           {Name: "csi-snapshotter", RepoURL: "https://github.com/kubernetes-csi/external-snapshotter"},
 	"canonical/metallb-controller":        {Name: "metallb-controller", RepoURL: "https://github.com/metallb/metallb"},
 	"canonical/metallb-speaker":           {Name: "metallb-speaker", RepoURL: "https://github.com/metallb/metallb"},
 	"canonical/frr":                       {Name: "frr", RepoURL: "https://github.com/FRRouting/frr"},
