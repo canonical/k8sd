@@ -52,7 +52,6 @@ func (c *Checker) compare(ctx context.Context, current, target []ComponentInfo, 
 			Name:        t.Name,
 			FromVersion: fromVer,
 			ToVersion:   t.Version,
-			RepoURL:     t.RepoURL,
 		}
 
 		result, err := c.Analyzer.AnalyzeComponent(ctx, delta)

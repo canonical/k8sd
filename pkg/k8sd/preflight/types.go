@@ -14,14 +14,11 @@ type ComponentDelta struct {
 	Name        string `json:"name"`
 	FromVersion string `json:"from_version"`
 	ToVersion   string `json:"to_version"`
-	RepoURL     string `json:"repo_url"`
 }
 
-// ComponentInfo holds a component's name, version, and upstream repo URL.
 type ComponentInfo struct {
 	Name    string
 	Version string
-	RepoURL string
 }
 
 // Warning describes an upgrade concern for a component.

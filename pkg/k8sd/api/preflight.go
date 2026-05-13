@@ -16,8 +16,8 @@ func (e *Endpoints) postUpgradeCheck(s mctypes.State, r *http.Request) mctypes.R
 		return mctypes.BadRequest(fmt.Errorf("failed to parse request: %w", err))
 	}
 
-	if req.ToVersion == "" {
-		return mctypes.BadRequest(fmt.Errorf("to_version is required"))
+	if req.ToChannel == "" {
+		return mctypes.BadRequest(fmt.Errorf("to_channel is required"))
 	}
 
 	checker := preflight.NewChecker(
@@ -25,7 +25,7 @@ func (e *Endpoints) postUpgradeCheck(s mctypes.State, r *http.Request) mctypes.R
 		preflight.SnapDownloaderFromSnap(),
 	)
 
-	result, err := checker.CheckTargetChannel(r.Context(), req.FromVersion, req.ToVersion)
+	result, err := checker.CheckTargetChannel(r.Context(), req.FromChannel, req.ToChannel)
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("upgrade check failed: %w", err))
 	}
@@ -52,7 +52,6 @@ func convertUpgradeResult(r *preflight.PreflightResult) k8sd.UpgradeCheckRespons
 			Name:         c.Delta.Name,
 			FromVersion:  c.Delta.FromVersion,
 			ToVersion:    c.Delta.ToVersion,
-			RepoURL:      c.Delta.RepoURL,
 			Verdict:      string(c.Verdict),
 			Warnings:     warnings,
 			Remediations: remediations,
@@ -60,8 +59,8 @@ func convertUpgradeResult(r *preflight.PreflightResult) k8sd.UpgradeCheckRespons
 	}
 
 	return k8sd.UpgradeCheckResponse{
-		FromVersion: r.FromChannel,
-		ToVersion:   r.ToChannel,
+		FromChannel: r.FromChannel,
+		ToChannel:   r.ToChannel,
 		Verdict:     string(r.Verdict),
 		Components:  components,
 		Summary:     r.Summary,

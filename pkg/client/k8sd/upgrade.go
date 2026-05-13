@@ -5,8 +5,8 @@ import (
 )
 
 type UpgradeCheckRequest struct {
-	FromVersion string `json:"from-version" yaml:"from-version"`
-	ToVersion   string `json:"to-version" yaml:"to-version"`
+	FromChannel string `json:"from-channel" yaml:"from-channel"`
+	ToChannel   string `json:"to-channel" yaml:"to-channel"`
 }
 
 type UpgradeWarning struct {
@@ -19,15 +19,14 @@ type UpgradeComponentResult struct {
 	Name         string           `json:"name" yaml:"name"`
 	FromVersion  string           `json:"from_version" yaml:"from_version"`
 	ToVersion    string           `json:"to_version" yaml:"to_version"`
-	RepoURL      string           `json:"repo_url" yaml:"repo_url"`
 	Verdict      string           `json:"verdict" yaml:"verdict"`
 	Warnings     []UpgradeWarning `json:"warnings" yaml:"warnings"`
 	Remediations []string         `json:"remediations" yaml:"remediations"`
 }
 
 type UpgradeCheckResponse struct {
-	FromVersion string                   `json:"from_version" yaml:"from_version"`
-	ToVersion   string                   `json:"to_version" yaml:"to_version"`
+	FromChannel string                   `json:"from_channel" yaml:"from_channel"`
+	ToChannel   string                   `json:"to_channel" yaml:"to_channel"`
 	Verdict     string                   `json:"verdict" yaml:"verdict"`
 	Components  []UpgradeComponentResult `json:"components" yaml:"components"`
 	Summary     string                   `json:"summary" yaml:"summary"`

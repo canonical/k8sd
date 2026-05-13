@@ -6,27 +6,6 @@ import (
 	"strings"
 )
 
-type componentMapping struct {
-	Name    string
-	RepoURL string
-}
-
-var componentMappings = map[string]componentMapping{
-	"canonical/cilium-operator":           {Name: "cilium-operator", RepoURL: "https://github.com/cilium/cilium"},
-	"canonical/cilium":                    {Name: "cilium", RepoURL: "https://github.com/cilium/cilium"},
-	"canonical/coredns":                   {Name: "coredns", RepoURL: "https://github.com/coredns/coredns"},
-	"canonical/metrics-server":            {Name: "metrics-server", RepoURL: "https://github.com/kubernetes-sigs/metrics-server"},
-	"canonical/rawfile-localpv":           {Name: "localpv", RepoURL: "https://github.com/kubernetes-sigs/sig-storage-local-static-provisioner"},
-	"canonical/csi-node-driver-registrar": {Name: "csi-node-driver", RepoURL: "https://github.com/kubernetes-csi/node-driver-registrar"},
-	"canonical/csi-provisioner":           {Name: "csi-provisioner", RepoURL: "https://github.com/kubernetes-csi/external-provisioner"},
-	"canonical/csi-resizer":               {Name: "csi-resizer", RepoURL: "https://github.com/kubernetes-csi/external-resizer"},
-	"canonical/csi-snapshotter":           {Name: "csi-snapshotter", RepoURL: "https://github.com/kubernetes-csi/external-snapshotter"},
-	"canonical/metallb-controller":        {Name: "metallb-controller", RepoURL: "https://github.com/metallb/metallb"},
-	"canonical/metallb-speaker":           {Name: "metallb-speaker", RepoURL: "https://github.com/metallb/metallb"},
-	"canonical/frr":                       {Name: "frr", RepoURL: "https://github.com/FRRouting/frr"},
-	"canonical/k8s-snap/pause":            {Name: "pause", RepoURL: ""},
-}
-
 // CurrentComponents returns components from the installed snap by reading $SNAP/images.txt.
 func CurrentComponents() []ComponentInfo {
 	snapDir := os.Getenv("SNAP")
@@ -62,24 +41,8 @@ func parseImageList(lines []string) []ComponentInfo {
 		if len(parts) != 2 {
 			continue
 		}
-		repoPath := parts[0]
+		name := parts[0]
 		tag := parts[1]
-
-		var name string
-		var repoURL string
-
-		for key, mapping := range componentMappings {
-			if strings.Contains(repoPath, key) {
-				name = mapping.Name
-				repoURL = mapping.RepoURL
-				break
-			}
-		}
-
-		if name == "" {
-			segments := strings.Split(repoPath, "/")
-			name = segments[len(segments)-1]
-		}
 
 		if seen[name] {
 			continue
@@ -89,7 +52,6 @@ func parseImageList(lines []string) []ComponentInfo {
 		result = append(result, ComponentInfo{
 			Name:    name,
 			Version: tag,
-			RepoURL: repoURL,
 		})
 	}
 	return result

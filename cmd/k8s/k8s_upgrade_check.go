@@ -12,8 +12,8 @@ import (
 )
 
 type UpgradeCheckResult struct {
-	FromVersion string                         `json:"from_version" yaml:"from_version"`
-	ToVersion   string                         `json:"to_version" yaml:"to_version"`
+	FromChannel string                         `json:"from_channel" yaml:"from_channel"`
+	ToChannel   string                         `json:"to_channel" yaml:"to_channel"`
 	Verdict     string                         `json:"verdict" yaml:"verdict"`
 	Components  []k8sd.UpgradeComponentResult  `json:"components" yaml:"components"`
 	Summary     string                         `json:"summary" yaml:"summary"`
@@ -35,12 +35,13 @@ func verdictBadge(v string) string {
 func (r UpgradeCheckResult) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("Upgrade check: %s → %s", r.FromVersion, r.ToVersion))
+	sb.WriteString(fmt.Sprintf("Upgrade check: %s → %s", r.FromChannel, r.ToChannel))
 	sb.WriteString(fmt.Sprintf("  [%s]\n", verdictBadge(r.Verdict)))
 
-	maxNameLen := 10
-	maxFromLen := 12
-	maxToLen := 10
+	maxNameLen := len("Component")
+	maxFromLen := len("From")
+	maxToLen := len("To")
+	maxVerdictLen := len("Verdict")
 	for _, c := range r.Components {
 		if len(c.Name) > maxNameLen {
 			maxNameLen = len(c.Name)
@@ -51,23 +52,28 @@ func (r UpgradeCheckResult) String() string {
 		if len(c.ToVersion) > maxToLen {
 			maxToLen = len(c.ToVersion)
 		}
+		if v := verdictBadge(c.Verdict); len(v) > maxVerdictLen {
+			maxVerdictLen = len(v)
+		}
 	}
 
 	nameFmt := fmt.Sprintf("%%-%ds", maxNameLen)
 	fromFmt := fmt.Sprintf("%%-%ds", maxFromLen)
 	toFmt := fmt.Sprintf("%%-%ds", maxToLen)
+	verdictFmt := fmt.Sprintf("%%-%ds", maxVerdictLen)
 
-	divider := fmt.Sprintf("+%s+%s+%s+-----+\n",
+	divider := fmt.Sprintf("+%s+%s+%s+%s+\n",
 		strings.Repeat("-", maxNameLen+2),
 		strings.Repeat("-", maxFromLen+2),
-		strings.Repeat("-", maxToLen+2))
+		strings.Repeat("-", maxToLen+2),
+		strings.Repeat("-", maxVerdictLen+2))
 
 	sb.WriteString(divider)
-	sb.WriteString(fmt.Sprintf("| "+nameFmt+" | "+fromFmt+" | "+toFmt+" | Verdict |\n", "Component", "From", "To"))
+	sb.WriteString(fmt.Sprintf("| "+nameFmt+" | "+fromFmt+" | "+toFmt+" | "+verdictFmt+" |\n", "Component", "From", "To", "Verdict"))
 	sb.WriteString(divider)
 
 	for _, c := range r.Components {
-		sb.WriteString(fmt.Sprintf("| "+nameFmt+" | "+fromFmt+" | "+toFmt+" | %-7s |\n",
+		sb.WriteString(fmt.Sprintf("| "+nameFmt+" | "+fromFmt+" | "+toFmt+" | "+verdictFmt+" |\n",
 			c.Name, c.FromVersion, c.ToVersion, verdictBadge(c.Verdict)))
 	}
 	sb.WriteString(divider)
@@ -87,15 +93,15 @@ func (r UpgradeCheckResult) String() string {
 
 func newUpgradeCheckCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	var opts struct {
-		fromVersion  string
-		toVersion    string
+		fromChannel  string
+		toChannel    string
 		outputFormat string
 		timeout      time.Duration
 	}
 	cmd := &cobra.Command{
 		Use:    "upgrade-check",
-		Short:  "Check upgrade compatibility from a source version to a target version",
-		Long:   "Check if the current Kubernetes cluster can be upgraded from the specified source version to the target version.",
+		Short:  "Check upgrade compatibility between snap channels",
+		Long:   "Check if the current Kubernetes cluster can be safely upgraded to the target snap channel.",
 		Args:   cobra.NoArgs,
 		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat)),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -104,13 +110,8 @@ func newUpgradeCheckCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				opts.timeout = minTimeout
 			}
 
-			if opts.fromVersion == "" {
-				cmd.PrintErrln("Error: --from-version must not be empty.")
-				env.Exit(1)
-				return
-			}
-			if opts.toVersion == "" {
-				cmd.PrintErrln("Error: --to-version must not be empty.")
+			if opts.toChannel == "" {
+				cmd.PrintErrln("Error: --to-channel must not be empty.")
 				env.Exit(1)
 				return
 			}
@@ -126,20 +127,20 @@ func newUpgradeCheckCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			cobra.OnFinalize(cancel)
 
 			request := k8sd.UpgradeCheckRequest{
-				FromVersion: opts.fromVersion,
-				ToVersion:   opts.toVersion,
+				FromChannel: opts.fromChannel,
+				ToChannel:   opts.toChannel,
 			}
 
 			response, err := client.UpgradeCheck(ctx, request)
 			if err != nil {
-				cmd.PrintErrf("Error: Failed to check upgrade from %q to %q.\n\nThe error was: %v\n", opts.fromVersion, opts.toVersion, err)
+				cmd.PrintErrf("Error: Failed to check upgrade from %q to %q.\n\nThe error was: %v\n", opts.fromChannel, opts.toChannel, err)
 				env.Exit(1)
 				return
 			}
 
 			outputFormatter.Print(UpgradeCheckResult{
-				FromVersion: response.FromVersion,
-				ToVersion:   response.ToVersion,
+				FromChannel: response.FromChannel,
+				ToChannel:   response.ToChannel,
 				Verdict:     response.Verdict,
 				Components:  response.Components,
 				Summary:     response.Summary,
@@ -147,13 +148,12 @@ func newUpgradeCheckCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.fromVersion, "from-version", "", "the version to upgrade from")
-	cmd.Flags().StringVar(&opts.toVersion, "to-version", "", "the version to upgrade to")
+	cmd.Flags().StringVar(&opts.fromChannel, "from-channel", "", "the snap channel to compare from (default: current snap channel)")
+	cmd.Flags().StringVar(&opts.toChannel, "to-channel", "", "the snap channel to upgrade to")
 	cmd.Flags().StringVar(&opts.outputFormat, "output-format", "plain", "set the output format to one of plain, json or yaml")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 90*time.Second, "the max time to wait for the command to execute")
 
-	_ = cmd.MarkFlagRequired("from-version")
-	_ = cmd.MarkFlagRequired("to-version")
+	_ = cmd.MarkFlagRequired("to-channel")
 
 	return cmd
 }
