@@ -67,11 +67,17 @@ func (c *Checker) compare(ctx context.Context, current, target []ComponentInfo, 
 
 // aggregateResults produces a final PreflightResult from individual component results.
 func aggregateResults(fromChannel, toChannel string, components []ComponentResult) *PreflightResult {
-	result := &PreflightResult{
+result := &PreflightResult{
 		FromChannel: fromChannel,
 		ToChannel:   toChannel,
 		Verdict:     VerdictPass,
 		Components:  components,
+	}
+
+	if len(components) == 0 {
+		result.Verdict = VerdictWarn
+		result.Summary = "No components found for comparison. The snap images.txt may be empty or contain unrecognized image paths."
+		return result
 	}
 
 	var (
