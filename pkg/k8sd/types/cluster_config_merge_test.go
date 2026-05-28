@@ -25,7 +25,7 @@ func generateMergeClusterConfigTestCases[T any](field string, changeAllowed bool
 	for _, cfg := range []*types.ClusterConfig{&cfgNil, &cfgZero, &cfgOne, &cfgTwo} {
 		cfg.Network.PodCIDR = utils.Pointer("10.1.0.0/16")
 		cfg.Network.ServiceCIDR = utils.Pointer("10.152.183.0/24")
-		cfg.Network.KubeProxyFree = utils.Pointer(true)
+		cfg.Network.KubeProxyEnabled = utils.Pointer(false)
 	}
 
 	update(&cfgZero, zero)
@@ -409,52 +409,52 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			name: "Network/KubeProxyFreeValidation",
+			name: "Network/KubeProxyEnabledValidation",
 			new: types.ClusterConfig{
 				Network: types.Network{
-					Enabled:       utils.Pointer(true),
-					PodCIDR:       utils.Pointer("10.1.0.0/16"),
-					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
-					KubeProxyFree: utils.Pointer(false),
+					Enabled:          utils.Pointer(true),
+					PodCIDR:          utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:      utils.Pointer("10.152.183.0/24"),
+					KubeProxyEnabled: utils.Pointer(true),
 				},
 			},
 			expectErr: true,
 		},
 		{
-			name: "Network/KubeProxyFreeFalseWhenNetworkDisabled",
+			name: "Network/KubeProxyEnabledTrueWhenNetworkDisabled",
 			new: types.ClusterConfig{
 				Network: types.Network{
-					Enabled:       utils.Pointer(false),
-					PodCIDR:       utils.Pointer("10.1.0.0/16"),
-					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
-					KubeProxyFree: utils.Pointer(false),
+					Enabled:          utils.Pointer(false),
+					PodCIDR:          utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:      utils.Pointer("10.152.183.0/24"),
+					KubeProxyEnabled: utils.Pointer(true),
 				},
 			},
 			expectMerged: types.ClusterConfig{
 				Network: types.Network{
-					Enabled:       utils.Pointer(false),
-					PodCIDR:       utils.Pointer("10.1.0.0/16"),
-					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
-					KubeProxyFree: utils.Pointer(false),
+					Enabled:          utils.Pointer(false),
+					PodCIDR:          utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:      utils.Pointer("10.152.183.0/24"),
+					KubeProxyEnabled: utils.Pointer(true),
 				},
 			},
 		},
 		{
-			name: "Network/KubeProxyFreeTrueWhenNetworkDisabled",
+			name: "Network/KubeProxyEnabledFalseWhenNetworkDisabled",
 			new: types.ClusterConfig{
 				Network: types.Network{
-					Enabled:       utils.Pointer(false),
-					PodCIDR:       utils.Pointer("10.1.0.0/16"),
-					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
-					KubeProxyFree: utils.Pointer(true),
+					Enabled:          utils.Pointer(false),
+					PodCIDR:          utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:      utils.Pointer("10.152.183.0/24"),
+					KubeProxyEnabled: utils.Pointer(false),
 				},
 			},
 			expectMerged: types.ClusterConfig{
 				Network: types.Network{
-					Enabled:       utils.Pointer(false),
-					PodCIDR:       utils.Pointer("10.1.0.0/16"),
-					ServiceCIDR:   utils.Pointer("10.152.183.0/24"),
-					KubeProxyFree: utils.Pointer(true),
+					Enabled:          utils.Pointer(false),
+					PodCIDR:          utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR:      utils.Pointer("10.152.183.0/24"),
+					KubeProxyEnabled: utils.Pointer(false),
 				},
 			},
 		},

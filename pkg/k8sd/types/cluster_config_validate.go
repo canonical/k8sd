@@ -110,10 +110,10 @@ func (c *ClusterConfig) Validate() error {
 		}
 	}
 
-	// check: kube-proxy-free cannot be explicitly set to false when network is enabled
+	// check: kube-proxy-enabled cannot be explicitly set to true when network is enabled
 	// When network is enabled, kube-proxy replacement is implied and kube-proxy must be disabled
-	if c.Network.GetEnabled() && c.Network.KubeProxyFree != nil && !c.Network.GetKubeProxyFree() {
-		return fmt.Errorf("kube-proxy-free cannot be set to false when network is enabled")
+	if c.Network.GetEnabled() && c.Network.KubeProxyEnabled != nil && c.Network.GetKubeProxyEnabled() {
+		return fmt.Errorf("kube-proxy-enabled cannot be set to true when network is enabled")
 	}
 
 	// check: load-balancer CIDRs

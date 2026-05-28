@@ -279,8 +279,8 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 	// Write local state file for worker node
 	localState := snaputil.NewWorkerLocalState()
 
-	// Disable kube-proxy in local state if kube-proxy-free mode is enabled
-	if response.KubeProxyFree {
+	// Disable kube-proxy in local state if kube-proxy is not enabled
+	if !response.KubeProxyEnabled {
 		localState.SetServiceEnabled(snaputil.ServiceKubeProxy, false)
 	}
 
@@ -535,8 +535,8 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 	// Write local state file for control-plane node
 	localState := snaputil.NewControlPlaneLocalState(cfg.Datastore.GetType())
 
-	// Disable kube-proxy in local state if kube-proxy-free mode is enabled
-	if cfg.Network.GetKubeProxyFree() {
+	// Disable kube-proxy in local state if kube-proxy is not enabled
+	if !cfg.Network.GetKubeProxyEnabled() {
 		localState.SetServiceEnabled(snaputil.ServiceKubeProxy, false)
 	}
 

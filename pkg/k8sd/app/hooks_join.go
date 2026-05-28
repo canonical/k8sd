@@ -365,8 +365,8 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 	// Write local state file for control-plane node
 	localState := snaputil.NewControlPlaneLocalState(cfg.Datastore.GetType())
 
-	// Disable kube-proxy in local state if kube-proxy-free mode is enabled
-	if cfg.Network.GetKubeProxyFree() {
+	// Disable kube-proxy in local state if kube-proxy is not enabled
+	if !cfg.Network.GetKubeProxyEnabled() {
 		localState.SetServiceEnabled(snaputil.ServiceKubeProxy, false)
 	}
 

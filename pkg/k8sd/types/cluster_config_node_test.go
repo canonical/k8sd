@@ -49,11 +49,11 @@ func TestClusterConfigConfigMap(t *testing.T) {
 		{
 			name: "NetworkOnly",
 			configmap: map[string]string{
-				"kube-proxy-free": "true",
+				"kube-proxy-enabled": "true",
 			},
 			config: types.ClusterConfig{
 				Network: types.Network{
-					KubeProxyFree: utils.Pointer(true),
+					KubeProxyEnabled: utils.Pointer(true),
 				},
 			},
 		},
@@ -64,7 +64,7 @@ func TestClusterConfigConfigMap(t *testing.T) {
 				"cluster-domain":       "cluster.local",
 				"cloud-provider":       "external",
 				"control-plane-taints": `["node-role.kubernetes.io/control-plane=true:NoSchedule"]`,
-				"kube-proxy-free":      "true",
+				"kube-proxy-enabled":   "true",
 			},
 			config: types.ClusterConfig{
 				Kubelet: types.Kubelet{
@@ -74,7 +74,7 @@ func TestClusterConfigConfigMap(t *testing.T) {
 					ControlPlaneTaints: utils.Pointer([]string{"node-role.kubernetes.io/control-plane=true:NoSchedule"}),
 				},
 				Network: types.Network{
-					KubeProxyFree: utils.Pointer(true),
+					KubeProxyEnabled: utils.Pointer(true),
 				},
 			},
 		},
@@ -111,7 +111,7 @@ func TestClusterConfigConfigMap(t *testing.T) {
 				config, err := types.ConfigMapToClusterConfig(tc.configmap, nil)
 				g.Expect(err).To(Not(HaveOccurred()))
 				g.Expect(config.Kubelet).To(Equal(tc.config.Kubelet))
-				g.Expect(config.Network.KubeProxyFree).To(Equal(tc.config.Network.KubeProxyFree))
+				g.Expect(config.Network.KubeProxyEnabled).To(Equal(tc.config.Network.KubeProxyEnabled))
 			})
 		})
 	}
@@ -129,7 +129,7 @@ func TestClusterConfigSign(t *testing.T) {
 			ClusterDomain: utils.Pointer("cluster.local"),
 		},
 		Network: types.Network{
-			KubeProxyFree: utils.Pointer(true),
+			KubeProxyEnabled: utils.Pointer(true),
 		},
 	}
 
@@ -151,7 +151,7 @@ func TestClusterConfigSign(t *testing.T) {
 		parsed, err := types.ConfigMapToClusterConfig(configmap, &key.PublicKey)
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(parsed.Kubelet).To(Equal(config.Kubelet))
-		g.Expect(parsed.Network.GetKubeProxyFree()).To(BeTrue())
+		g.Expect(parsed.Network.GetKubeProxyEnabled()).To(BeTrue())
 	})
 
 	t.Run("DeterministicSignature", func(t *testing.T) {
@@ -227,14 +227,14 @@ func TestClusterConfigRoundTrip(t *testing.T) {
 		parsed, err := types.ConfigMapToClusterConfig(cm, &key.PublicKey)
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(parsed.Kubelet).To(Equal(config.Kubelet))
-		g.Expect(parsed.Network.GetKubeProxyFree()).To(BeFalse())
+		g.Expect(parsed.Network.GetKubeProxyEnabled()).To(BeFalse())
 	})
 
 	t.Run("NetworkOnlyRoundTrip", func(t *testing.T) {
 		g := NewWithT(t)
 		config := types.ClusterConfig{
 			Network: types.Network{
-				KubeProxyFree: utils.Pointer(true),
+				KubeProxyEnabled: utils.Pointer(true),
 			},
 		}
 
@@ -244,7 +244,7 @@ func TestClusterConfigRoundTrip(t *testing.T) {
 		parsed, err := types.ConfigMapToClusterConfig(cm, &key.PublicKey)
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(parsed.Kubelet).To(Equal(types.Kubelet{}))
-		g.Expect(parsed.Network.GetKubeProxyFree()).To(BeTrue())
+		g.Expect(parsed.Network.GetKubeProxyEnabled()).To(BeTrue())
 	})
 
 	t.Run("CombinedRoundTrip", func(t *testing.T) {
@@ -257,7 +257,7 @@ func TestClusterConfigRoundTrip(t *testing.T) {
 				ControlPlaneTaints: utils.Pointer([]string{"node-role.kubernetes.io/control-plane:NoSchedule"}),
 			},
 			Network: types.Network{
-				KubeProxyFree: utils.Pointer(true),
+				KubeProxyEnabled: utils.Pointer(true),
 			},
 		}
 
@@ -267,6 +267,6 @@ func TestClusterConfigRoundTrip(t *testing.T) {
 		parsed, err := types.ConfigMapToClusterConfig(cm, &key.PublicKey)
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(parsed.Kubelet).To(Equal(config.Kubelet))
-		g.Expect(parsed.Network.GetKubeProxyFree()).To(BeTrue())
+		g.Expect(parsed.Network.GetKubeProxyEnabled()).To(BeTrue())
 	})
 }

@@ -44,8 +44,8 @@ func newEnableCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				switch feature {
 				case string(features.Network):
 					config.Network = apiv2.NetworkConfig{
-						Enabled:       utils.Pointer(true),
-						KubeProxyFree: utils.Pointer(true),
+						Enabled:          utils.Pointer(true),
+						KubeProxyEnabled: utils.Pointer(false),
 					}
 				case string(features.DNS):
 					config.DNS = apiv2.DNSConfig{

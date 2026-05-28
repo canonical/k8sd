@@ -260,7 +260,7 @@ func TestConfigPropagation(t *testing.T) {
 	}
 }
 
-func TestKubeProxyFree(t *testing.T) {
+func TestKubeProxyEnabled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -315,11 +315,11 @@ func TestKubeProxyFree(t *testing.T) {
 		g := NewWithT(t)
 		s.StopServicesCalledWith = nil
 
-		// Send configmap with kube-proxy-free enabled
+		// Send configmap with kube-proxy-enabled set to false
 		configmap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
 			Data: map[string]string{
-				"kube-proxy-free": "true",
+				"kube-proxy-enabled": "false",
 			},
 		}
 
@@ -346,11 +346,11 @@ func TestKubeProxyFree(t *testing.T) {
 		g := NewWithT(t)
 		s.StartServicesCalledWith = nil
 
-		// Send configmap with kube-proxy-free disabled
+		// Send configmap with kube-proxy-enabled set to true
 		configmap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
 			Data: map[string]string{
-				"kube-proxy-free": "false",
+				"kube-proxy-enabled": "true",
 			},
 		}
 
@@ -384,11 +384,11 @@ func TestKubeProxyFree(t *testing.T) {
 		s.StopServicesCalledWith = nil
 
 		// Local state already has kube-proxy enabled (from previous test)
-		// Send configmap with kube-proxy-free disabled (matching current state)
+		// Send configmap with kube-proxy-enabled set to true (matching current state)
 		configmap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
 			Data: map[string]string{
-				"kube-proxy-free": "false",
+				"kube-proxy-enabled": "true",
 			},
 		}
 
@@ -424,7 +424,7 @@ func TestKubeProxyFree(t *testing.T) {
 		configmap = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
 			Data: map[string]string{
-				"kube-proxy-free": "true",
+				"kube-proxy-enabled": "false",
 			},
 		}
 		watcher.Modify(configmap)

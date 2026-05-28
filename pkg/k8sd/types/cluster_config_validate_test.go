@@ -132,59 +132,59 @@ func TestValidateExternalServers(t *testing.T) {
 	}
 }
 
-func TestValidateKubeProxyFree(t *testing.T) {
+func TestValidateKubeProxyEnabled(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		network   types.Network
 		expectErr bool
 	}{
 		{
-			name: "NetworkEnabled/KubeProxyFreeExplicitlyFalse",
+			name: "NetworkEnabled/KubeProxyEnabledExplicitlyTrue",
 			network: types.Network{
-				Enabled:       utils.Pointer(true),
-				PodCIDR:       utils.Pointer("10.1.0.0/16"),
-				ServiceCIDR:   utils.Pointer("10.2.0.0/16"),
-				KubeProxyFree: utils.Pointer(false),
+				Enabled:          utils.Pointer(true),
+				PodCIDR:          utils.Pointer("10.1.0.0/16"),
+				ServiceCIDR:      utils.Pointer("10.2.0.0/16"),
+				KubeProxyEnabled: utils.Pointer(true),
 			},
 			expectErr: true,
 		},
 		{
-			name: "NetworkEnabled/KubeProxyFreeExplicitlyTrue",
+			name: "NetworkEnabled/KubeProxyEnabledExplicitlyFalse",
 			network: types.Network{
-				Enabled:       utils.Pointer(true),
-				PodCIDR:       utils.Pointer("10.1.0.0/16"),
-				ServiceCIDR:   utils.Pointer("10.2.0.0/16"),
-				KubeProxyFree: utils.Pointer(true),
+				Enabled:          utils.Pointer(true),
+				PodCIDR:          utils.Pointer("10.1.0.0/16"),
+				ServiceCIDR:      utils.Pointer("10.2.0.0/16"),
+				KubeProxyEnabled: utils.Pointer(false),
 			},
 			expectErr: false,
 		},
 		{
-			name: "NetworkEnabled/KubeProxyFreeNotSet",
+			name: "NetworkEnabled/KubeProxyEnabledNotSet",
 			network: types.Network{
-				Enabled:       utils.Pointer(true),
-				PodCIDR:       utils.Pointer("10.1.0.0/16"),
-				ServiceCIDR:   utils.Pointer("10.2.0.0/16"),
-				KubeProxyFree: nil,
+				Enabled:          utils.Pointer(true),
+				PodCIDR:          utils.Pointer("10.1.0.0/16"),
+				ServiceCIDR:      utils.Pointer("10.2.0.0/16"),
+				KubeProxyEnabled: nil,
 			},
 			expectErr: false,
 		},
 		{
-			name: "NetworkDisabled/KubeProxyFreeExplicitlyFalse",
+			name: "NetworkDisabled/KubeProxyEnabledExplicitlyTrue",
 			network: types.Network{
-				Enabled:       utils.Pointer(false),
-				PodCIDR:       utils.Pointer("10.1.0.0/16"),
-				ServiceCIDR:   utils.Pointer("10.2.0.0/16"),
-				KubeProxyFree: utils.Pointer(false),
+				Enabled:          utils.Pointer(false),
+				PodCIDR:          utils.Pointer("10.1.0.0/16"),
+				ServiceCIDR:      utils.Pointer("10.2.0.0/16"),
+				KubeProxyEnabled: utils.Pointer(true),
 			},
 			expectErr: false,
 		},
 		{
-			name: "NetworkDisabled/KubeProxyFreeNotSet",
+			name: "NetworkDisabled/KubeProxyEnabledNotSet",
 			network: types.Network{
-				Enabled:       utils.Pointer(false),
-				PodCIDR:       utils.Pointer("10.1.0.0/16"),
-				ServiceCIDR:   utils.Pointer("10.2.0.0/16"),
-				KubeProxyFree: nil,
+				Enabled:          utils.Pointer(false),
+				PodCIDR:          utils.Pointer("10.1.0.0/16"),
+				ServiceCIDR:      utils.Pointer("10.2.0.0/16"),
+				KubeProxyEnabled: nil,
 			},
 			expectErr: false,
 		},

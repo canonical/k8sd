@@ -129,8 +129,8 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				bootstrapConfig = apiv2.BootstrapConfig{
 					ClusterConfig: apiv2.UserFacingClusterConfig{
 						Network: apiv2.NetworkConfig{
-							Enabled:       utils.Pointer(true),
-							KubeProxyFree: utils.Pointer(true),
+							Enabled:          utils.Pointer(true),
+							KubeProxyEnabled: utils.Pointer(false),
 						},
 						DNS: apiv2.DNSConfig{
 							Enabled: utils.Pointer(true),

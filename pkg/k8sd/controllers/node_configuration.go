@@ -130,7 +130,7 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 		}
 	}
 
-	kubeProxyEnabled := !nodeConfig.Network.GetKubeProxyFree()
+	kubeProxyEnabled := nodeConfig.Network.GetKubeProxyEnabled()
 	if kubeProxyEnabled {
 		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
 			return c.snap.StartServices(ctx, []string{"kube-proxy"})

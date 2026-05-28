@@ -40,7 +40,7 @@ func (d configMapData) withoutSignature() configMapData {
 }
 
 // ClusterConfigToConfigMap converts ClusterConfig to a signed configmap.
-// Only Kubelet fields and Network.KubeProxyFree are included.
+// Only Kubelet fields and Network.KubeProxyEnabled are included.
 func ClusterConfigToConfigMap(config ClusterConfig, key *rsa.PrivateKey) (map[string]string, error) {
 	data := make(configMapData)
 
@@ -63,8 +63,8 @@ func ClusterConfigToConfigMap(config ClusterConfig, key *rsa.PrivateKey) (map[st
 	}
 
 	// Network fields
-	if v := config.Network.KubeProxyFree; v != nil {
-		data["kube-proxy-free"] = fmt.Sprintf("%t", *v)
+	if v := config.Network.KubeProxyEnabled; v != nil {
+		data["kube-proxy-enabled"] = fmt.Sprintf("%t", *v)
 	}
 
 	// Sign configmap data
@@ -84,7 +84,7 @@ func ClusterConfigToConfigMap(config ClusterConfig, key *rsa.PrivateKey) (map[st
 }
 
 // ConfigMapToClusterConfig parses and verifies a signed configmap.
-// Returns ClusterConfig with Kubelet and Network.KubeProxyFree populated.
+// Returns ClusterConfig with Kubelet and Network.KubeProxyEnabled populated.
 func ConfigMapToClusterConfig(m map[string]string, key *rsa.PublicKey) (ClusterConfig, error) {
 	var config ClusterConfig
 
@@ -126,9 +126,9 @@ func ConfigMapToClusterConfig(m map[string]string, key *rsa.PublicKey) (ClusterC
 	}
 
 	// Parse Network fields
-	if v, ok := m["kube-proxy-free"]; ok {
-		kubeProxyFree := v == "true"
-		config.Network.KubeProxyFree = &kubeProxyFree
+	if v, ok := m["kube-proxy-enabled"]; ok {
+		kubeProxyEnabled := v == "true"
+		config.Network.KubeProxyEnabled = &kubeProxyEnabled
 	}
 
 	return config, nil
