@@ -285,7 +285,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 			}
 
 			if etcdStarted {
-				if err := snaputil.StopEtcdServices(rmCtx, snap); err != nil {
+				if err := snap.StopServices(ctx, []string{"etcd"}); err != nil {
 					cleanupLog.Error(err, "Failed to stop etcd during join revert")
 				}
 			}
@@ -310,7 +310,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 
 		// Start etcd as a learner so it can sync data from the leader before being promoted.
 		log.Info("Starting etcd learner")
-		if err := snaputil.StartEtcdServices(ctx, snap); err != nil {
+		if err := snap.StartServices(ctx, []string{"etcd"}); err != nil {
 			return fmt.Errorf("failed to start etcd learner: %w", err)
 		}
 		etcdStarted = true

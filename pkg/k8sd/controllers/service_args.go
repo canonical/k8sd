@@ -20,7 +20,7 @@ type ServiceArgsControllerOpts struct {
 	Snap snap.Snap
 	// Services is an optional override for the list of service names to watch.
 	// When nil, the list is determined dynamically each reconcile cycle based on
-	// whether the node is a worker or control-plane.
+	// the local state.
 	Services []string
 	// TriggerCh drives the reconciliation loop. Typically time.NewTicker(<interval>).C.
 	TriggerCh <-chan time.Time
@@ -83,14 +83,15 @@ func (c *ServiceArgsController) reconcile(ctx context.Context) error {
 
 	services := c.services
 	if services == nil {
-		isWorker, err := snaputil.IsWorker(c.snap)
+		localState, err := snaputil.ReadLocalState(c.snap)
 		if err != nil {
-			return fmt.Errorf("failed to determine node type: %w", err)
+			// Local state file doesn't exist, use old behavior
+			return fmt.Errorf("failed to determine services local state: %w", err)
 		}
-		if isWorker {
-			services = snaputil.WorkerServices()
-		} else {
-			services = snaputil.ControlPlaneServices()
+
+		localServices := localState.EnabledServices()
+		for _, svc := range localServices {
+			services = append(services, string(svc))
 		}
 	}
 
