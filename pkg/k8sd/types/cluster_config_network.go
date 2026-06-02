@@ -7,8 +7,13 @@ type Network struct {
 	KubeProxyEnabled *bool   `json:"kube-proxy-enabled,omitempty"`
 }
 
-func (c Network) GetEnabled() bool          { return getField(c.Enabled) }
-func (c Network) GetPodCIDR() string        { return getField(c.PodCIDR) }
-func (c Network) GetServiceCIDR() string    { return getField(c.ServiceCIDR) }
-func (c Network) GetKubeProxyEnabled() bool { return getField(c.KubeProxyEnabled) }
-func (c Network) Empty() bool               { return c == Network{} }
+func (c Network) GetEnabled() bool       { return getField(c.Enabled) }
+func (c Network) GetPodCIDR() string     { return getField(c.PodCIDR) }
+func (c Network) GetServiceCIDR() string { return getField(c.ServiceCIDR) }
+func (c Network) GetKubeProxyEnabled() bool {
+	if c.KubeProxyEnabled == nil {
+		return true
+	}
+	return getField(c.KubeProxyEnabled)
+}
+func (c Network) Empty() bool { return c == Network{} }

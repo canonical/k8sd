@@ -68,4 +68,28 @@ func TestSetDefaults(t *testing.T) {
 
 	clusterConfig.SetDefaults()
 	g.Expect(clusterConfig).To(Equal(expectedConfig))
+
+	t.Run("NetworkEnabled", func(t *testing.T) {
+		g := NewWithT(t)
+		cfg := types.ClusterConfig{
+			Network: types.Network{
+				Enabled: utils.Pointer(true),
+			},
+		}
+		cfg.SetDefaults()
+		// When network is enabled, kube-proxy-enabled should default to false
+		g.Expect(cfg.Network.GetKubeProxyEnabled()).To(BeFalse())
+	})
+
+	t.Run("NetworkDisabled", func(t *testing.T) {
+		g := NewWithT(t)
+		cfg := types.ClusterConfig{
+			Network: types.Network{
+				Enabled: utils.Pointer(false),
+			},
+		}
+		cfg.SetDefaults()
+		// When network is disabled, kube-proxy-enabled should default to true
+		g.Expect(cfg.Network.GetKubeProxyEnabled()).To(BeTrue())
+	})
 }

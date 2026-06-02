@@ -50,6 +50,9 @@ func (a *App) onBootstrap(ctx context.Context, s mctypes.State, initConfig map[s
 		return fmt.Errorf("failed to unmarshal bootstrap config: %w", err)
 	}
 
+	if bootstrapConfig.ClusterConfig.Network.Enabled == utils.Pointer(true) && bootstrapConfig.ClusterConfig.Network.KubeProxyEnabled == nil {
+		bootstrapConfig.ClusterConfig.Network.KubeProxyEnabled = utils.Pointer(false)
+	}
 	return a.onBootstrapControlPlane(ctx, s, bootstrapConfig)
 }
 

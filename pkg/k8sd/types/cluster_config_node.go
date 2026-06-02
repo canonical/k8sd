@@ -63,7 +63,10 @@ func ClusterConfigToConfigMap(config ClusterConfig, key *rsa.PrivateKey) (map[st
 	}
 
 	// Network fields
-	if v := config.Network.KubeProxyEnabled; v != nil {
+	v := config.Network.KubeProxyEnabled
+	if v == nil {
+		data["kube-proxy-enabled"] = fmt.Sprintf("%t", true)
+	} else {
 		data["kube-proxy-enabled"] = fmt.Sprintf("%t", *v)
 	}
 
@@ -128,6 +131,10 @@ func ConfigMapToClusterConfig(m map[string]string, key *rsa.PublicKey) (ClusterC
 	// Parse Network fields
 	if v, ok := m["kube-proxy-enabled"]; ok {
 		kubeProxyEnabled := v == "true"
+		config.Network.KubeProxyEnabled = &kubeProxyEnabled
+	} else {
+		// Default to true if not specified
+		kubeProxyEnabled := true
 		config.Network.KubeProxyEnabled = &kubeProxyEnabled
 	}
 
