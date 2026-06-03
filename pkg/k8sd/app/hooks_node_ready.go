@@ -37,6 +37,9 @@ func (a *App) onNodeReady(ctx context.Context, s mctypes.State) error {
 			return fmt.Errorf("failed to run post-refresh hook: %w", err)
 		}
 
+		log.Info("Notifying update node config controller to reconcile")
+		a.NotifyUpdateNodeConfigController()
+
 		log.Info("Post-refresh hook completed successfully - removing lock file.")
 		if err := os.Remove(a.snap.PostRefreshLockPath()); err != nil {
 			return fmt.Errorf("failed to remove post-refresh lock file: %w", err)
