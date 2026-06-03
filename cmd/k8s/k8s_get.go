@@ -56,6 +56,11 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 			config := response.Config
+			if config.Network.KubeProxyEnabled == nil {
+				// if kube-proxy-enabled is nil do not show the nil value.
+				kubeProxyEnabled := config.Network.GetKubeProxyEnabled()
+				config.Network.KubeProxyEnabled = &kubeProxyEnabled
+			}
 
 			config.MetricsServer = apiv2.MetricsServerConfig{}
 			config.CloudProvider = nil
