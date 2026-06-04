@@ -124,6 +124,11 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 		log.Error(err, "failed to delete local state file")
 	}
 
+	log.Info("Have kube-proxy start and marked as active")
+	if err := snap.StartServices(ctx, []string{"kube-proxy"}); err != nil {
+		log.Error(err, "failed to start kube-proxy service")
+	}
+
 	log.Info("Remove hook completed ")
 	return nil
 }
