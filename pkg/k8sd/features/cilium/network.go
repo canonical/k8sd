@@ -293,6 +293,15 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}, err
 	}
 
+	if err := rolloutRestartCilium(ctx, snap, 3); err != nil {
+		err = fmt.Errorf("failed to rollout restart cilium to apply new network configuration: %w", err)
+		return types.FeatureStatus{
+			Enabled: false,
+			Version: CiliumAgentImageTag,
+			Message: fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
+		}, err
+	}
+
 	return types.FeatureStatus{
 		Enabled: true,
 		Version: CiliumAgentImageTag,
