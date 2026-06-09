@@ -213,7 +213,7 @@ func (a *App) ensureRunningServices(ctx context.Context) error {
 	// Write local state file BEFORE starting services (migration)
 	log.Info("Writing local state file for migration")
 	if err := snaputil.WriteLocalState(a.snap, localState); err != nil {
-		log.Error(err, "Failed to write local state file during migration")
+		return fmt.Errorf("failed to write local state file during migration: %w", err)
 	}
 
 	// Start services using local state
