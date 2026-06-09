@@ -5,7 +5,6 @@ import (
 )
 
 func (c *ClusterConfig) SetDefaults() {
-	// networking
 	if c.Network.Enabled == nil {
 		c.Network.Enabled = utils.Pointer(false)
 	}
