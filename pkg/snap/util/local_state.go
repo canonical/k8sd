@@ -99,9 +99,22 @@ func NewLocalState(services map[Service]*ServiceState) *LocalNodeState {
 }
 
 // EnabledServices returns the list of services that are enabled.
+// The order is important for reliable start/restart operations.
 func (s *LocalNodeState) EnabledServices() []Service {
-	var enabled []Service
-	for service, state := range s.Services {
+	ordered := []Service{
+		ServiceContainerd,
+		ServiceEtcd,
+		ServiceKubeAPIServer,
+		ServiceKubeControllerManager,
+		ServiceKubeScheduler,
+		ServiceKubelet,
+		ServiceKubeProxy,
+		ServiceK8sAPIServerProxy,
+	}
+
+	enabled := make([]Service, 0, len(ordered))
+	for _, service := range ordered {
+		state := s.Services[service]
 		if state != nil && state.Enabled {
 			enabled = append(enabled, service)
 		}
