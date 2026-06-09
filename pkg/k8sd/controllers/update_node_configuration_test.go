@@ -59,7 +59,6 @@ func TestUpdateNodeConfigurationController(t *testing.T) {
 			},
 			expectedFailure: false,
 		},
-
 	}
 
 	for _, tc := range testCases {
