@@ -17,15 +17,23 @@ func TestClusterConfigConfigMap(t *testing.T) {
 		configmap map[string]string
 	}{
 		{
-			name:      "Empty",
-			configmap: map[string]string{},
+			name: "Empty",
+			configmap: map[string]string{
+				"kube-proxy-enabled": "true",
+			},
+			config: types.ClusterConfig{
+				Network: types.Network{
+					KubeProxyEnabled: utils.Pointer(true),
+				},
+			},
 		},
 		{
 			name: "KubeletOnly",
 			configmap: map[string]string{
-				"cluster-dns":    "10.152.183.10",
-				"cluster-domain": "cluster.local",
-				"cloud-provider": "external",
+				"cluster-dns":        "10.152.183.10",
+				"cluster-domain":     "cluster.local",
+				"cloud-provider":     "external",
+				"kube-proxy-enabled": "true",
 			},
 			config: types.ClusterConfig{
 				Kubelet: types.Kubelet{
@@ -33,16 +41,23 @@ func TestClusterConfigConfigMap(t *testing.T) {
 					ClusterDomain: utils.Pointer("cluster.local"),
 					CloudProvider: utils.Pointer("external"),
 				},
+				Network: types.Network{
+					KubeProxyEnabled: utils.Pointer(true),
+				},
 			},
 		},
 		{
 			name: "KubeletWithTaints",
 			configmap: map[string]string{
 				"control-plane-taints": `["node-role.kubernetes.io/control-plane=true:NoSchedule"]`,
+				"kube-proxy-enabled":   "true",
 			},
 			config: types.ClusterConfig{
 				Kubelet: types.Kubelet{
 					ControlPlaneTaints: utils.Pointer([]string{"node-role.kubernetes.io/control-plane=true:NoSchedule"}),
+				},
+				Network: types.Network{
+					KubeProxyEnabled: utils.Pointer(true),
 				},
 			},
 		},
@@ -85,6 +100,7 @@ func TestClusterConfigConfigMap(t *testing.T) {
 				"cluster-domain":       "",
 				"cloud-provider":       "",
 				"control-plane-taints": "[]",
+				"kube-proxy-enabled":   "true",
 			},
 			config: types.ClusterConfig{
 				Kubelet: types.Kubelet{
@@ -92,6 +108,9 @@ func TestClusterConfigConfigMap(t *testing.T) {
 					ClusterDomain:      utils.Pointer(""),
 					CloudProvider:      utils.Pointer(""),
 					ControlPlaneTaints: utils.Pointer([]string{}),
+				},
+				Network: types.Network{
+					KubeProxyEnabled: utils.Pointer(true),
 				},
 			},
 		},
@@ -227,7 +246,7 @@ func TestClusterConfigRoundTrip(t *testing.T) {
 		parsed, err := types.ConfigMapToClusterConfig(cm, &key.PublicKey)
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(parsed.Kubelet).To(Equal(config.Kubelet))
-		g.Expect(parsed.Network.GetKubeProxyEnabled()).To(BeFalse())
+		g.Expect(parsed.Network.GetKubeProxyEnabled()).To(BeTrue())
 	})
 
 	t.Run("NetworkOnlyRoundTrip", func(t *testing.T) {

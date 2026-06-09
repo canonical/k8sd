@@ -304,11 +304,17 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 				LoadBalancer: types.LoadBalancer{Enabled: utils.Pointer(true)},
 			},
 			new: types.ClusterConfig{
-				Network:      types.Network{Enabled: utils.Pointer(false)},
+				Network: types.Network{
+					Enabled:          utils.Pointer(false),
+					KubeProxyEnabled: utils.Pointer(true),
+				},
 				LoadBalancer: types.LoadBalancer{Enabled: utils.Pointer(false)},
 			},
 			expectMerged: types.ClusterConfig{
-				Network:      types.Network{Enabled: utils.Pointer(false)},
+				Network: types.Network{
+					Enabled:          utils.Pointer(false),
+					KubeProxyEnabled: utils.Pointer(true),
+				},
 				LoadBalancer: types.LoadBalancer{Enabled: utils.Pointer(false)},
 			},
 		},

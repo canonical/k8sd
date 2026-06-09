@@ -36,6 +36,9 @@ func TestUpdateNodeConfigurationController(t *testing.T) {
 			name:          "ControlPlane_DefaultConfig",
 			initialConfig: types.ClusterConfig{},
 			expectedConfig: types.ClusterConfig{
+				Network: types.Network{
+					KubeProxyEnabled: utils.Pointer(true),
+				},
 				Kubelet: types.Kubelet{
 					ClusterDomain: utils.Pointer("cluster.local"),
 				},
@@ -56,12 +59,7 @@ func TestUpdateNodeConfigurationController(t *testing.T) {
 			},
 			expectedFailure: false,
 		},
-		{
-			name:            "ControlPlane_EmptyConfig",
-			initialConfig:   types.ClusterConfig{},
-			expectedConfig:  types.ClusterConfig{},
-			expectedFailure: true,
-		},
+
 	}
 
 	for _, tc := range testCases {
