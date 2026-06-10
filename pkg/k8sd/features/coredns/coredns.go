@@ -240,6 +240,9 @@ func getConfigMapOverrides(ctx context.Context, snap snap.Snap) (map[string]any,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
+	if client == nil {
+		return nil, fmt.Errorf("kubernetes client is nil")
+	}
 
 	cm, err := client.CoreV1().ConfigMaps("kube-system").Get(ctx, "k8sd-coredns-values", metav1.GetOptions{})
 	if err != nil {
