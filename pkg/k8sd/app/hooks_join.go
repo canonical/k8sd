@@ -285,7 +285,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 			}
 
 			if etcdStarted {
-				if err := snap.StopServices(ctx, []string{"etcd"}); err != nil {
+				if err := snap.StopServices(rmCtx, []string{"etcd"}); err != nil {
 					cleanupLog.Error(err, "Failed to stop etcd during join revert")
 				}
 			}
