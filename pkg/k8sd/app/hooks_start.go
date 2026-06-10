@@ -185,9 +185,8 @@ func (a *App) ensureRunningServices(ctx context.Context) error {
 		return nil
 	}
 
-	// Legacy fallback: local state file doesn't exist, use old behavior
-	log.Info("Local state file not found, using legacy service detection")
-
+	// Legacy fallback: failed to read local state file, use old behavior
+	log.WithValues("err", err).Info("Failed to read local state file, using legacy service detection")
 	isWorker, err := snaputil.IsWorker(a.snap)
 	if err != nil {
 		return fmt.Errorf("failed to determine if the node is a worker: %w", err)
