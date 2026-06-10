@@ -85,8 +85,13 @@ func (c *ServiceArgsController) reconcile(ctx context.Context) error {
 	if services == nil {
 		localState, err := snaputil.ReadLocalState(c.snap)
 		if err != nil {
-			// Local state file doesn't exist, use old behavior
-			return fmt.Errorf("failed to determine services local state: %w", err)
+			if os.IsNotExist(err) {
+				// Local state file doesn't exist yet (node not migrated or not initialized).
+				// Skip reconciliation silently until it exists.
+				log.Info("Local state file not found, skipping service args reconciliation")
+				return nil
+			}
+			return fmt.Errorf("failed to read local state: %w", err)
 		}
 
 		localServices := localState.EnabledServices()
