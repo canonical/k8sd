@@ -3,11 +3,15 @@ package coredns
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
+	"gopkg.in/yaml.v3"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -184,6 +188,16 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		},
 	}
 
+	// PoC: Read ConfigMap overrides
+	cmOverrides, err := getConfigMapOverrides(ctx, snap)
+	if err != nil {
+		slog.Warn("Failed to read ConfigMap overrides", "error", err)
+	}
+	if cmOverrides != nil {
+		slog.Info("Applying ConfigMap overrides", "overrides", cmOverrides)
+		values = mergeValues(values, cmOverrides)
+	}
+
 	if _, err := m.Apply(ctx, Chart, helm.StatePresent, values); err != nil {
 		err = fmt.Errorf("failed to apply coredns: %w", err)
 		return types.FeatureStatus{
@@ -217,4 +231,57 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		Version: ImageTag,
 		Message: fmt.Sprintf(enabledMsgTmpl, dnsIP),
 	}, dnsIP, err
+}
+
+// getConfigMapOverrides reads k8sd-coredns-values ConfigMap from kube-system namespace
+// Returns nil if ConfigMap doesn't exist (no overrides)
+func getConfigMapOverrides(ctx context.Context, snap snap.Snap) (map[string]any, error) {
+	client, err := snap.KubernetesClient("")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	cm, err := client.CoreV1().ConfigMaps("kube-system").Get(ctx, "k8sd-coredns-values", metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get configmap: %w", err)
+	}
+
+	valuesYaml, ok := cm.Data["values"]
+	if !ok {
+		return nil, nil
+	}
+
+	overrides := make(map[string]any)
+	if err := yaml.Unmarshal([]byte(valuesYaml), &overrides); err != nil {
+		return nil, fmt.Errorf("failed to parse configmap values: %w", err)
+	}
+
+	return overrides, nil
+}
+
+// mergeValues performs deep merge: base ← overlay
+// overlay values take precedence over base
+func mergeValues(base, overlay map[string]any) map[string]any {
+	result := make(map[string]any)
+
+	for k, v := range base {
+		result[k] = v
+	}
+
+	for k, v := range overlay {
+		if baseVal, exists := result[k]; exists {
+			if baseMap, ok := baseVal.(map[string]any); ok {
+				if overlayMap, ok := v.(map[string]any); ok {
+					result[k] = mergeValues(baseMap, overlayMap)
+					continue
+				}
+			}
+		}
+		result[k] = v
+	}
+
+	return result
 }
