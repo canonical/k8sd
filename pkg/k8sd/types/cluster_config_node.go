@@ -130,6 +130,9 @@ func ConfigMapToClusterConfig(m map[string]string, key *rsa.PublicKey) (ClusterC
 
 	// Parse Network fields
 	if v, ok := m["kube-proxy-enabled"]; ok {
+		if v != "true" && v != "false" {
+			return ClusterConfig{}, fmt.Errorf("invalid value for kube-proxy-enabled: %q", v)
+		}
 		kubeProxyEnabled := v == "true"
 		config.Network.KubeProxyEnabled = &kubeProxyEnabled
 	} else {
