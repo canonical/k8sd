@@ -16,6 +16,7 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/control"
 	pkiutil "github.com/canonical/k8sd/pkg/utils/pki"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (a *App) onStart(ctx context.Context, s mctypes.State) error {
@@ -129,6 +130,11 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 		)
 	}
 
+	// PoC: Start ConfigMap watcher for k8sd-coredns-values
+	if a.featureController != nil {
+		go a.watchCoreDNSConfigMap(ctx)
+	}
+
 	// start controller coordinator
 	if a.controllerCoordinator != nil {
 		go func() {
@@ -205,4 +211,47 @@ func (a *App) ensureRunningServices(ctx context.Context) error {
 	log.Info("Successfully started services")
 
 	return nil
+}
+
+// watchCoreDNSConfigMap watches k8sd-coredns-values ConfigMap and triggers DNS reconciliation
+func (a *App) watchCoreDNSConfigMap(ctx context.Context) {
+log := log.FromContext(ctx).WithValues("controller", "configmap-watcher-coredns")
+
+for {
+if err := func() error {
+client, err := a.snap.KubernetesClient("")
+if err != nil {
+return fmt.Errorf("failed to create kubernetes client: %w", err)
+}
+
+watcher, err := client.CoreV1().ConfigMaps("kube-system").Watch(ctx, metav1.ListOptions{
+FieldSelector: "metadata.name=k8sd-coredns-values",
+})
+if err != nil {
+return fmt.Errorf("failed to create configmap watcher: %w", err)
+}
+defer watcher.Stop()
+
+log.Info("Started watching k8sd-coredns-values ConfigMap")
+
+for event := range watcher.ResultChan() {
+log.Info("ConfigMap event received", "type", event.Type)
+select {
+case a.triggerFeatureControllerDNSCh <- struct{}{}:
+log.Info("Triggered DNS reconciliation")
+default:
+log.Info("DNS reconciliation already queued")
+}
+}
+
+return fmt.Errorf("watcher channel closed")
+}(); err != nil {
+log.Error(err, "ConfigMap watcher error, retrying in 30s")
+select {
+case <-ctx.Done():
+return
+case <-time.After(30 * time.Second):
+}
+}
+}
 }
