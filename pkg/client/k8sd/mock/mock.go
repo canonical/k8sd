@@ -11,25 +11,27 @@ import (
 // Mock is a mock implementation of k8sd.Client.
 type Mock struct {
 	// k8sd.ClusterClient
-	BootstrapClusterCalledWith apiv2.BootstrapClusterRequest
-	BootstrapClusterResponse   apiv2.BootstrapClusterResponse
-	BootstrapClusterErr        error
-	GetJoinTokenCalledWith     apiv2.GetJoinTokenRequest
-	GetJoinTokenResponse       apiv2.GetJoinTokenResponse
-	GetJoinTokenErr            error
-	JoinClusterCalledWith      apiv2.JoinClusterRequest
-	JoinClusterErr             error
-	RemoveNodeCalledWith       apiv2.RemoveNodeRequest
-	RemoveNodeErr              error
-	GetClusterMembersResponse  []mctypes.ClusterMember
-	GetClusterMembersErr       error
-	GetClusterMemberCalledWith string
-	GetClusterMemberResponse   mctypes.ClusterMember
-	GetClusterMemberErr        error
-	RemoveClusterMemberName    string
-	RemoveClusterMemberAddr    string
-	RemoveClusterMemberForce   bool
-	RemoveClusterMemberErr     error
+	BootstrapClusterCalledWith      apiv2.BootstrapClusterRequest
+	BootstrapClusterResponse        apiv2.BootstrapClusterResponse
+	BootstrapClusterErr             error
+	GetJoinTokenCalledWith          apiv2.GetJoinTokenRequest
+	GetJoinTokenResponse            apiv2.GetJoinTokenResponse
+	GetJoinTokenErr                 error
+	JoinClusterCalledWith           apiv2.JoinClusterRequest
+	JoinClusterErr                  error
+	RemoveNodeCalledWith            apiv2.RemoveNodeRequest
+	RemoveNodeErr                   error
+	GetClusterMembersResponse       []mctypes.ClusterMember
+	GetClusterMembersErr            error
+	GetClusterMemberCalledWith      string
+	GetClusterMemberCalledWithNames []string
+	GetClusterMemberFn              func(ctx context.Context, name string) (mctypes.ClusterMember, error)
+	GetClusterMemberResponse        mctypes.ClusterMember
+	GetClusterMemberErr             error
+	RemoveClusterMemberName         string
+	RemoveClusterMemberAddr         string
+	RemoveClusterMemberForce        bool
+	RemoveClusterMemberErr          error
 
 	// k8sd.StatusClient
 	NodeStatusResponse    apiv2.NodeStatusResponse
@@ -138,8 +140,12 @@ func (m *Mock) GetClusterMembers(_ context.Context) ([]mctypes.ClusterMember, er
 	return m.GetClusterMembersResponse, m.GetClusterMembersErr
 }
 
-func (m *Mock) GetClusterMember(_ context.Context, name string) (mctypes.ClusterMember, error) {
+func (m *Mock) GetClusterMember(ctx context.Context, name string) (mctypes.ClusterMember, error) {
 	m.GetClusterMemberCalledWith = name
+	m.GetClusterMemberCalledWithNames = append(m.GetClusterMemberCalledWithNames, name)
+	if m.GetClusterMemberFn != nil {
+		return m.GetClusterMemberFn(ctx, name)
+	}
 	return m.GetClusterMemberResponse, m.GetClusterMemberErr
 }
 
