@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 )
@@ -282,4 +283,127 @@ func validateValues(g Gomega, values map[string]any, dns types.DNS, kubelet type
 	hostnameMatchLabelKeys, ok := topologySpread[1]["matchLabelKeys"].([]string)
 	g.Expect(ok).To(BeTrue())
 	g.Expect(hostnameMatchLabelKeys).To(Equal([]string{"pod-template-hash"}))
+}
+
+func TestConfigMapOverrides(t *testing.T) {
+	clusterIP := "10.96.0.10"
+	corednsService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "coredns", Namespace: "kube-system"},
+		Spec:       corev1.ServiceSpec{ClusterIP: clusterIP},
+	}
+	dns := types.DNS{Enabled: ptr.To(true)}
+	kubelet := types.Kubelet{}
+
+	newSnap := func(objects ...interface{}) *snapmock.Snap {
+		fakeObjs := []interface{}{corednsService}
+		fakeObjs = append(fakeObjs, objects...)
+		clientset := fake.NewSimpleClientset(toRuntimeObjects(fakeObjs)...)
+		return &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient:       &helmmock.Mock{},
+				KubernetesClient: &kubernetes.Client{Interface: clientset},
+			},
+		}
+	}
+
+	configMap := func(valuesYAML string) *corev1.ConfigMap {
+		return &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-coredns-values", Namespace: "kube-system"},
+			Data:       map[string]string{"values": valuesYAML},
+		}
+	}
+
+	t.Run("NoConfigMap", func(t *testing.T) {
+		g := NewWithT(t)
+		snapM := newSnap()
+
+		_, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
+		hpa := helmValues["hpa"].(map[string]any)
+		g.Expect(hpa["minReplicas"]).To(Equal(2))
+		g.Expect(hpa["maxReplicas"]).To(Equal(100))
+	})
+
+	t.Run("OverrideScalarValues", func(t *testing.T) {
+		g := NewWithT(t)
+		snapM := newSnap(configMap("hpa:\n  minReplicas: 5\n  maxReplicas: 50\n"))
+
+		_, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
+		hpa := helmValues["hpa"].(map[string]any)
+		g.Expect(hpa["minReplicas"]).To(Equal(5))
+		g.Expect(hpa["maxReplicas"]).To(Equal(50))
+		// unrelated keys should be preserved
+		g.Expect(hpa["enabled"]).To(BeTrue())
+	})
+
+	t.Run("DeepMergePreservesUnrelatedKeys", func(t *testing.T) {
+		g := NewWithT(t)
+		snapM := newSnap(configMap("hpa:\n  minReplicas: 3\n"))
+
+		_, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
+		hpa := helmValues["hpa"].(map[string]any)
+		g.Expect(hpa["minReplicas"]).To(Equal(3))
+		// maxReplicas not in override — should keep default
+		g.Expect(hpa["maxReplicas"]).To(Equal(100))
+	})
+
+	t.Run("OverrideTopLevelKey", func(t *testing.T) {
+		g := NewWithT(t)
+		snapM := newSnap(configMap("priorityClassName: my-priority\n"))
+
+		_, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
+		g.Expect(helmValues["priorityClassName"]).To(Equal("my-priority"))
+	})
+
+	t.Run("ConfigMapMissingValuesKey", func(t *testing.T) {
+		g := NewWithT(t)
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-coredns-values", Namespace: "kube-system"},
+			Data:       map[string]string{"other-key": "ignored"},
+		}
+		snapM := newSnap(cm)
+
+		_, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
+		hpa := helmValues["hpa"].(map[string]any)
+		g.Expect(hpa["minReplicas"]).To(Equal(2))
+	})
+
+	t.Run("InvalidYAMLFallsBackToDefaults", func(t *testing.T) {
+		g := NewWithT(t)
+		snapM := newSnap(configMap("this: is: not: valid: yaml: :::"))
+
+		_, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+
+		// ApplyDNS should not fail — it logs the error and uses defaults
+		g.Expect(err).NotTo(HaveOccurred())
+		helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
+		hpa := helmValues["hpa"].(map[string]any)
+		g.Expect(hpa["minReplicas"]).To(Equal(2))
+		g.Expect(hpa["maxReplicas"]).To(Equal(100))
+	})
+}
+
+// toRuntimeObjects converts a slice of interface{} to []k8sruntime.Object for fake.NewSimpleClientset.
+func toRuntimeObjects(objs []interface{}) []k8sruntime.Object {
+	result := make([]k8sruntime.Object, 0, len(objs))
+	for _, o := range objs {
+		if ro, ok := o.(k8sruntime.Object); ok {
+			result = append(result, ro)
+		}
+	}
+	return result
 }
