@@ -12,6 +12,8 @@ import (
 	"github.com/canonical/lxd/shared/revert"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -304,6 +306,92 @@ func TestBuildInitialClusterMembers(t *testing.T) {
 			g := NewWithT(t)
 			result := buildInitialClusterMembers(tt.members)
 			g.Expect(result).To(Equal(tt.expected))
+		})
+	}
+}
+
+// fakeEtcdCluster is a test double for etcdCluster.
+type fakeEtcdCluster struct {
+	promoteErr error
+	members    []*etcdserverpb.Member
+	listErr    error
+}
+
+func (f *fakeEtcdCluster) MemberPromote(_ context.Context, _ uint64) (*clientv3.MemberPromoteResponse, error) {
+	return nil, f.promoteErr
+}
+
+func (f *fakeEtcdCluster) MemberList(_ context.Context) (*clientv3.MemberListResponse, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return &clientv3.MemberListResponse{
+		Members: f.members,
+	}, nil
+}
+
+func TestPromoteEtcdLearnerIdempotent(t *testing.T) {
+	const learnerID = uint64(42)
+
+	tests := []struct {
+		name       string
+		cluster    *fakeEtcdCluster
+		wantErr    bool
+		wantErrMsg string
+	}{
+		{
+			name:    "succeeds on first promote call",
+			cluster: &fakeEtcdCluster{promoteErr: nil},
+			wantErr: false,
+		},
+		{
+			name: "succeeds when member is already a voter (idempotent)",
+			cluster: &fakeEtcdCluster{
+				promoteErr: rpctypes.ErrMemberNotLearner,
+				members:    []*etcdserverpb.Member{{ID: learnerID, Name: "node1", IsLearner: false}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "fails when ErrMemberNotLearner but member not found in list",
+			cluster: &fakeEtcdCluster{
+				promoteErr: rpctypes.ErrMemberNotLearner,
+				members:    []*etcdserverpb.Member{},
+			},
+			wantErr:    true,
+			wantErrMsg: "failed to promote etcd learner",
+		},
+		{
+			name: "fails when ErrMemberNotLearner and MemberList also errors",
+			cluster: &fakeEtcdCluster{
+				promoteErr: rpctypes.ErrMemberNotLearner,
+				listErr:    fmt.Errorf("list failed"),
+			},
+			wantErr:    true,
+			wantErrMsg: "failed to promote etcd learner",
+		},
+		{
+			name:       "fails on unrelated promote error",
+			cluster:    &fakeEtcdCluster{promoteErr: fmt.Errorf("some other error")},
+			wantErr:    true,
+			wantErrMsg: "failed to promote etcd learner",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			err := promoteEtcdLearnerIdempotent(ctx, tt.cluster, learnerID, "test-node")
+			if tt.wantErr {
+				g.Expect(err).To(HaveOccurred())
+				if tt.wantErrMsg != "" {
+					g.Expect(err.Error()).To(ContainSubstring(tt.wantErrMsg))
+				}
+			} else {
+				g.Expect(err).NotTo(HaveOccurred())
+			}
 		})
 	}
 }
