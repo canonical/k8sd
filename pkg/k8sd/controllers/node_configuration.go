@@ -10,6 +10,7 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/snap/util/cleanup"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	v1 "k8s.io/api/core/v1"
 )
@@ -33,7 +34,8 @@ func NewNodeConfigurationController(snap snap.Snap, waitReady func(),
 	}
 }
 
-func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(context.Context) (*rsa.PublicKey, error)) {
+func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(context.Context) (*rsa.PublicKey, error),
+	updateKubeProxyEnabled func(context.Context, bool) error) {
 	ctx = log.NewContext(ctx, log.FromContext(ctx).WithValues("controller", "node-configuration"))
 	log := log.FromContext(ctx)
 
@@ -52,7 +54,7 @@ func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(co
 			// when the ConfigMap is in steady state and no watch events arrive.
 			watchCtx, cancel := context.WithTimeout(ctx, c.watchDuration)
 			if err := client.WatchConfigMap(watchCtx, "kube-system", "k8sd-config", func(configMap *v1.ConfigMap) error {
-				err := c.reconcile(ctx, configMap, getRSAKey)
+				err := c.reconcile(ctx, configMap, getRSAKey, updateKubeProxyEnabled)
 				c.notifyReconciled()
 				return err
 			}); err != nil {
@@ -76,16 +78,17 @@ func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(co
 	}
 }
 
-func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *v1.ConfigMap, getRSAKey func(context.Context) (*rsa.PublicKey, error)) error {
+func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *v1.ConfigMap, getRSAKey func(context.Context) (*rsa.PublicKey, error),
+	updateKubeProxyEnabled func(context.Context, bool) error) error {
 	log := log.FromContext(ctx)
 
 	key, err := getRSAKey(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load the RSA public key: %w", err)
 	}
-	config, err := types.KubeletFromConfigMap(configMap.Data, key)
+	nodeConfig, err := types.ConfigMapToClusterConfig(configMap.Data, key)
 	if err != nil {
-		return fmt.Errorf("failed to parse configmap data to kubelet config: %w", err)
+		return fmt.Errorf("failed to parse configmap data to cluster config: %w", err)
 	}
 
 	updateArgs := make(map[string]string)
@@ -95,9 +98,9 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 		val *string
 		arg string
 	}{
-		{arg: "--cloud-provider", val: config.CloudProvider},
-		{arg: "--cluster-dns", val: config.ClusterDNS},
-		{arg: "--cluster-domain", val: config.ClusterDomain},
+		{arg: "--cloud-provider", val: nodeConfig.Kubelet.CloudProvider},
+		{arg: "--cluster-dns", val: nodeConfig.Kubelet.ClusterDNS},
+		{arg: "--cluster-domain", val: nodeConfig.Kubelet.ClusterDomain},
 	} {
 		switch {
 		case loop.val == nil:
@@ -127,6 +130,26 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 		}); err != nil {
 			return fmt.Errorf("failed after retry: %w", err)
 		}
+	}
+
+	kubeProxyEnabled := nodeConfig.Network.GetKubeProxyEnabled()
+	if err := updateKubeProxyEnabled(ctx, kubeProxyEnabled); err != nil {
+		return fmt.Errorf("failed to update kube-proxy enabled state: %w", err)
+	}
+
+	if kubeProxyEnabled {
+		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+			return c.snap.StartServices(ctx, []string{"kube-proxy"})
+		}); err != nil {
+			return fmt.Errorf("failed to start kube-proxy: %w", err)
+		}
+	} else {
+		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+			return c.snap.StopServices(ctx, []string{"kube-proxy"})
+		}); err != nil {
+			return fmt.Errorf("failed to stop kube-proxy: %w", err)
+		}
+		cleanup.RemoveKubeProxyRules(ctx, c.snap)
 	}
 
 	return nil

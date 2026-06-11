@@ -56,6 +56,11 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 			config := response.Config
+			if config.Network.KubeProxyEnabled == nil {
+				// if kube-proxy-enabled is nil do not show the nil value.
+				kubeProxyEnabled := config.Network.GetKubeProxyEnabled()
+				config.Network.KubeProxyEnabled = &kubeProxyEnabled
+			}
 
 			config.MetricsServer = apiv2.MetricsServerConfig{}
 			config.CloudProvider = nil
@@ -84,6 +89,8 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				output = config.LoadBalancer
 			case fmt.Sprintf("%s.enabled", features.Network):
 				output = config.Network.GetEnabled()
+			case fmt.Sprintf("%s.kube-proxy-enabled", features.Network):
+				output = config.Network.GetKubeProxyEnabled()
 			case fmt.Sprintf("%s.enabled", features.DNS):
 				output = config.DNS.GetEnabled()
 			case fmt.Sprintf("%s.upstream-nameservers", features.DNS):

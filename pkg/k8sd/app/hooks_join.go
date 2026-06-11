@@ -366,7 +366,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	log.Info("Starting control-plane services")
 	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-		if err := startControlPlaneServices(ctx, snap, cfg.Datastore.GetType()); err != nil {
+		if err := startControlPlaneServices(ctx, snap, cfg); err != nil {
 			return fmt.Errorf("failed to start services: %w", err)
 		}
 		return nil
