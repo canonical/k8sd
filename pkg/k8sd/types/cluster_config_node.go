@@ -63,12 +63,7 @@ func ClusterConfigToConfigMap(config ClusterConfig, key *rsa.PrivateKey) (map[st
 	}
 
 	// Network fields
-	v := config.Network.KubeProxyEnabled
-	if v == nil {
-		data["kube-proxy-enabled"] = fmt.Sprintf("%t", true)
-	} else {
-		data["kube-proxy-enabled"] = fmt.Sprintf("%t", *v)
-	}
+	data["kube-proxy-enabled"] = fmt.Sprintf("%t", config.Network.GetKubeProxyEnabled())
 
 	// Sign configmap data
 	if key != nil {

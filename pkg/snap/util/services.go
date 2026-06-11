@@ -49,11 +49,12 @@ func ControlPlaneServices() []string { return append([]string(nil), controlPlane
 // RestartControlPlaneServices restarts the control plane services.
 // RestartControlPlaneServices will return on the first failing service.
 func RestartControlPlaneServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	svc := ControlPlaneServices()
 	if cfg.Network.KubeProxyEnabled != nil && !*cfg.Network.KubeProxyEnabled {
-		controlPlaneK8sServices = removeElement(controlPlaneK8sServices, "kube-proxy")
+		svc = removeElement(ControlPlaneServices(), "kube-proxy")
 	}
-	if err := snap.RestartServices(ctx, controlPlaneK8sServices, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to restart service %v: %w", controlPlaneK8sServices, err)
+	if err := snap.RestartServices(ctx, svc, extraSnapArgs...); err != nil {
+		return fmt.Errorf("failed to restart service %v: %w", svc, err)
 	}
 	return nil
 }
@@ -61,11 +62,12 @@ func RestartControlPlaneServices(ctx context.Context, snap snap.Snap, cfg types.
 // StartWorkerServices starts the worker services.
 // StartWorkerServices will return on the first failing service.
 func StartWorkerServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	svc := WorkerServices()
 	if cfg.Network.KubeProxyEnabled != nil && !*cfg.Network.KubeProxyEnabled {
-		workerK8sServices = removeElement(workerK8sServices, "kube-proxy")
+		svc = removeElement(WorkerServices(), "kube-proxy")
 	}
-	if err := snap.StartServices(ctx, workerK8sServices, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to start service %v: %w", workerK8sServices, err)
+	if err := snap.StartServices(ctx, svc, extraSnapArgs...); err != nil {
+		return fmt.Errorf("failed to start service %v: %w", svc, err)
 	}
 	return nil
 }
@@ -73,11 +75,12 @@ func StartWorkerServices(ctx context.Context, snap snap.Snap, cfg types.ClusterC
 // StartControlPlaneServices starts the control plane services.
 // StartControlPlaneServices will return on the first failing service.
 func StartControlPlaneServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	svc := ControlPlaneServices()
 	if cfg.Network.KubeProxyEnabled != nil && !*cfg.Network.KubeProxyEnabled {
-		controlPlaneK8sServices = removeElement(controlPlaneK8sServices, "kube-proxy")
+		svc = removeElement(ControlPlaneServices(), "kube-proxy")
 	}
-	if err := snap.StartServices(ctx, controlPlaneK8sServices, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to start service %v: %w", controlPlaneK8sServices, err)
+	if err := snap.StartServices(ctx, svc, extraSnapArgs...); err != nil {
+		return fmt.Errorf("failed to start service %v: %w", svc, err)
 	}
 	return nil
 }

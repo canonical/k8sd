@@ -35,7 +35,8 @@ func NewNodeConfigurationController(snap snap.Snap, waitReady func(),
 }
 
 func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(context.Context) (*rsa.PublicKey, error),
-	updateKubeProxyEnabled func(context.Context, bool) error) {
+	updateKubeProxyEnabled func(context.Context, bool) error,
+) {
 	ctx = log.NewContext(ctx, log.FromContext(ctx).WithValues("controller", "node-configuration"))
 	log := log.FromContext(ctx)
 
@@ -79,7 +80,8 @@ func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(co
 }
 
 func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *v1.ConfigMap, getRSAKey func(context.Context) (*rsa.PublicKey, error),
-	updateKubeProxyEnabled func(context.Context, bool) error) error {
+	updateKubeProxyEnabled func(context.Context, bool) error,
+) error {
 	log := log.FromContext(ctx)
 
 	key, err := getRSAKey(ctx)

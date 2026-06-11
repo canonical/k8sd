@@ -12,7 +12,8 @@ func (c Network) GetPodCIDR() string     { return getField(c.PodCIDR) }
 func (c Network) GetServiceCIDR() string { return getField(c.ServiceCIDR) }
 func (c Network) GetKubeProxyEnabled() bool {
 	if c.KubeProxyEnabled == nil {
-		return true
+		// Default: when the network feature is enabled, kube-proxy replacement is implied.
+		return !c.GetEnabled()
 	}
 	return getField(c.KubeProxyEnabled)
 }
