@@ -7,6 +7,7 @@ import (
 	"os"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
+	k8sdclient "github.com/canonical/k8sd/pkg/client/k8sd"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
@@ -41,7 +42,10 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 		var notPending bool
 		log.Info("Waiting for node to finish microcluster join before removing")
 		member, err := c.GetClusterMember(ctx, s.Name())
-		if err != nil {
+		if errors.Is(err, k8sdclient.ErrNotFound) {
+			// Node not found, no PENDING state to wait for.
+			notPending = true
+		} else if err != nil {
 			log.Error(err, "Failed to get member")
 			retries++
 		} else {

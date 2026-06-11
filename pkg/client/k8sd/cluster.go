@@ -2,12 +2,16 @@ package k8sd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
+
+// ErrNotFound is returned when a cluster member is not found.
+var ErrNotFound = errors.New("cluster member not found")
 
 func (c *k8sd) BootstrapCluster(ctx context.Context, request apiv2.BootstrapClusterRequest) (apiv2.BootstrapClusterResponse, error) {
 	if err := c.app.Ready(ctx); err != nil {
@@ -66,7 +70,7 @@ func (c *k8sd) GetClusterMember(ctx context.Context, name string) (mctypes.Clust
 		}
 	}
 
-	return mctypes.ClusterMember{}, fmt.Errorf("cluster member %q not found", name)
+	return mctypes.ClusterMember{}, fmt.Errorf("%w: %q", ErrNotFound, name)
 }
 
 func (c *k8sd) RemoveClusterMember(ctx context.Context, name string, addr string, force bool) error {
