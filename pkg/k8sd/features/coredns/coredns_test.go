@@ -386,14 +386,30 @@ func TestConfigMapOverrides(t *testing.T) {
 		g := NewWithT(t)
 		snapM := newSnap(configMap("this: is: not: valid: yaml: :::"))
 
-		_, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+		status, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
 
-		// ApplyDNS should not fail — it logs the error and uses defaults
+		// ApplyDNS should not fail — it uses defaults and surfaces the warning in status
 		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(status.Message).To(ContainSubstring("enabled at"))
+		g.Expect(status.Message).To(ContainSubstring("warning:"))
+		g.Expect(status.Message).To(ContainSubstring("failed to parse configmap values"))
 		helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
 		hpa := helmValues["hpa"].(map[string]any)
 		g.Expect(hpa["minReplicas"]).To(Equal(2))
 		g.Expect(hpa["maxReplicas"]).To(Equal(100))
+	})
+
+	t.Run("ValidOverrideHasNoWarningInStatus", func(t *testing.T) {
+		g := NewWithT(t)
+		snapM := newSnap(configMap("hpa:\n  minReplicas: 4\n"))
+
+		status, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(status.Message).To(ContainSubstring("enabled at"))
+		g.Expect(status.Message).NotTo(ContainSubstring("warning"))
 	})
 }
 

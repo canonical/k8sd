@@ -15,10 +15,11 @@ import (
 )
 
 const (
-	enabledMsgTmpl      = "enabled at %s"
-	disabledMsg         = "disabled"
-	deleteFailedMsgTmpl = "Failed to delete DNS, the error was: %v"
-	deployFailedMsgTmpl = "Failed to deploy DNS, the error was: %v"
+	enabledMsgTmpl            = "enabled at %s"
+	enabledWithWarningMsgTmpl = "enabled at %s (warning: %v)"
+	disabledMsg               = "disabled"
+	deleteFailedMsgTmpl       = "Failed to delete DNS, the error was: %v"
+	deployFailedMsgTmpl       = "Failed to deploy DNS, the error was: %v"
 )
 
 // ApplyDNS manages the deployment of CoreDNS, with customization options from dns and kubelet, which are retrieved from the cluster configuration.
@@ -188,9 +189,10 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		},
 	}
 
-	cmOverrides, err := getConfigMapOverrides(ctx, snap)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to read ConfigMap overrides")
+	var cmOverrideErr error
+	cmOverrides, cmOverrideErr := getConfigMapOverrides(ctx, snap)
+	if cmOverrideErr != nil {
+		log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
 	}
 	if cmOverrides != nil {
 		log.FromContext(ctx).Info("Applying ConfigMap overrides", "overrides", cmOverrides)
@@ -225,11 +227,15 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		}, "", err
 	}
 
+	msg := fmt.Sprintf(enabledMsgTmpl, dnsIP)
+	if cmOverrideErr != nil {
+		msg = fmt.Sprintf(enabledWithWarningMsgTmpl, dnsIP, cmOverrideErr)
+	}
 	return types.FeatureStatus{
 		Enabled: true,
 		Version: ImageTag,
-		Message: fmt.Sprintf(enabledMsgTmpl, dnsIP),
-	}, dnsIP, err
+		Message: msg,
+	}, dnsIP, nil
 }
 
 // getConfigMapOverrides reads k8sd-coredns-values ConfigMap from kube-system namespace
