@@ -52,6 +52,8 @@ type Config struct {
 	DisableUpdateNodeConfigController bool
 	// DisableFeatureController is a bool flag to disable feature controller
 	DisableFeatureController bool
+	// DisableCoreDNSConfigMapController is a bool flag to disable the CoreDNS ConfigMap override controller
+	DisableCoreDNSConfigMapController bool
 	// DisableDNSRebalancerController is a bool flag to disable dns rebalancer controller
 	DisableDNSRebalancerController bool
 	// DisableCSRSigningController is a bool flag to disable csrsigning controller.
@@ -102,6 +104,7 @@ type App struct {
 	triggerFeatureControllerMetricsServerCh chan struct{}
 	triggerFeatureControllerDNSCh           chan struct{}
 	featureController                       *controllers.FeatureController
+	coreDNSConfigMapController              *controllers.CoreDNSConfigMapController
 }
 
 // New initializes a new microcluster instance from configuration.
@@ -209,6 +212,15 @@ func New(cfg Config) (*App, error) {
 		})
 	} else {
 		log.L().Info("feature-controller disabled via config")
+	}
+
+	if !cfg.DisableCoreDNSConfigMapController && !cfg.DisableFeatureController {
+		app.coreDNSConfigMapController = controllers.NewCoreDNSConfigMapController(
+			cfg.Snap,
+			app.NotifyDNS,
+		)
+	} else if cfg.DisableCoreDNSConfigMapController {
+		log.L().Info("coredns-configmap-controller disabled via config")
 	}
 
 	var upgradeCtrlOpts controllers.UpgradeControllerOptions

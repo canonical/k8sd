@@ -3,11 +3,11 @@ package coredns
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	"gopkg.in/yaml.v3"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -188,13 +188,12 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		},
 	}
 
-	// PoC: Read ConfigMap overrides
 	cmOverrides, err := getConfigMapOverrides(ctx, snap)
 	if err != nil {
-		slog.Warn("Failed to read ConfigMap overrides", "error", err)
+		log.FromContext(ctx).Error(err, "Failed to read ConfigMap overrides")
 	}
 	if cmOverrides != nil {
-		slog.Info("Applying ConfigMap overrides", "overrides", cmOverrides)
+		log.FromContext(ctx).Info("Applying ConfigMap overrides", "overrides", cmOverrides)
 		values = mergeValues(values, cmOverrides)
 	}
 
