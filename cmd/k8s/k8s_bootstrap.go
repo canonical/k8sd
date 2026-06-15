@@ -148,10 +148,20 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			if opts.containerdBaseDir != "" {
-				if isTmpfs(opts.containerdBaseDir) {
-					cmd.PrintErrln("Warning: --containerd-base-dir is on a tmpfs filesystem. Containerd state (images, containers) will be lost on reboot.")
-				}
 				bootstrapConfig.ContainerdBaseDir = opts.containerdBaseDir
+			}
+
+			if bootstrapConfig.ContainerdBaseDir != "" {
+				bootstrapConfig.ContainerdBaseDir, err = normalizeContainerdBaseDir(bootstrapConfig.ContainerdBaseDir)
+				if err != nil {
+					cmd.PrintErrf("Error: invalid containerd-base-dir value.\n\nThe error was: %v\n", err)
+					env.Exit(1)
+					return
+				}
+
+				if isTmpfs(bootstrapConfig.ContainerdBaseDir) {
+					cmd.PrintErrln("Warning: containerd-base-dir is on a tmpfs filesystem. Containerd state (images, containers) will be lost on reboot.")
+				}
 			}
 
 			if err := verifyBootstrapConfig(bootstrapConfig); err != nil {
@@ -302,6 +312,19 @@ func askQuestion(stdin io.Reader, stdout io.Writer, stderr io.Writer, question s
 		}
 		return s
 	}
+}
+
+func normalizeContainerdBaseDir(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("containerd-base-dir must be an absolute path, got %q", path)
+	}
+
+	return path, nil
 }
 
 // isTmpfs checks whether the given path (or its nearest existing ancestor) is on a tmpfs filesystem.

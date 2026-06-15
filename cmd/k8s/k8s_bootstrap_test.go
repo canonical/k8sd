@@ -178,3 +178,29 @@ func TestIsTmpfs(t *testing.T) {
 		g.Expect(isTmpfs("/usr/nonexistent/path")).To(BeFalse())
 	})
 }
+
+func TestNormalizeContainerdBaseDir(t *testing.T) {
+	t.Run("empty path", func(t *testing.T) {
+		g := NewWithT(t)
+
+		normalized, err := normalizeContainerdBaseDir("")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(normalized).To(Equal(""))
+	})
+
+	t.Run("relative path rejected", func(t *testing.T) {
+		g := NewWithT(t)
+
+		_, err := normalizeContainerdBaseDir("relative/path")
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("must be an absolute path"))
+	})
+
+	t.Run("absolute path is cleaned", func(t *testing.T) {
+		g := NewWithT(t)
+
+		normalized, err := normalizeContainerdBaseDir("/opt/k8s/../k8s-containerd//")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(normalized).To(Equal("/opt/k8s-containerd"))
+	})
+}
