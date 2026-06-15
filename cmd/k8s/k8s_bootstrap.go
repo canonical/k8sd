@@ -305,13 +305,18 @@ func askQuestion(stdin io.Reader, stdout io.Writer, stderr io.Writer, question s
 }
 
 // isTmpfs checks whether the given path (or its nearest existing ancestor) is on a tmpfs filesystem.
+// returns false if an error occurs while checking, or if the path is not on a tmpfs filesystem.
 func isTmpfs(path string) bool {
 	const tmpfsMagic = 0x01021994
 	path = filepath.Clean(path)
 	for {
 		var stat syscall.Statfs_t
-		if err := syscall.Statfs(path, &stat); err == nil {
+		err := syscall.Statfs(path, &stat)
+		if err == nil {
 			return stat.Type == tmpfsMagic
+		}
+		if !os.IsNotExist(err) {
+			return false
 		}
 		parent := filepath.Dir(path)
 		if parent == path {
