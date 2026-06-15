@@ -184,7 +184,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.Flags().StringVar(&opts.address, "address", "", "microcluster address or CIDR, defaults to the node IP address")
 	cmd.Flags().StringVar(&opts.outputFormat, "output-format", "plain", "set the output format to one of plain, json or yaml")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 90*time.Second, "the max time to wait for the command to execute")
-	cmd.Flags().StringVar(&opts.containerdBaseDir, "containerd-base-dir", "", "set the base directory for containerd to avoid conflicts with other containerd instances")
+	cmd.Flags().StringVar(&opts.containerdBaseDir, "containerd-base-dir", "", "set the base directory for containerd to avoid conflicts with other containerd instances. Should be a dedicated directory (e.g. /opt/k8s-containerd)")
 
 	return cmd
 }
