@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -35,12 +37,13 @@ func (b BootstrapResult) String() string {
 
 func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	var opts struct {
-		interactive  bool
-		configFile   string
-		name         string
-		address      string
-		outputFormat string
-		timeout      time.Duration
+		interactive       bool
+		configFile        string
+		name              string
+		address           string
+		outputFormat      string
+		timeout           time.Duration
+		containerdBaseDir string
 	}
 	cmd := &cobra.Command{
 		Use:    "bootstrap",
@@ -144,6 +147,13 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				}
 			}
 
+			if opts.containerdBaseDir != "" {
+				if isTmpfs(opts.containerdBaseDir) {
+					cmd.PrintErrln("Warning: --containerd-base-dir is on a tmpfs filesystem. Containerd state (images, containers) will be lost on reboot.")
+				}
+				bootstrapConfig.ContainerdBaseDir = opts.containerdBaseDir
+			}
+
 			if err := verifyBootstrapConfig(bootstrapConfig); err != nil {
 				cmd.PrintErrf("Bootstrap config verification failed: %v", err)
 				env.Exit(1)
@@ -174,6 +184,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.Flags().StringVar(&opts.address, "address", "", "microcluster address or CIDR, defaults to the node IP address")
 	cmd.Flags().StringVar(&opts.outputFormat, "output-format", "plain", "set the output format to one of plain, json or yaml")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 90*time.Second, "the max time to wait for the command to execute")
+	cmd.Flags().StringVar(&opts.containerdBaseDir, "containerd-base-dir", "", "set the base directory for containerd to avoid conflicts with other containerd instances")
 
 	return cmd
 }
@@ -290,5 +301,22 @@ func askQuestion(stdin io.Reader, stdout io.Writer, stderr io.Writer, question s
 			}
 		}
 		return s
+	}
+}
+
+// isTmpfs checks whether the given path (or its nearest existing ancestor) is on a tmpfs filesystem.
+func isTmpfs(path string) bool {
+	const tmpfsMagic = 0x01021994
+	path = filepath.Clean(path)
+	for {
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(path, &stat); err == nil {
+			return stat.Type == tmpfsMagic
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return false
+		}
+		path = parent
 	}
 }
