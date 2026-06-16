@@ -46,7 +46,7 @@ func (c *CoreDNSConfigMapController) Run(ctx context.Context) {
 func (c *CoreDNSConfigMapController) watch(ctx context.Context) error {
 	log := log.FromContext(ctx)
 
-	client, err := getNewK8sClientWithRetries(ctx, c.snap, false)
+	client, err := getNewK8sClientWithRetries(ctx, c.snap, true)
 	if err != nil {
 		return fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
