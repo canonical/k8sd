@@ -12,8 +12,9 @@ func (c Network) GetPodCIDR() string     { return getField(c.PodCIDR) }
 func (c Network) GetServiceCIDR() string { return getField(c.ServiceCIDR) }
 func (c Network) GetKubeProxyEnabled() bool {
 	if c.KubeProxyEnabled == nil {
-		// Default: when the network feature is enabled, kube-proxy replacement is implied.
-		return !c.GetEnabled()
+		// NOTE(HUE): we return true because in new clusters this field is explicitly set,
+		// but on old clusters, we want to make sure kube-proxy is enabled unless explicitly set by admins.
+		return true
 	}
 	return getField(c.KubeProxyEnabled)
 }

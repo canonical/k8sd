@@ -10,6 +10,7 @@ import (
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/spf13/cobra"
+	"k8s.io/utils/ptr"
 )
 
 func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
@@ -57,9 +58,7 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 			config := response.Config
 			if config.Network.KubeProxyEnabled == nil {
-				// if kube-proxy-enabled is nil do not show the nil value.
-				kubeProxyEnabled := config.Network.GetKubeProxyEnabled()
-				config.Network.KubeProxyEnabled = &kubeProxyEnabled
+				config.Network.KubeProxyEnabled = ptr.To(true)
 			}
 
 			config.MetricsServer = apiv2.MetricsServerConfig{}
