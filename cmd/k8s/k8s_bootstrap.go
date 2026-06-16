@@ -159,8 +159,8 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 					return
 				}
 
-				if isTmpfs(bootstrapConfig.ContainerdBaseDir) {
-					cmd.PrintErrln("Warning: containerd-base-dir is on a tmpfs filesystem. Containerd state (images, containers) will be lost on reboot.")
+				if isMemBackedFS(bootstrapConfig.ContainerdBaseDir) {
+					cmd.PrintErrln("Warning: containerd-base-dir is on a memory-backed filesystem (tmpfs/ramfs). Containerd state (images, containers) will be lost on reboot.")
 				}
 			}
 
@@ -327,16 +327,17 @@ func normalizeContainerdBaseDir(path string) (string, error) {
 	return path, nil
 }
 
-// isTmpfs checks whether the given path (or its nearest existing ancestor) is on a tmpfs filesystem.
-// returns false if an error occurs while checking, or if the path is not on a tmpfs filesystem.
-func isTmpfs(path string) bool {
+// isMemBackedFS checks whether the given path (or its nearest existing ancestor) is on a memory-backed filesystem (tmpfs or ramfs).
+// returns false if an error occurs while checking, or if the path is not on a memory-backed filesystem.
+func isMemBackedFS(path string) bool {
 	const tmpfsMagic = 0x01021994
+	const ramfsMagic = 0x858458f6
 	path = filepath.Clean(path)
 	for {
 		var stat syscall.Statfs_t
 		err := syscall.Statfs(path, &stat)
 		if err == nil {
-			return stat.Type == tmpfsMagic
+			return stat.Type == tmpfsMagic || stat.Type == ramfsMagic
 		}
 		if !os.IsNotExist(err) {
 			return false

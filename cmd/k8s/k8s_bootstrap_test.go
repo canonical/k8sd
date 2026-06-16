@@ -154,28 +154,28 @@ func TestGetConfigFromYaml_Stdin(t *testing.T) {
 	g.Expect(config).To(Equal(expectedConfig))
 }
 
-func TestIsTmpfs(t *testing.T) {
+func TestIsMemBackedFS(t *testing.T) {
 	t.Run("tmpfs path", func(t *testing.T) {
 		g := NewWithT(t)
 		// /dev/shm is always tmpfs on Linux
-		g.Expect(isTmpfs("/dev/shm")).To(BeTrue())
+		g.Expect(isMemBackedFS("/dev/shm")).To(BeTrue())
 	})
 
 	t.Run("non-tmpfs path", func(t *testing.T) {
 		g := NewWithT(t)
-		// root filesystem is not tmpfs
-		g.Expect(isTmpfs("/")).To(BeFalse())
+		// root filesystem is not tmpfs or ramfs
+		g.Expect(isMemBackedFS("/")).To(BeFalse())
 	})
 
 	t.Run("non-existent path walks up to ancestor", func(t *testing.T) {
 		g := NewWithT(t)
 		// /dev/shm/nonexistent doesn't exist, but ancestor /dev/shm is tmpfs
-		g.Expect(isTmpfs("/dev/shm/nonexistent/path")).To(BeTrue())
+		g.Expect(isMemBackedFS("/dev/shm/nonexistent/path")).To(BeTrue())
 	})
 
 	t.Run("non-existent path on non-tmpfs", func(t *testing.T) {
 		g := NewWithT(t)
-		g.Expect(isTmpfs("/usr/nonexistent/path")).To(BeFalse())
+		g.Expect(isMemBackedFS("/usr/nonexistent/path")).To(BeFalse())
 	})
 }
 
