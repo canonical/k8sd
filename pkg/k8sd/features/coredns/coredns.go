@@ -6,15 +6,18 @@ import (
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
 const (
-	enabledMsgTmpl      = "enabled at %s"
-	disabledMsg         = "disabled"
-	deleteFailedMsgTmpl = "Failed to delete DNS, the error was: %v"
-	deployFailedMsgTmpl = "Failed to deploy DNS, the error was: %v"
+	enabledMsgTmpl            = "enabled at %s"
+	enabledWithWarningMsgTmpl = "enabled at %s (warning: %v)"
+	disabledMsg               = "disabled"
+	deleteFailedMsgTmpl       = "Failed to delete DNS, the error was: %v"
+	deployFailedMsgTmpl       = "Failed to deploy DNS, the error was: %v"
 )
 
 // ApplyDNS manages the deployment of CoreDNS, with customization options from dns and kubelet, which are retrieved from the cluster configuration.
@@ -184,6 +187,16 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		},
 	}
 
+	var cmOverrideErr error
+	cmOverrides, cmOverrideErr := helmoverride.GetConfigMapOverrides(ctx, snap, "k8sd-coredns-values")
+	if cmOverrideErr != nil {
+		log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
+	}
+	if cmOverrides != nil {
+		log.FromContext(ctx).Info("Applying ConfigMap overrides", "overrides", cmOverrides)
+		values = helmoverride.MergeValues(values, cmOverrides)
+	}
+
 	if _, err := m.Apply(ctx, Chart, helm.StatePresent, values); err != nil {
 		err = fmt.Errorf("failed to apply coredns: %w", err)
 		return types.FeatureStatus{
@@ -215,6 +228,11 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 	return types.FeatureStatus{
 		Enabled: true,
 		Version: ImageTag,
-		Message: fmt.Sprintf(enabledMsgTmpl, dnsIP),
-	}, dnsIP, err
+		Message: func() string {
+			if cmOverrideErr != nil {
+				return fmt.Sprintf(enabledWithWarningMsgTmpl, dnsIP, cmOverrideErr)
+			}
+			return fmt.Sprintf(enabledMsgTmpl, dnsIP)
+		}(),
+	}, dnsIP, nil
 }

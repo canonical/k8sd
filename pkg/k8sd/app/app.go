@@ -52,6 +52,16 @@ type Config struct {
 	DisableUpdateNodeConfigController bool
 	// DisableFeatureController is a bool flag to disable feature controller
 	DisableFeatureController bool
+	// DisableCoreDNSConfigMapController is a bool flag to disable the CoreDNS ConfigMap override controller.
+	DisableCoreDNSConfigMapController bool
+	// DisableCiliumConfigMapController is a bool flag to disable the Cilium ConfigMap override controller.
+	DisableCiliumConfigMapController bool
+	// DisableMetalLBConfigMapController is a bool flag to disable the MetalLB ConfigMap override controller.
+	DisableMetalLBConfigMapController bool
+	// DisableLocalPVConfigMapController is a bool flag to disable the LocalPV ConfigMap override controller.
+	DisableLocalPVConfigMapController bool
+	// DisableMetricsServerConfigMapController is a bool flag to disable the metrics-server ConfigMap override controller.
+	DisableMetricsServerConfigMapController bool
 	// DisableDNSRebalancerController is a bool flag to disable dns rebalancer controller
 	DisableDNSRebalancerController bool
 	// DisableCSRSigningController is a bool flag to disable csrsigning controller.
@@ -102,6 +112,11 @@ type App struct {
 	triggerFeatureControllerMetricsServerCh chan struct{}
 	triggerFeatureControllerDNSCh           chan struct{}
 	featureController                       *controllers.FeatureController
+	coreDNSConfigMapController              *controllers.CoreDNSConfigMapController
+	ciliumConfigMapController               *controllers.CiliumConfigMapController
+	metalLBConfigMapController              *controllers.MetalLBConfigMapController
+	localPVConfigMapController              *controllers.LocalPVConfigMapController
+	metricsServerConfigMapController        *controllers.MetricsServerConfigMapController
 }
 
 // New initializes a new microcluster instance from configuration.
@@ -209,6 +224,51 @@ func New(cfg Config) (*App, error) {
 		})
 	} else {
 		log.L().Info("feature-controller disabled via config")
+	}
+
+	if !cfg.DisableCoreDNSConfigMapController && !cfg.DisableFeatureController {
+		app.coreDNSConfigMapController = controllers.NewCoreDNSConfigMapController(
+			cfg.Snap,
+			app.NotifyDNS,
+		)
+	} else if cfg.DisableCoreDNSConfigMapController {
+		log.L().Info("coredns-configmap-controller disabled via config")
+	}
+
+	if !cfg.DisableCiliumConfigMapController && !cfg.DisableFeatureController {
+		app.ciliumConfigMapController = controllers.NewCiliumConfigMapController(
+			cfg.Snap,
+			app.NotifyNetwork,
+		)
+	} else if cfg.DisableCiliumConfigMapController {
+		log.L().Info("cilium-configmap-controller disabled via config")
+	}
+
+	if !cfg.DisableMetalLBConfigMapController && !cfg.DisableFeatureController {
+		app.metalLBConfigMapController = controllers.NewMetalLBConfigMapController(
+			cfg.Snap,
+			app.NotifyLoadBalancer,
+		)
+	} else if cfg.DisableMetalLBConfigMapController {
+		log.L().Info("metallb-configmap-controller disabled via config")
+	}
+
+	if !cfg.DisableLocalPVConfigMapController && !cfg.DisableFeatureController {
+		app.localPVConfigMapController = controllers.NewLocalPVConfigMapController(
+			cfg.Snap,
+			app.NotifyLocalStorage,
+		)
+	} else if cfg.DisableLocalPVConfigMapController {
+		log.L().Info("localpv-configmap-controller disabled via config")
+	}
+
+	if !cfg.DisableMetricsServerConfigMapController && !cfg.DisableFeatureController {
+		app.metricsServerConfigMapController = controllers.NewMetricsServerConfigMapController(
+			cfg.Snap,
+			app.NotifyMetricsServer,
+		)
+	} else if cfg.DisableMetricsServerConfigMapController {
+		log.L().Info("metrics-server-configmap-controller disabled via config")
 	}
 
 	var upgradeCtrlOpts controllers.UpgradeControllerOptions

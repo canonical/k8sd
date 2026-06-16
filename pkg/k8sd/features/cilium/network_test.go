@@ -19,7 +19,9 @@ import (
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/ktesting"
@@ -540,4 +542,91 @@ func validateNetworkValues(g Gomega, values map[string]any, network types.Networ
 	_, exists = annotations.Get(apiv1_annotations.AnnotationSCTPEnabled)
 	sctpValues := values["sctp"].(map[string]interface{})
 	g.Expect(sctpValues["enabled"]).To(Equal(exists))
+}
+
+func TestNetworkConfigMapOverrides(t *testing.T) {
+	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
+		network := types.Network{
+			Enabled: ptr.To(true),
+			PodCIDR: ptr.To("192.0.2.0/24"),
+		}
+		apiserver := types.APIServer{SecurePort: ptr.To(6443)}
+
+		newSnap := func(objects ...k8sruntime.Object) *snapmock.Snap {
+			clientset := fake.NewSimpleClientset(objects...)
+			return &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       &helmmock.Mock{},
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+		}
+
+		configMap := func(valuesYAML string) *corev1.ConfigMap {
+			return &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "k8sd-cilium-values", Namespace: "kube-system"},
+				Data:       map[string]string{"values": valuesYAML},
+			}
+		}
+
+		t.Run("NoConfigMap", func(t *testing.T) {
+			g := NewWithT(t)
+			snapM := newSnap()
+
+			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
+		})
+
+		t.Run("OverrideScalarValue", func(t *testing.T) {
+			g := NewWithT(t)
+			snapM := newSnap(configMap("sessionAffinity: false\n"))
+
+			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
+			helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
+			g.Expect(helmValues["sessionAffinity"]).To(BeFalse())
+		})
+
+		t.Run("DeepMergePreservesUnrelatedKeys", func(t *testing.T) {
+			g := NewWithT(t)
+			snapM := newSnap(configMap("socketLB:\n  enabled: false\n"))
+
+			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			socketLB := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values["socketLB"].(map[string]any)
+			g.Expect(socketLB["enabled"]).To(BeFalse())
+		})
+
+		t.Run("InvalidYAMLFallsBackToDefaults", func(t *testing.T) {
+			g := NewWithT(t)
+			snapM := newSnap(configMap("this: is: not: valid: yaml: :::"))
+
+			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
+
+			// ApplyNetwork should not fail — it uses defaults and surfaces the warning in status.
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(ContainSubstring("warning:"))
+			g.Expect(status.Message).To(ContainSubstring("failed to parse configmap values"))
+		})
+
+		t.Run("ValidOverrideHasNoWarningInStatus", func(t *testing.T) {
+			g := NewWithT(t)
+			snapM := newSnap(configMap("sessionAffinity: false\n"))
+
+			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).NotTo(ContainSubstring("warning"))
+		})
+	})
 }
