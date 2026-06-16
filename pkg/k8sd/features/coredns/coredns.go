@@ -238,8 +238,8 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 	}, dnsIP, nil
 }
 
-// getConfigMapOverrides reads k8sd-coredns-values ConfigMap from kube-system namespace
-// Returns nil if ConfigMap doesn't exist (no overrides)
+// getConfigMapOverrides reads k8sd-coredns-values ConfigMap from kube-system namespace.
+// Returns nil if ConfigMap doesn't exist (no overrides).
 func getConfigMapOverrides(ctx context.Context, snap snap.Snap) (map[string]any, error) {
 	client, err := snap.KubernetesClient("")
 	if err != nil {
@@ -270,8 +270,8 @@ func getConfigMapOverrides(ctx context.Context, snap snap.Snap) (map[string]any,
 	return overrides, nil
 }
 
-// mergeValues performs deep merge: base ← overlay
-// overlay values take precedence over base
+// mergeValues performs a deep merge of base and overlay maps.
+// Values from overlay take precedence over base.
 func mergeValues(base, overlay map[string]any) map[string]any {
 	result := make(map[string]any)
 
