@@ -63,6 +63,18 @@ func TestValidateConfig(t *testing.T) {
 			err = verifyBootstrapConfigWithRunCommand(bootstrapConfig, mockRunner.Run)
 			g.Expect(err).To(HaveOccurred())
 		})
+
+		t.Run("Fail relative containerd base dir", func(t *testing.T) {
+			g := NewWithT(t)
+
+			bootstrapConfig := apiv2.BootstrapConfig{
+				ContainerdBaseDir: "relative/path",
+			}
+
+			err := verifyBootstrapConfigWithRunCommand(bootstrapConfig, mockRunner.Run)
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(err.Error()).To(ContainSubstring("containerd-base-dir must be an absolute path"))
+		})
 	})
 
 	t.Run("Join", func(t *testing.T) {
@@ -105,6 +117,27 @@ func TestValidateConfig(t *testing.T) {
 
 			err = verifyJoinConfigWithRunCommand(string(joinConfigBytes), "", mockRunner.Run)
 			g.Expect(err).To(Not(HaveOccurred()))
+		})
+
+		t.Run("Fail relative containerd base dir", func(t *testing.T) {
+			g := NewWithT(t)
+
+			joinConfig := &apiv2.WorkerJoinConfig{
+				ContainerdBaseDir: "relative/path",
+			}
+			joinConfigBytes, err := yaml.Marshal(joinConfig)
+			g.Expect(err).To(Not(HaveOccurred()))
+
+			internalToken := types.InternalWorkerNodeToken{
+				Token:  "foo",
+				Secret: "lish",
+			}
+			tokenString, err := internalToken.Encode()
+			g.Expect(err).To(Not(HaveOccurred()))
+
+			err = verifyJoinConfigWithRunCommand(string(joinConfigBytes), tokenString, mockRunner.Run)
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(err.Error()).To(ContainSubstring("containerd-base-dir must be an absolute path"))
 		})
 	})
 }
