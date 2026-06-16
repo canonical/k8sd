@@ -467,7 +467,7 @@ func (s *snap) PreInitChecks(ctx context.Context, config types.ClusterConfig, se
 			" Please stop any other running containerd service and remove the existing directory at '%s' before"+
 			" bootstrapping or joining a cluster.\n"+
 			"Dev-only: You can change the k8s containerd install path using --containerd-base-dir. Note that you"+
-			" may have to update the containerd configs of any operators on this node as well.", s.ContainerdSocketDir(), s.ContainerdSocketDir())
+			" may have to update the containerd configs of any operators on this node as well.\n", s.ContainerdSocketDir(), s.ContainerdSocketDir())
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("Encountered an error while checking '%s': %w", s.ContainerdSocketDir(), err)
 	}
