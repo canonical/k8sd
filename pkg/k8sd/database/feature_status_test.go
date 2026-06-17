@@ -20,24 +20,28 @@ func TestFeatureStatus(t *testing.T) {
 			t0, _ := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 			networkStatus := types.FeatureStatus{
 				Enabled:   true,
+				Component: "cilium",
 				Message:   "enabled",
 				Version:   "1.2.3",
 				UpdatedAt: t0,
 			}
 			dnsStatus := types.FeatureStatus{
 				Enabled:   true,
+				Component: "coredns",
 				Message:   "enabled at 10.0.0.1",
 				Version:   "4.5.6",
 				UpdatedAt: t0,
 			}
 			dnsStatus2 := types.FeatureStatus{
 				Enabled:   true,
+				Component: "coredns",
 				Message:   "enabled at 10.0.0.2",
 				Version:   "4.5.7",
 				UpdatedAt: t0,
 			}
 			gatewayStatus := types.FeatureStatus{
 				Enabled:   true,
+				Component: "cilium",
 				Message:   "disabled",
 				Version:   "10.20.30",
 				UpdatedAt: t0,
@@ -63,11 +67,13 @@ func TestFeatureStatus(t *testing.T) {
 				g.Expect(ss).To(HaveLen(2))
 
 				g.Expect(ss[features.Network].Enabled).To(Equal(networkStatus.Enabled))
+				g.Expect(ss[features.Network].Component).To(Equal(networkStatus.Component))
 				g.Expect(ss[features.Network].Message).To(Equal(networkStatus.Message))
 				g.Expect(ss[features.Network].Version).To(Equal(networkStatus.Version))
 				g.Expect(ss[features.Network].UpdatedAt).To(Equal(networkStatus.UpdatedAt))
 
 				g.Expect(ss[features.DNS].Enabled).To(Equal(dnsStatus.Enabled))
+				g.Expect(ss[features.DNS].Component).To(Equal(dnsStatus.Component))
 				g.Expect(ss[features.DNS].Message).To(Equal(dnsStatus.Message))
 				g.Expect(ss[features.DNS].Version).To(Equal(dnsStatus.Version))
 				g.Expect(ss[features.DNS].UpdatedAt).To(Equal(dnsStatus.UpdatedAt))
@@ -94,18 +100,21 @@ func TestFeatureStatus(t *testing.T) {
 
 				// network stayed the same
 				g.Expect(ss[features.Network].Enabled).To(Equal(networkStatus.Enabled))
+				g.Expect(ss[features.Network].Component).To(Equal(networkStatus.Component))
 				g.Expect(ss[features.Network].Message).To(Equal(networkStatus.Message))
 				g.Expect(ss[features.Network].Version).To(Equal(networkStatus.Version))
 				g.Expect(ss[features.Network].UpdatedAt).To(Equal(networkStatus.UpdatedAt))
 
 				// dns is updated
 				g.Expect(ss[features.DNS].Enabled).To(Equal(dnsStatus2.Enabled))
+				g.Expect(ss[features.DNS].Component).To(Equal(dnsStatus2.Component))
 				g.Expect(ss[features.DNS].Message).To(Equal(dnsStatus2.Message))
 				g.Expect(ss[features.DNS].Version).To(Equal(dnsStatus2.Version))
 				g.Expect(ss[features.DNS].UpdatedAt).To(Equal(dnsStatus2.UpdatedAt))
 
 				// gateway is added
 				g.Expect(ss[features.Gateway].Enabled).To(Equal(gatewayStatus.Enabled))
+				g.Expect(ss[features.Gateway].Component).To(Equal(gatewayStatus.Component))
 				g.Expect(ss[features.Gateway].Message).To(Equal(gatewayStatus.Message))
 				g.Expect(ss[features.Gateway].Version).To(Equal(gatewayStatus.Version))
 				g.Expect(ss[features.Gateway].UpdatedAt).To(Equal(gatewayStatus.UpdatedAt))
