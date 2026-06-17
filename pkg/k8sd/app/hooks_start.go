@@ -148,31 +148,6 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 		)
 	}
 
-	// start CoreDNS ConfigMap override controller
-	if a.coreDNSConfigMapController != nil {
-		go a.coreDNSConfigMapController.Run(ctx)
-	}
-
-	// start Cilium ConfigMap override controller
-	if a.ciliumConfigMapController != nil {
-		go a.ciliumConfigMapController.Run(ctx)
-	}
-
-	// start MetalLB ConfigMap override controller
-	if a.metalLBConfigMapController != nil {
-		go a.metalLBConfigMapController.Run(ctx)
-	}
-
-	// start LocalPV ConfigMap override controller
-	if a.localPVConfigMapController != nil {
-		go a.localPVConfigMapController.Run(ctx)
-	}
-
-	// start metrics-server ConfigMap override controller
-	if a.metricsServerConfigMapController != nil {
-		go a.metricsServerConfigMapController.Run(ctx)
-	}
-
 	// start controller coordinator
 	if a.controllerCoordinator != nil {
 		go func() {
