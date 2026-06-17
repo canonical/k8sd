@@ -17,6 +17,7 @@ const (
 	disabledMsg         = "disabled"
 	deployFailedMsgTmpl = "Failed to deploy Local Storage, the error was: %v"
 	deleteFailedMsgTmpl = "Failed to delete Local Storage, the error was: %v"
+	component           = "rawfile-csi"
 )
 
 // ApplyLocalStorage deploys the rawfile-localpv CSI driver on the cluster based on the given configuration, when cfg.Enabled is true.
@@ -79,16 +80,18 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 		if cfg.GetEnabled() {
 			err = fmt.Errorf("failed to install rawfile-csi helm package: %w", err)
 			return types.FeatureStatus{
-				Enabled: false,
-				Version: ImageTag,
-				Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+				Enabled:   false,
+				Component: component,
+				Version:   ImageTag,
+				Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
 			}, err
 		} else {
 			err = fmt.Errorf("failed to delete rawfile-csi helm package: %w", err)
 			return types.FeatureStatus{
-				Enabled: false,
-				Version: ImageTag,
-				Message: fmt.Sprintf(deleteFailedMsgTmpl, err),
+				Enabled:   false,
+				Component: component,
+				Version:   ImageTag,
+				Message:   fmt.Sprintf(deleteFailedMsgTmpl, err),
 			}, err
 		}
 	}
@@ -103,12 +106,14 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 				}
 				return fmt.Sprintf(enabledMsg, cfg.GetLocalPath())
 			}(),
+			Component: component,
 		}, nil
 	} else {
 		return types.FeatureStatus{
-			Enabled: false,
-			Version: ImageTag,
-			Message: disabledMsg,
+			Enabled:   false,
+			Component: component,
+			Version:   ImageTag,
+			Message:   disabledMsg,
 		}, nil
 	}
 }

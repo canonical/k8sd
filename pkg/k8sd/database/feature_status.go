@@ -25,6 +25,7 @@ func SetFeatureStatus(ctx context.Context, tx *sql.Tx, name types.FeatureName, s
 
 	if _, err := upsertTxStmt.ExecContext(ctx,
 		name,
+		status.Component,
 		status.Message,
 		status.Version,
 		status.UpdatedAt.Format(time.RFC3339),
@@ -57,7 +58,7 @@ func GetFeatureStatuses(ctx context.Context, tx *sql.Tx) (map[types.FeatureName]
 			status types.FeatureStatus
 		)
 
-		if err := rows.Scan(&name, &status.Message, &status.Version, &ts, &status.Enabled); err != nil {
+		if err := rows.Scan(&name, &status.Component, &status.Message, &status.Version, &ts, &status.Enabled); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
