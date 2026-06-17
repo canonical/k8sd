@@ -29,45 +29,51 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		if err := disableLoadBalancer(ctx, snap, network); err != nil {
 			err = fmt.Errorf("failed to disable LoadBalancer: %w", err)
 			return types.FeatureStatus{
-				Enabled: false,
-				Version: CiliumAgentImageTag,
-				Message: fmt.Sprintf(LbDeleteFailedMsgTmpl, err),
+				Enabled:   false,
+				Component: component,
+				Version:   CiliumAgentImageTag,
+				Message:   fmt.Sprintf(LbDeleteFailedMsgTmpl, err),
 			}, err
 		}
 		return types.FeatureStatus{
-			Enabled: false,
-			Version: CiliumAgentImageTag,
-			Message: DisabledMsg,
+			Enabled:   false,
+			Component: component,
+			Version:   CiliumAgentImageTag,
+			Message:   DisabledMsg,
 		}, nil
 	}
 
 	if err := enableLoadBalancer(ctx, snap, loadbalancer, network); err != nil {
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
-			Enabled: false,
-			Version: CiliumAgentImageTag,
-			Message: fmt.Sprintf(LbDeployFailedMsgTmpl, err),
+			Enabled:   false,
+			Component: component,
+			Version:   CiliumAgentImageTag,
+			Message:   fmt.Sprintf(LbDeployFailedMsgTmpl, err),
 		}, err
 	}
 
 	switch {
 	case loadbalancer.GetBGPMode():
 		return types.FeatureStatus{
-			Enabled: true,
-			Version: CiliumAgentImageTag,
-			Message: fmt.Sprintf(lbEnabledMsgTmpl, "BGP"),
+			Enabled:   true,
+			Component: component,
+			Version:   CiliumAgentImageTag,
+			Message:   fmt.Sprintf(lbEnabledMsgTmpl, "BGP"),
 		}, nil
 	case loadbalancer.GetL2Mode():
 		return types.FeatureStatus{
-			Enabled: true,
-			Version: CiliumAgentImageTag,
-			Message: fmt.Sprintf(lbEnabledMsgTmpl, "L2"),
+			Enabled:   true,
+			Component: component,
+			Version:   CiliumAgentImageTag,
+			Message:   fmt.Sprintf(lbEnabledMsgTmpl, "L2"),
 		}, nil
 	default:
 		return types.FeatureStatus{
-			Enabled: true,
-			Version: CiliumAgentImageTag,
-			Message: fmt.Sprintf(lbEnabledMsgTmpl, "Unknown"),
+			Enabled:   true,
+			Component: component,
+			Version:   CiliumAgentImageTag,
+			Message:   fmt.Sprintf(lbEnabledMsgTmpl, "Unknown"),
 		}, nil
 	}
 }

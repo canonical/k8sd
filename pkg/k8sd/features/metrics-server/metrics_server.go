@@ -14,6 +14,7 @@ const (
 	disabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete Metrics Server, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy Metrics Server, the error was: %v"
+	component           = "metrics-server"
 )
 
 // ApplyMetricsServer deploys metrics-server when cfg.Enabled is true.
@@ -43,30 +44,34 @@ func ApplyMetricsServer(ctx context.Context, snap snap.Snap, cfg types.MetricsSe
 		if cfg.GetEnabled() {
 			err = fmt.Errorf("failed to install metrics server chart: %w", err)
 			return types.FeatureStatus{
-				Enabled: false,
-				Version: imageTag,
-				Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+				Enabled:   false,
+				Component: component,
+				Version:   imageTag,
+				Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
 			}, err
 		} else {
 			err = fmt.Errorf("failed to delete metrics server chart: %w", err)
 			return types.FeatureStatus{
-				Enabled: false,
-				Version: imageTag,
-				Message: fmt.Sprintf(deleteFailedMsgTmpl, err),
+				Enabled:   false,
+				Component: component,
+				Version:   imageTag,
+				Message:   fmt.Sprintf(deleteFailedMsgTmpl, err),
 			}, err
 		}
 	} else {
 		if cfg.GetEnabled() {
 			return types.FeatureStatus{
-				Enabled: true,
-				Version: imageTag,
-				Message: enabledMsg,
+				Enabled:   true,
+				Component: component,
+				Version:   imageTag,
+				Message:   enabledMsg,
 			}, nil
 		} else {
 			return types.FeatureStatus{
-				Enabled: false,
-				Version: imageTag,
-				Message: disabledMsg,
+				Enabled:   false,
+				Component: component,
+				Version:   imageTag,
+				Message:   disabledMsg,
 			}, nil
 		}
 	}

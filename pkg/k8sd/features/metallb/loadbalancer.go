@@ -15,6 +15,7 @@ const (
 	DisabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete MetalLB, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
+	component           = "metallb"
 )
 
 // ApplyLoadBalancer will always return a FeatureStatus indicating the current status of the
@@ -26,45 +27,51 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		if err := disableLoadBalancer(ctx, snap, network); err != nil {
 			err = fmt.Errorf("failed to disable LoadBalancer: %w", err)
 			return types.FeatureStatus{
-				Enabled: false,
-				Version: ControllerImageTag,
-				Message: fmt.Sprintf(deleteFailedMsgTmpl, err),
+				Enabled:   false,
+				Component: component,
+				Version:   ControllerImageTag,
+				Message:   fmt.Sprintf(deleteFailedMsgTmpl, err),
 			}, err
 		}
 		return types.FeatureStatus{
-			Enabled: false,
-			Version: ControllerImageTag,
-			Message: DisabledMsg,
+			Enabled:   false,
+			Component: component,
+			Version:   ControllerImageTag,
+			Message:   DisabledMsg,
 		}, nil
 	}
 
 	if err := enableLoadBalancer(ctx, snap, loadbalancer, network); err != nil {
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
-			Enabled: false,
-			Version: ControllerImageTag,
-			Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+			Enabled:   false,
+			Component: component,
+			Version:   ControllerImageTag,
+			Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
 		}, err
 	}
 
 	switch {
 	case loadbalancer.GetBGPMode():
 		return types.FeatureStatus{
-			Enabled: true,
-			Version: ControllerImageTag,
-			Message: fmt.Sprintf(enabledMsgTmpl, "BGP"),
+			Enabled:   true,
+			Component: component,
+			Version:   ControllerImageTag,
+			Message:   fmt.Sprintf(enabledMsgTmpl, "BGP"),
 		}, nil
 	case loadbalancer.GetL2Mode():
 		return types.FeatureStatus{
-			Enabled: true,
-			Version: ControllerImageTag,
-			Message: fmt.Sprintf(enabledMsgTmpl, "L2"),
+			Enabled:   true,
+			Component: component,
+			Version:   ControllerImageTag,
+			Message:   fmt.Sprintf(enabledMsgTmpl, "L2"),
 		}, nil
 	default:
 		return types.FeatureStatus{
-			Enabled: true,
-			Version: ControllerImageTag,
-			Message: fmt.Sprintf(enabledMsgTmpl, "Unknown"),
+			Enabled:   true,
+			Component: component,
+			Version:   ControllerImageTag,
+			Message:   fmt.Sprintf(enabledMsgTmpl, "Unknown"),
 		}, nil
 	}
 }

@@ -22,6 +22,7 @@ var (
 		schemaApplyMigration("feature-status", "000-feature-status.sql"),
 		schemaApplyMigration("worker-tokens", "001-add-expiry.sql"),
 		schemaApplyMigration("worker-nodes", "001-delete.sql"),
+		schemaApplyMigration("feature-status", "001-feature-status.sql"),
 	}
 
 	//go:embed sql/migrations
