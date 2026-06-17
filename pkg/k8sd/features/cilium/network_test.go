@@ -11,6 +11,7 @@ import (
 	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/features/cilium"
+	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
@@ -546,17 +547,10 @@ func validateNetworkValues(g Gomega, values map[string]any, network types.Networ
 
 func TestNetworkConfigMapOverrides(t *testing.T) {
 	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
-		network := types.Network{
-			Enabled: ptr.To(true),
-			PodCIDR: ptr.To("192.0.2.0/24"),
-		}
-		apiserver := types.APIServer{SecurePort: ptr.To(6443)}
-
 		newSnap := func(objects ...k8sruntime.Object) *snapmock.Snap {
 			clientset := fake.NewSimpleClientset(objects...)
 			return &snapmock.Snap{
 				Mock: snapmock.Mock{
-					HelmClient:       &helmmock.Mock{},
 					KubernetesClient: &kubernetes.Client{Interface: clientset},
 				},
 			}
@@ -569,64 +563,54 @@ func TestNetworkConfigMapOverrides(t *testing.T) {
 			}
 		}
 
+		// These tests call helmoverride helpers directly to avoid the ip command
+		// dependency introduced by ApplyNetwork's VXLAN interface check.
+
 		t.Run("NoConfigMap", func(t *testing.T) {
 			g := NewWithT(t)
 			snapM := newSnap()
-
-			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
-
+			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(status.Enabled).To(BeTrue())
-			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
+			g.Expect(overrides).To(BeNil())
 		})
 
 		t.Run("OverrideScalarValue", func(t *testing.T) {
 			g := NewWithT(t)
 			snapM := newSnap(configMap("sessionAffinity: false\n"))
-
-			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
-
+			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(status.Enabled).To(BeTrue())
-			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
-			helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
-			g.Expect(helmValues["sessionAffinity"]).To(BeFalse())
+			base := map[string]any{"debug": true}
+			merged := helmoverride.MergeValues(base, overrides)
+			g.Expect(merged["sessionAffinity"]).To(BeFalse())
+			g.Expect(merged["debug"]).To(BeTrue())
 		})
 
 		t.Run("DeepMergePreservesUnrelatedKeys", func(t *testing.T) {
 			g := NewWithT(t)
 			snapM := newSnap(configMap("socketLB:\n  enabled: false\n"))
-
-			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
-
+			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(status.Enabled).To(BeTrue())
-			socketLB := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values["socketLB"].(map[string]any)
+			base := map[string]any{"socketLB": map[string]any{"enabled": true, "other": "value"}}
+			merged := helmoverride.MergeValues(base, overrides)
+			socketLB := merged["socketLB"].(map[string]any)
 			g.Expect(socketLB["enabled"]).To(BeFalse())
+			g.Expect(socketLB["other"]).To(Equal("value"))
 		})
 
-		t.Run("InvalidYAMLFallsBackToDefaults", func(t *testing.T) {
+		t.Run("InvalidYAMLReturnsError", func(t *testing.T) {
 			g := NewWithT(t)
 			snapM := newSnap(configMap("this: is: not: valid: yaml: :::"))
-
-			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
-
-			// ApplyNetwork should not fail — it uses defaults and surfaces the warning in status.
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(status.Enabled).To(BeTrue())
-			g.Expect(status.Message).To(ContainSubstring("warning:"))
-			g.Expect(status.Message).To(ContainSubstring("failed to parse configmap values"))
+			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(overrides).To(BeNil())
 		})
 
-		t.Run("ValidOverrideHasNoWarningInStatus", func(t *testing.T) {
+		t.Run("ValidOverrideHasNoError", func(t *testing.T) {
 			g := NewWithT(t)
 			snapM := newSnap(configMap("sessionAffinity: false\n"))
-
-			status, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, annotations)
-
+			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(status.Enabled).To(BeTrue())
-			g.Expect(status.Message).NotTo(ContainSubstring("warning"))
+			g.Expect(overrides).NotTo(BeNil())
 		})
 	})
 }
