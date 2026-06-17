@@ -462,10 +462,12 @@ func (s *snap) PreInitChecks(ctx context.Context, config types.ClusterConfig, se
 	// Checks the directories instead of the containerd.sock file, since this file does not exist if
 	// containerd is not running/stopped.
 	if _, err := os.Stat(s.ContainerdSocketDir()); err == nil {
-		return fmt.Errorf("The path '%s' required for the containerd socket already exists. "+
-			"This may mean that another service is already using that path, and it conflicts with the k8s snap. "+
-			"Please make sure that there is no other service installed that uses the same path, and remove the existing directory."+
-			"(dev-only): You can change the default k8s containerd base path with the containerd-base-dir option in the bootstrap / join-cluster config file.", s.ContainerdSocketDir())
+		return fmt.Errorf("The path '%s' required for the containerd socket already exists, meaning there"+
+			" is likely another service running containerd on this node, which will conflict with kubernetes."+
+			" Please stop any other running containerd service and remove the existing directory at '%s' before"+
+			" bootstrapping or joining a cluster.\n"+
+			"Dev-only: You can change the k8s containerd install path using --containerd-base-dir. Note that you"+
+			" may have to update the containerd configs of any operators on this node as well.\n", s.ContainerdSocketDir(), s.ContainerdSocketDir())
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("Encountered an error while checking '%s': %w", s.ContainerdSocketDir(), err)
 	}

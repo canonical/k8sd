@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
@@ -46,8 +45,7 @@ func (e *Endpoints) postClusterJoin(s mctypes.State, r *http.Request) mctypes.Re
 	}
 
 	if joinConfig.ContainerdBaseDir != "" {
-		// append k8s-containerd to the given base dir, so we don't flood it with our own folders.
-		e.provider.Snap().SetContainerdBaseDir(filepath.Join(joinConfig.ContainerdBaseDir, "k8s-containerd"))
+		e.provider.Snap().SetContainerdBaseDir(joinConfig.ContainerdBaseDir)
 	}
 
 	config := map[string]string{}

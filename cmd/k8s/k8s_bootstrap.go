@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -35,12 +37,13 @@ func (b BootstrapResult) String() string {
 
 func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	var opts struct {
-		interactive  bool
-		configFile   string
-		name         string
-		address      string
-		outputFormat string
-		timeout      time.Duration
+		interactive       bool
+		configFile        string
+		name              string
+		address           string
+		outputFormat      string
+		timeout           time.Duration
+		containerdBaseDir string
 	}
 	cmd := &cobra.Command{
 		Use:    "bootstrap",
@@ -144,6 +147,23 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				}
 			}
 
+			if opts.containerdBaseDir != "" {
+				bootstrapConfig.ContainerdBaseDir = opts.containerdBaseDir
+			}
+
+			if bootstrapConfig.ContainerdBaseDir != "" {
+				bootstrapConfig.ContainerdBaseDir, err = normalizeContainerdBaseDir(bootstrapConfig.ContainerdBaseDir)
+				if err != nil {
+					cmd.PrintErrf("Error: invalid containerd-base-dir value.\n\nThe error was: %v\n", err)
+					env.Exit(1)
+					return
+				}
+
+				if isMemBackedFS(bootstrapConfig.ContainerdBaseDir) {
+					cmd.PrintErrln("Warning: containerd-base-dir is on a memory-backed filesystem (tmpfs/ramfs). Containerd state (images, containers) will be lost on reboot.")
+				}
+			}
+
 			if err := verifyBootstrapConfig(bootstrapConfig); err != nil {
 				cmd.PrintErrf("Bootstrap config verification failed: %v", err)
 				env.Exit(1)
@@ -174,6 +194,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.Flags().StringVar(&opts.address, "address", "", "microcluster address or CIDR, defaults to the node IP address")
 	cmd.Flags().StringVar(&opts.outputFormat, "output-format", "plain", "set the output format to one of plain, json or yaml")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 90*time.Second, "the max time to wait for the command to execute")
+	cmd.Flags().StringVar(&opts.containerdBaseDir, "containerd-base-dir", "", "set a dedicated absolute base directory for containerd")
 
 	return cmd
 }
@@ -290,5 +311,41 @@ func askQuestion(stdin io.Reader, stdout io.Writer, stderr io.Writer, question s
 			}
 		}
 		return s
+	}
+}
+
+func normalizeContainerdBaseDir(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+
+	path = filepath.Clean(path)
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("containerd-base-dir must be an absolute path, got %q", path)
+	}
+
+	return path, nil
+}
+
+// isMemBackedFS checks whether the given path (or its nearest existing ancestor) is on a memory-backed filesystem (tmpfs or ramfs).
+// returns false if an error occurs while checking, or if the path is not on a memory-backed filesystem.
+func isMemBackedFS(path string) bool {
+	const tmpfsMagic = 0x01021994
+	const ramfsMagic = 0x858458f6
+	path = filepath.Clean(path)
+	for {
+		var stat syscall.Statfs_t
+		err := syscall.Statfs(path, &stat)
+		if err == nil {
+			return stat.Type == tmpfsMagic || stat.Type == ramfsMagic
+		}
+		if !os.IsNotExist(err) {
+			return false
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return false
+		}
+		path = parent
 	}
 }
