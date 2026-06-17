@@ -51,6 +51,15 @@ func (c *CoreDNSConfigMapController) watch(ctx context.Context) error {
 		return fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
+	// Trigger an initial reconciliation if the ConfigMap already exists so that
+	// overrides are applied after k8sd restarts without waiting for the next change event.
+	if _, err := client.CoreV1().ConfigMaps("kube-system").Get(ctx, "k8sd-coredns-values", metav1.GetOptions{}); err == nil {
+		log.Info("ConfigMap already present at controller start; triggering initial reconciliation")
+		c.notifyDNS()
+	} else if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to check for existing ConfigMap: %w", err)
+	}
+
 	w, err := client.CoreV1().ConfigMaps("kube-system").Watch(ctx, metav1.ListOptions{
 		FieldSelector: "metadata.name=k8sd-coredns-values",
 	})
