@@ -12,6 +12,7 @@ import (
 func TestK8sdFeatureStatusToAPI(t *testing.T) {
 	k8sdFS := types.FeatureStatus{
 		Enabled:   true,
+		Component: "cilium",
 		Message:   "message",
 		Version:   "version",
 		UpdatedAt: time.Now(),
@@ -20,6 +21,7 @@ func TestK8sdFeatureStatusToAPI(t *testing.T) {
 	apiFS := k8sdFS.ToAPI()
 	g := NewWithT(t)
 	g.Expect(apiFS.Enabled).To(Equal(k8sdFS.Enabled))
+	g.Expect(apiFS.Component).To(Equal(k8sdFS.Component))
 	g.Expect(apiFS.Message).To(Equal(k8sdFS.Message))
 	g.Expect(apiFS.Version).To(Equal(k8sdFS.Version))
 	g.Expect(apiFS.UpdatedAt).To(Equal(k8sdFS.UpdatedAt))
@@ -28,6 +30,7 @@ func TestK8sdFeatureStatusToAPI(t *testing.T) {
 func TestAPIFeatureStatusToK8sd(t *testing.T) {
 	apiFS := apiv2.FeatureStatus{
 		Enabled:   true,
+		Component: "cilium",
 		Message:   "message",
 		Version:   "version",
 		UpdatedAt: time.Now(),
@@ -36,6 +39,7 @@ func TestAPIFeatureStatusToK8sd(t *testing.T) {
 	k8sdFS := types.FeatureStatusFromAPI(apiFS)
 	g := NewWithT(t)
 	g.Expect(k8sdFS.Enabled).To(Equal(apiFS.Enabled))
+	g.Expect(k8sdFS.Component).To(Equal(apiFS.Component))
 	g.Expect(k8sdFS.Message).To(Equal(apiFS.Message))
 	g.Expect(k8sdFS.Version).To(Equal(apiFS.Version))
 	g.Expect(k8sdFS.UpdatedAt).To(Equal(apiFS.UpdatedAt))
