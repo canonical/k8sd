@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
@@ -211,5 +212,68 @@ func TestNodeVersions(t *testing.T) {
 
 		_, err := client.NodeVersions(context.Background())
 		g.Expect(err).To(MatchError(ContainSubstring("failed to parse version")))
+	})
+}
+
+func TestListNodesStatuses(t *testing.T) {
+	g := NewWithT(t)
+
+	node := func(name, internalIP string, controlPlane bool, ready v1.ConditionStatus) *v1.Node {
+		labels := map[string]string{}
+		if controlPlane {
+			labels["node-role.kubernetes.io/control-plane"] = ""
+		}
+		return &v1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
+			Status: v1.NodeStatus{
+				Addresses: []v1.NodeAddress{
+					{Type: v1.NodeHostName, Address: name},
+					{Type: v1.NodeInternalIP, Address: internalIP},
+				},
+				Conditions: []v1.NodeCondition{
+					{Type: v1.NodeReady, Status: ready},
+				},
+			},
+		}
+	}
+
+	t.Run("derives role, readiness, reachability and address", func(t *testing.T) {
+		clientset := fake.NewSimpleClientset(
+			node("cp1", "10.0.0.1", true, v1.ConditionTrue),
+			node("worker1", "10.0.0.2", false, v1.ConditionTrue),
+			node("worker2", "10.0.0.3", false, v1.ConditionFalse),
+		)
+		client := &Client{Interface: clientset}
+
+		statuses, err := client.ListNodesStatuses(context.Background())
+		g.Expect(err).To(Not(HaveOccurred()))
+		g.Expect(statuses).To(HaveLen(3))
+
+		byName := make(map[string]apiv2.NodeStatus, len(statuses))
+		for _, s := range statuses {
+			byName[s.Name] = s
+		}
+
+		g.Expect(byName["cp1"].ClusterRole).To(Equal(apiv2.ClusterRoleControlPlane))
+		g.Expect(byName["cp1"].Address).To(Equal("10.0.0.1"))
+		g.Expect(byName["cp1"].Ready).To(BeTrue())
+		g.Expect(byName["cp1"].Reachable).To(BeTrue())
+
+		g.Expect(byName["worker1"].ClusterRole).To(Equal(apiv2.ClusterRoleWorker))
+		g.Expect(byName["worker1"].Address).To(Equal("10.0.0.2"))
+		g.Expect(byName["worker1"].Ready).To(BeTrue())
+
+		// NotReady node: not ready (and, per current placeholder logic, not reachable).
+		g.Expect(byName["worker2"].ClusterRole).To(Equal(apiv2.ClusterRoleWorker))
+		g.Expect(byName["worker2"].Ready).To(BeFalse())
+		g.Expect(byName["worker2"].Reachable).To(BeFalse())
+	})
+
+	t.Run("returns empty for a cluster with no nodes", func(t *testing.T) {
+		client := &Client{Interface: fake.NewSimpleClientset()}
+
+		statuses, err := client.ListNodesStatuses(context.Background())
+		g.Expect(err).To(Not(HaveOccurred()))
+		g.Expect(statuses).To(BeEmpty())
 	})
 }
