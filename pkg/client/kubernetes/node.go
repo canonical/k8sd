@@ -23,36 +23,52 @@ func (c *Client) ListNodesStatuses(ctx context.Context) ([]apiv2.NodeStatus, err
 	statuses := make([]apiv2.NodeStatus, len(nodes.Items))
 
 	for i, node := range nodes.Items {
-		nodeAddr := ""
-		for _, addr := range node.Status.Addresses {
-			if addr.Type == v1.NodeInternalIP {
-				nodeAddr = addr.Address
-			}
-		}
-
-		ready, reachable := false, false
-		for _, cond := range node.Status.Conditions {
-			if cond.Type == v1.NodeReady {
-				ready = cond.Status == v1.ConditionTrue
-				reachable = ready // TODO: This should be determined later.
-			}
-		}
-
-		role := apiv2.ClusterRoleWorker
-		if _, cp := node.Labels["node-role.kubernetes.io/control-plane"]; cp {
-			role = apiv2.ClusterRoleControlPlane
-		}
-
-		statuses[i] = apiv2.NodeStatus{
-			Name:        node.Name,
-			Address:     nodeAddr,
-			Reachable:   reachable,
-			Ready:       ready,
-			ClusterRole: role,
-		}
+		statuses[i] = nodeStatusFromNode(&node)
 	}
 
 	return statuses, nil
+}
+
+// GetNodeStatus returns the status of a single node
+func (c *Client) GetNodeStatus(ctx context.Context, nodeName string) (apiv2.NodeStatus, error) {
+	node, err := c.GetNode(ctx, nodeName)
+	if err != nil {
+		return apiv2.NodeStatus{}, fmt.Errorf("failed to get node %q: %w", nodeName, err)
+	}
+
+	return nodeStatusFromNode(node), nil
+}
+
+// nodeStatusFromNode derives the cluster role, readiness, reachability and
+// internal address from a Kubernetes node object.
+func nodeStatusFromNode(node *v1.Node) apiv2.NodeStatus {
+	nodeAddr := ""
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == v1.NodeInternalIP {
+			nodeAddr = addr.Address
+		}
+	}
+
+	ready, reachable := false, false
+	for _, cond := range node.Status.Conditions {
+		if cond.Type == v1.NodeReady {
+			ready = cond.Status == v1.ConditionTrue
+			reachable = ready // TODO: This should be determined later.
+		}
+	}
+
+	role := apiv2.ClusterRoleWorker
+	if _, cp := node.Labels["node-role.kubernetes.io/control-plane"]; cp {
+		role = apiv2.ClusterRoleControlPlane
+	}
+
+	return apiv2.NodeStatus{
+		Name:        node.Name,
+		Address:     nodeAddr,
+		Reachable:   reachable,
+		Ready:       ready,
+		ClusterRole: role,
+	}
 }
 
 func (c *Client) GetNode(ctx context.Context, nodeName string) (*v1.Node, error) {
