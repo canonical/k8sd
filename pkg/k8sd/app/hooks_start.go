@@ -19,7 +19,7 @@ import (
 )
 
 func (a *App) onStart(ctx context.Context, s mctypes.State) error {
-	if err := a.ensureRunningServices(ctx); err != nil {
+	if err := a.ensureRunningServices(ctx, s); err != nil {
 		return fmt.Errorf("failed to ensure running services: %w", err)
 	}
 
@@ -50,6 +50,25 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 				return nil, fmt.Errorf("failed to load RSA key: %w", err)
 			}
 			return key, nil
+		}, func(ctx context.Context, enabled bool) error {
+			if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
+				cfg, err := database.GetClusterConfig(ctx, tx)
+				if err != nil {
+					return fmt.Errorf("failed to get cluster config: %w", err)
+				}
+				if cfg.Network.KubeProxyEnabled != nil && *cfg.Network.KubeProxyEnabled == enabled {
+					// no update needed
+					return nil
+				}
+				cfg.Network.KubeProxyEnabled = utils.Pointer(enabled)
+				if _, err := database.SetClusterConfig(ctx, tx, cfg); err != nil {
+					return fmt.Errorf("failed to update cluster config: %w", err)
+				}
+				return nil
+			}); err != nil {
+				return fmt.Errorf("database transaction to update cluster configuration failed: %w", err)
+			}
+			return nil
 		})
 	}
 
@@ -156,7 +175,7 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 }
 
 // ensureRunningServices ensures that the snap services are running if node is initialized.
-func (a *App) ensureRunningServices(ctx context.Context) error {
+func (a *App) ensureRunningServices(ctx context.Context, s mctypes.State) error {
 	log := log.FromContext(ctx).WithValues("func", "ensureRunningServices")
 
 	client, err := a.snap.K8sdClient("")
@@ -176,27 +195,25 @@ func (a *App) ensureRunningServices(ctx context.Context) error {
 		return fmt.Errorf("failed to determine if the node is a worker: %w", err)
 	}
 
+	cfg, err := databaseutil.GetClusterConfig(ctx, s)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster config: %w", err)
+	}
+
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	if isWorker {
 		log.Info("Starting worker services")
 		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-			return snaputil.StartWorkerServices(ctx, a.snap)
+			return snaputil.StartWorkerServices(ctx, a.snap, cfg)
 		}); err != nil {
 			return fmt.Errorf("failed to start worker services after retry: %w", err)
 		}
 	} else {
-		log.Info("Retrieving cluster configuration")
-
-		cfg, err := client.GetClusterConfig(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to retrieve cluster configuration: %w", err)
-		}
-
 		log.Info("Starting control-plane services")
 
 		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-			return startControlPlaneServices(ctx, a.snap, cfg.Datastore.GetType())
+			return startControlPlaneServices(ctx, a.snap, cfg)
 		}); err != nil {
 			return fmt.Errorf("failed to start control-plane services: %w", err)
 		}

@@ -9,6 +9,7 @@ import (
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/features/cilium"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -17,6 +18,9 @@ import (
 	testenv "github.com/canonical/k8sd/pkg/utils/microcluster"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/ktesting"
 	"k8s.io/utils/ptr"
@@ -127,10 +131,25 @@ func TestNetworkEnabled(t *testing.T) {
 			g := NewWithT(t)
 
 			helmM := &helmmock.Mock{}
+			clientset := fake.NewSimpleClientset(
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium-operator",
+						Namespace: "kube-system",
+					},
+				},
+				&appsv1.DaemonSet{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium",
+						Namespace: "kube-system",
+					},
+				},
+			)
 			snapM := &snapmock.Snap{
 				Mock: snapmock.Mock{
-					HelmClient: helmM,
-					Strict:     true,
+					HelmClient:       helmM,
+					Strict:           true,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
 				},
 			}
 			network := types.Network{
@@ -193,9 +212,24 @@ func TestNetworkEnabled(t *testing.T) {
 			g := NewWithT(t)
 
 			helmM := &helmmock.Mock{}
+			clientset := fake.NewSimpleClientset(
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium-operator",
+						Namespace: "kube-system",
+					},
+				},
+				&appsv1.DaemonSet{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium",
+						Namespace: "kube-system",
+					},
+				},
+			)
 			snapM := &snapmock.Snap{
 				Mock: snapmock.Mock{
-					HelmClient: helmM,
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
 				},
 			}
 			network := types.Network{
@@ -231,9 +265,24 @@ func TestNetworkEnabled(t *testing.T) {
 			g := NewWithT(t)
 
 			helmM := &helmmock.Mock{}
+			clientset := fake.NewSimpleClientset(
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium-operator",
+						Namespace: "kube-system",
+					},
+				},
+				&appsv1.DaemonSet{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium",
+						Namespace: "kube-system",
+					},
+				},
+			)
 			snapM := &snapmock.Snap{
 				Mock: snapmock.Mock{
-					HelmClient: helmM,
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
 				},
 			}
 			network := types.Network{

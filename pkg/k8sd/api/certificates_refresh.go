@@ -286,7 +286,7 @@ func refreshCertsRunControlPlane(s mctypes.State, r *http.Request, snap snap.Sna
 	// restarting the API server, which would break the k8sd proxy connection
 	// and cause missed responses in the proxy side.
 	restartFn := func(ctx context.Context) error {
-		if err := snaputil.RestartControlPlaneServices(ctx, snap); err != nil {
+		if err := snaputil.RestartControlPlaneServices(ctx, snap, clusterConfig); err != nil {
 			return fmt.Errorf("failed to restart control plane services: %w", err)
 		}
 		return nil

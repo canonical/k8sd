@@ -9,6 +9,10 @@ func (c *ClusterConfig) SetDefaults() {
 	if c.Network.Enabled == nil {
 		c.Network.Enabled = utils.Pointer(false)
 	}
+	if c.Network.KubeProxyEnabled == nil {
+		// Default: when the network feature is enabled, kube-proxy replacement is implied.
+		c.Network.KubeProxyEnabled = utils.Pointer(!c.Network.GetEnabled())
+	}
 	if c.Network.GetPodCIDR() == "" {
 		c.Network.PodCIDR = utils.Pointer("10.1.0.0/16")
 	}

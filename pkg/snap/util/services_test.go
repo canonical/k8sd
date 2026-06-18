@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
@@ -19,15 +20,27 @@ func TestStartWorkerServices(t *testing.T) {
 	mock.StartServicesErr = fmt.Errorf("service start failed")
 
 	t.Run("AllServicesStartSuccess", func(t *testing.T) {
+		mock.StartServicesCalledWith = nil
 		mock.StartServicesErr = nil
-		g.Expect(StartWorkerServices(context.Background(), mock)).To(Succeed())
+		g.Expect(StartWorkerServices(context.Background(), mock, types.ClusterConfig{})).To(Succeed())
 		g.Expect(mock.StartServicesCalledWith).To(HaveLen(1))
 		g.Expect(mock.StartServicesCalledWith[0]).To(ConsistOf(workerK8sServices))
 	})
 
+	t.Run("KubeProxyDisabled", func(t *testing.T) {
+		mock.StartServicesCalledWith = nil
+		mock.StartServicesErr = nil
+		cfg := types.ClusterConfig{}
+		cfg.Network.KubeProxyEnabled = utils.Pointer(false)
+		g.Expect(StartWorkerServices(context.Background(), mock, cfg)).To(Succeed())
+		g.Expect(mock.StartServicesCalledWith).To(HaveLen(1))
+		g.Expect(mock.StartServicesCalledWith[0]).NotTo(ContainElement("kube-proxy"))
+		g.Expect(mock.StartServicesCalledWith[0]).To(ContainElements("containerd", "k8s-apiserver-proxy", "kubelet"))
+	})
+
 	t.Run("ServiceStartFailure", func(t *testing.T) {
 		mock.StartServicesErr = fmt.Errorf("service start failed")
-		g.Expect(StartWorkerServices(context.Background(), mock)).NotTo(Succeed())
+		g.Expect(StartWorkerServices(context.Background(), mock, types.ClusterConfig{})).NotTo(Succeed())
 	})
 }
 
@@ -40,15 +53,27 @@ func TestStartControlPlaneServices(t *testing.T) {
 	mock.StartServicesErr = fmt.Errorf("service start failed")
 
 	t.Run("AllServicesStartSuccess", func(t *testing.T) {
+		mock.StartServicesCalledWith = nil
 		mock.StartServicesErr = nil
-		g.Expect(StartControlPlaneServices(context.Background(), mock)).To(Succeed())
+		g.Expect(StartControlPlaneServices(context.Background(), mock, types.ClusterConfig{})).To(Succeed())
 		g.Expect(mock.StartServicesCalledWith).To(HaveLen(1))
 		g.Expect(mock.StartServicesCalledWith[0]).To(ConsistOf(controlPlaneK8sServices))
 	})
 
+	t.Run("KubeProxyDisabled", func(t *testing.T) {
+		mock.StartServicesCalledWith = nil
+		mock.StartServicesErr = nil
+		cfg := types.ClusterConfig{}
+		cfg.Network.KubeProxyEnabled = utils.Pointer(false)
+		g.Expect(StartControlPlaneServices(context.Background(), mock, cfg)).To(Succeed())
+		g.Expect(mock.StartServicesCalledWith).To(HaveLen(1))
+		g.Expect(mock.StartServicesCalledWith[0]).NotTo(ContainElement("kube-proxy"))
+		g.Expect(mock.StartServicesCalledWith[0]).To(ContainElements("containerd", "kube-controller-manager", "kube-scheduler", "kubelet", "kube-apiserver"))
+	})
+
 	t.Run("ServiceStartFailure", func(t *testing.T) {
 		mock.StartServicesErr = fmt.Errorf("service start failed")
-		g.Expect(StartControlPlaneServices(context.Background(), mock)).NotTo(Succeed())
+		g.Expect(StartControlPlaneServices(context.Background(), mock, types.ClusterConfig{})).NotTo(Succeed())
 	})
 }
 

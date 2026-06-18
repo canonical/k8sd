@@ -225,8 +225,9 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 			SecurePort: utils.Pointer(securePort),
 		},
 		Network: types.Network{
-			PodCIDR:     utils.Pointer(response.PodCIDR),
-			ServiceCIDR: utils.Pointer(response.ServiceCIDR),
+			PodCIDR:          utils.Pointer(response.PodCIDR),
+			ServiceCIDR:      utils.Pointer(response.ServiceCIDR),
+			KubeProxyEnabled: utils.Pointer(response.KubeProxyEnabled),
 		},
 		Certificates: types.Certificates{
 			K8sdPublicKey: utils.Pointer(response.K8sdPublicKey),
@@ -280,7 +281,7 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	log.Info("Starting worker services")
 	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-		if err := snaputil.StartWorkerServices(ctx, snap); err != nil {
+		if err := snaputil.StartWorkerServices(ctx, snap, cfg); err != nil {
 			return fmt.Errorf("failed to start worker services: %w", err)
 		}
 		return nil
@@ -524,7 +525,7 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
 	log.Info("Starting control-plane services")
 	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-		if err := startControlPlaneServices(ctx, snap, cfg.Datastore.GetType()); err != nil {
+		if err := startControlPlaneServices(ctx, snap, cfg); err != nil {
 			return fmt.Errorf("failed to start services: %w", err)
 		}
 		return nil
