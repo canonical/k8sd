@@ -27,18 +27,19 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 		return mctypes.Unavailable(fmt.Errorf("daemon not yet initialized"))
 	}
 
-	members, err := impl.GetClusterMembers(r.Context(), s, e.provider.Snap())
-	if err != nil {
-		return mctypes.InternalError(fmt.Errorf("failed to get cluster members: %w", err))
-	}
-	config, err := databaseutil.GetClusterConfig(r.Context(), s)
-	if err != nil {
-		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
-	}
-
 	client, err := e.provider.Snap().KubernetesClient("")
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
+	}
+
+	k8sNodes, err := impl.GetKubernetesNodes(r.Context(), s, e.provider.Snap(), client)
+	if err != nil {
+		return mctypes.InternalError(fmt.Errorf("failed to get cluster members: %w", err))
+	}
+
+	config, err := databaseutil.GetClusterConfig(r.Context(), s)
+	if err != nil {
+		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
 
 	ready, err := client.HasReadyNodes(r.Context())
@@ -69,7 +70,8 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 	return mctypes.SyncResponse(true, &apiv2.ClusterStatusResponse{
 		ClusterStatus: apiv2.ClusterStatus{
 			Ready:   ready,
-			Members: members,
+			Status:  deriveClusterHealth(ready),
+			Members: k8sNodes,
 			Config:  config.ToUserFacing(),
 			Datastore: apiv2.Datastore{
 				Type:    config.Datastore.GetType(),
@@ -112,4 +114,13 @@ func (e *Endpoints) checkKubeletClusterDNS(ctx context.Context, client *kubernet
 	}
 
 	return nil
+}
+
+func deriveClusterHealth(ready bool) apiv2.ClusterHealth {
+	// TODO: The exact health status should be implemented
+	if ready {
+		return apiv2.ClusterHealthReady
+	}
+
+	return apiv2.ClusterHealthFailed
 }
