@@ -49,23 +49,36 @@ func GetKubernetesNodes(ctx context.Context, s mctypes.State, snap snap.Snap, cl
 // Unlike "GetClusterMembers" this also works on a worker node.
 func GetLocalNodeStatus(ctx context.Context, s mctypes.State, snap snap.Snap) (apiv2.NodeStatus, error) {
 	// Determine cluster role.
-	clusterRole := apiv2.ClusterRoleUnknown
 	isWorker, err := snaputil.IsWorker(snap)
 	if err != nil {
 		return apiv2.NodeStatus{}, fmt.Errorf("failed to check if node is a worker: %w", err)
 	}
 
-	if isWorker {
-		clusterRole = apiv2.ClusterRoleWorker
-	} else if node, err := nodeutil.GetControlPlaneNode(ctx, s, s.Name(), snap); err != nil {
-		clusterRole = apiv2.ClusterRoleUnknown
-	} else if node != nil {
-		return *node, nil
-	}
-
-	return apiv2.NodeStatus{
+	status := apiv2.NodeStatus{
 		Name:        s.Name(),
 		Address:     s.Address().Hostname(),
-		ClusterRole: clusterRole,
-	}, nil
+		ClusterRole: apiv2.ClusterRoleUnknown,
+	}
+
+	if isWorker {
+		status.ClusterRole = apiv2.ClusterRoleWorker
+	} else if node, err := nodeutil.GetControlPlaneNode(ctx, s, s.Name(), snap); err != nil {
+		return apiv2.NodeStatus{}, fmt.Errorf("failed to get control plane node: %w", err)
+	} else if err == nil && node != nil {
+		status = *node
+	}
+
+	// Best-effort: enrich readiness and reachability from the Kubernetes API for
+	// the local node. Use the node-scoped client so this also works on workers.
+	// Failures here must not fail the whole request.
+	if client, err := snap.KubernetesNodeClient(""); err != nil {
+		return apiv2.NodeStatus{}, fmt.Errorf("failed to create kubernetes node client for local node status: %w", err)
+	} else if ns, err := client.GetNodeStatus(ctx, s.Name()); err != nil {
+		return apiv2.NodeStatus{}, fmt.Errorf("failed to get local node status from kubernetes, %w", err)
+	} else {
+		status.Ready = ns.Ready
+		status.Reachable = ns.Reachable
+	}
+
+	return status, nil
 }

@@ -277,3 +277,36 @@ func TestListNodesStatuses(t *testing.T) {
 		g.Expect(statuses).To(BeEmpty())
 	})
 }
+
+func TestGetNodeStatus(t *testing.T) {
+	g := NewWithT(t)
+
+	t.Run("returns status for an existing control-plane node", func(t *testing.T) {
+		clientset := fake.NewSimpleClientset(&v1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "cp1",
+				Labels: map[string]string{"node-role.kubernetes.io/control-plane": ""},
+			},
+			Status: v1.NodeStatus{
+				Addresses:  []v1.NodeAddress{{Type: v1.NodeInternalIP, Address: "10.0.0.1"}},
+				Conditions: []v1.NodeCondition{{Type: v1.NodeReady, Status: v1.ConditionTrue}},
+			},
+		})
+		client := &Client{Interface: clientset}
+
+		status, err := client.GetNodeStatus(context.Background(), "cp1")
+		g.Expect(err).To(Not(HaveOccurred()))
+		g.Expect(status.Name).To(Equal("cp1"))
+		g.Expect(status.Address).To(Equal("10.0.0.1"))
+		g.Expect(status.ClusterRole).To(Equal(apiv2.ClusterRoleControlPlane))
+		g.Expect(status.Ready).To(BeTrue())
+		g.Expect(status.Reachable).To(BeTrue())
+	})
+
+	t.Run("returns error for a node that does not exist", func(t *testing.T) {
+		client := &Client{Interface: fake.NewSimpleClientset()}
+
+		_, err := client.GetNodeStatus(context.Background(), "missing")
+		g.Expect(err).To(HaveOccurred())
+	})
+}
