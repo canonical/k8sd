@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/log"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -11,6 +12,48 @@ import (
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/util/retry"
 )
+
+func (c *Client) ListNodesStatuses(ctx context.Context) ([]apiv2.NodeStatus, error) {
+	nodes, err := c.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list nodes: %w", err)
+	}
+
+	statuses := make([]apiv2.NodeStatus, len(nodes.Items))
+
+	for i, node := range nodes.Items {
+		nodeAddr := ""
+		for _, addr := range node.Status.Addresses {
+			if addr.Type == v1.NodeInternalIP {
+				nodeAddr = addr.Address
+			}
+		}
+
+		ready, reachable := false, false
+		for _, cond := range node.Status.Conditions {
+			if cond.Type == v1.NodeReady {
+				ready = cond.Status == v1.ConditionTrue
+				reachable = ready // TODO: This should be determined later.
+			}
+		}
+
+		role := apiv2.ClusterRoleWorker
+		if _, cp := node.Labels["node-role.kubernetes.io/control-plane"]; cp {
+			role = apiv2.ClusterRoleControlPlane
+		}
+
+		statuses[i] = apiv2.NodeStatus{
+			Name:        node.Name,
+			Address:     nodeAddr,
+			Reachable:   reachable,
+			Ready:       ready,
+			ClusterRole: role,
+		}
+	}
+
+	return statuses, nil
+}
 
 func (c *Client) GetNode(ctx context.Context, nodeName string) (*v1.Node, error) {
 	return c.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
