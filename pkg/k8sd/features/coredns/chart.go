@@ -9,9 +9,10 @@ import (
 var (
 	// chartCoreDNS represents manifests to deploy CoreDNS.
 	Chart = helm.InstallableChart{
-		Name:         "ck-dns",
-		Namespace:    "kube-system",
-		ManifestPath: filepath.Join("charts", "coredns-1.39.2.tgz"),
+		Name:          "ck-dns",
+		Namespace:     "kube-system",
+		ManifestPath:  filepath.Join("charts", "coredns-1.39.2.tgz"),
+		FullOwnership: true,
 	}
 
 	// imageRepo is the image to use for CoreDNS.

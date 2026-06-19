@@ -16,23 +16,26 @@ var (
 
 	// ChartCiliumLoadBalancer represents manifests to deploy Cilium LoadBalancer resources.
 	ChartCiliumLoadBalancer = helm.InstallableChart{
-		Name:         "ck-loadbalancer",
-		Namespace:    "kube-system",
-		ManifestPath: filepath.Join("charts", "ck-loadbalancer"),
+		Name:          "ck-loadbalancer",
+		Namespace:     "kube-system",
+		ManifestPath:  filepath.Join("charts", "ck-loadbalancer"),
+		FullOwnership: true,
 	}
 
 	// chartGateway represents manifests to deploy Gateway API CRDs.
 	chartGateway = helm.InstallableChart{
-		Name:         "ck-gateway",
-		Namespace:    "kube-system",
-		ManifestPath: filepath.Join("charts", "gateway-api-1.2.0.tgz"),
+		Name:          "ck-gateway",
+		Namespace:     "kube-system",
+		ManifestPath:  filepath.Join("charts", "gateway-api-1.2.0.tgz"),
+		FullOwnership: true,
 	}
 
 	// chartGatewayClass represents a manifest to deploy a GatewayClass called ck-gateway.
 	chartGatewayClass = helm.InstallableChart{
-		Name:         "ck-gateway-class",
-		Namespace:    "default",
-		ManifestPath: filepath.Join("charts", "ck-gateway-cilium"),
+		Name:          "ck-gateway-class",
+		Namespace:     "default",
+		ManifestPath:  filepath.Join("charts", "ck-gateway-cilium"),
+		FullOwnership: true,
 	}
 
 	// ciliumAgentImageRepo represents the image to use for cilium-agent.

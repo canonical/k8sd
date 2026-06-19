@@ -12,6 +12,7 @@ import (
 	"github.com/canonical/k8sd/pkg/log"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/chartutil"
 	releasepkg "helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -137,10 +138,23 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		// NOTE(Angelos): oldConfig and values are the previous and current values. they are compared by checking their respective JSON, as that is good enough for our needs of comparing unstructured map[string]any data.
 		// NOTE(Hue) (KU-3592): We are ignoring the values that are overwritten by the user.
 		// The user can change some values in the chart, but we will revert them back upon an upgrade.
-		// NOTE: We compare sanitizedValues directly against oldConfig so that removing a ConfigMap
-		// override (which drops keys from sanitizedValues) is correctly detected as a change and
-		// not silently skipped.
-		sameValues := jsonEqual(oldConfig, sanitizedValues)
+		//
+		// For exclusively-owned charts (c.FullOwnership == true), we compare sanitizedValues
+		// directly against oldConfig so that removing a ConfigMap override (which drops keys
+		// from sanitizedValues) is correctly detected as a change and not silently skipped.
+		//
+		// For shared charts (c.FullOwnership == false, e.g. ChartCilium which is partially
+		// updated by multiple features), we merge sanitizedValues into oldConfig before comparing
+		// so that a partial caller does not falsely detect a change due to keys it doesn't own.
+		var sameValues bool
+		if c.FullOwnership && desired == StatePresent {
+			sameValues = jsonEqual(oldConfig, sanitizedValues)
+		} else {
+			// CoalesceTables mutates its first argument, so clone sanitizedValues first.
+			clonedValues, _ := sanitizeHelmValues(sanitizedValues)
+			mergedValues := chartutil.CoalesceTables(clonedValues, oldConfig)
+			sameValues = jsonEqual(oldConfig, mergedValues)
+		}
 		// NOTE(Hue): For the charts that we manage (e.g. ck-loadbalancer), we need to make
 		// sure we bump the version manually. Otherwise, they'll not be applied unless
 		// we're lucky and providing different extra values.
@@ -163,10 +177,13 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		// there is already a release installed, so we must run an upgrade action
 		upgrade := action.NewUpgrade(cfg)
 		upgrade.Namespace = c.Namespace
-		// ResetValues ensures k8sd is the sole source of truth for Helm values.
-		// This means values removed from a ConfigMap override are properly reverted
-		// and any values set externally (e.g. via `helm upgrade --set`) are not preserved.
-		upgrade.ResetValues = true
+		// For exclusively-owned charts, ResetValues ensures k8sd is the sole source of truth
+		// for Helm values. This means values removed from a ConfigMap override are properly
+		// reverted and any values set externally (e.g. via `helm upgrade --set`) are not
+		// preserved. For shared charts (e.g. ChartCilium), ResetThenReuseValues preserves
+		// values set by other features that share the same chart.
+		upgrade.ResetValues = c.FullOwnership && desired == StatePresent
+		upgrade.ResetThenReuseValues = !upgrade.ResetValues
 		upgrade.Timeout = h.timeout
 		// NOTE(Hue): We need to set the upgrade.MaxHistory here since it overwrites the
 		// cfg.Releases.MaxHistory value.
