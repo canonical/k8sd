@@ -3,10 +3,13 @@ package helm
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/canonical/k8sd/pkg/log"
@@ -120,6 +123,17 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		install.Namespace = c.Namespace
 		install.CreateNamespace = true
 
+		// Store the managed hash in the release description so that future
+		// StatePresent reconciliations can use hash-based comparison instead
+		// of direct comparison. This prevents false positives when other
+		// features (e.g. Gateway, Ingress) add keys to the same chart via
+		// StateUpgradeOnly calls.
+		managedHash, err := computeManagedHash(sanitizedValues)
+		if err != nil {
+			return false, fmt.Errorf("failed to compute managed hash for %s: %w", c.Name, err)
+		}
+		install.Description = managedHash
+
 		chart, err := loader.Load(filepath.Join(h.manifestsBaseDir, c.ManifestPath))
 		if err != nil {
 			return false, fmt.Errorf("failed to load manifest for %s: %w", c.Name, err)
@@ -139,16 +153,32 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		// NOTE(Hue) (KU-3592): We are ignoring the values that are overwritten by the user.
 		// The user can change some values in the chart, but we will revert them back upon an upgrade.
 		//
-		// For StatePresent calls (full state description), we compare sanitizedValues directly
-		// against oldConfig so that removing a ConfigMap override (which drops keys from
-		// sanitizedValues) is correctly detected as a change and not silently skipped.
+		// For StatePresent calls (full state description), we use hash-based comparison when a
+		// managed hash is stored in the release description. This allows detecting key removals
+		// (e.g. ConfigMap override deletion) while ignoring keys added by StateUpgradeOnly calls
+		// on the same chart (e.g. Gateway/Ingress adding keys to ChartCilium).
+		// If no managed hash is stored (e.g. first reconciliation after a snap upgrade from an
+		// older version), we fall back to CoalesceTables to avoid false positive upgrades.
 		//
 		// For StateUpgradeOnly calls (partial update, e.g. ApplyGateway/ApplyIngress sharing
 		// ChartCilium), we merge sanitizedValues into oldConfig before comparing so that keys
 		// owned by other features are not treated as a change.
 		var sameValues bool
 		if desired == StatePresent {
-			sameValues = jsonEqual(oldConfig, sanitizedValues)
+			currentHash, err := computeManagedHash(sanitizedValues)
+			if err != nil {
+				return false, fmt.Errorf("failed to compute managed hash for %s: %w", c.Name, err)
+			}
+			if lastHash := extractManagedHash(release.Info.Description); lastHash != "" {
+				// Hash-based comparison: if the hash matches, no upgrade is needed.
+				sameValues = lastHash == currentHash
+			} else {
+				// No stored hash: fall back to CoalesceTables to avoid false positives
+				// from keys added by StateUpgradeOnly calls on the same chart.
+				clonedValues, _ := sanitizeHelmValues(sanitizedValues)
+				mergedValues := chartutil.CoalesceTables(clonedValues, oldConfig)
+				sameValues = jsonEqual(oldConfig, mergedValues)
+			}
 		} else {
 			// CoalesceTables mutates its first argument, so clone sanitizedValues first.
 			clonedValues, _ := sanitizeHelmValues(sanitizedValues)
@@ -189,6 +219,20 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		// cfg.Releases.MaxHistory value.
 		upgrade.MaxHistory = h.maxHistory
 
+		// For StatePresent upgrades, store the new managed hash so future reconciliations
+		// can detect value changes without false positives from StateUpgradeOnly keys.
+		// For StateUpgradeOnly upgrades, preserve any existing managed hash set by the
+		// StatePresent owner so it remains valid for future StatePresent comparisons.
+		if desired == StatePresent {
+			managedHash, err := computeManagedHash(sanitizedValues)
+			if err != nil {
+				return false, fmt.Errorf("failed to compute managed hash for %s: %w", c.Name, err)
+			}
+			upgrade.Description = managedHash
+		} else if existingHash := extractManagedHash(release.Info.Description); existingHash != "" {
+			upgrade.Description = existingHash
+		}
+
 		if _, err := upgrade.RunWithContext(ctx, c.Name, chart, sanitizedValues); err != nil {
 			return false, fmt.Errorf("failed to upgrade %s: %w", c.Name, err)
 		}
@@ -213,6 +257,32 @@ func jsonEqual(v1 any, v2 any) bool {
 	b1, err1 := json.Marshal(v1)
 	b2, err2 := json.Marshal(v2)
 	return err1 == nil && err2 == nil && bytes.Equal(b1, b2)
+}
+
+// managedValuesHashPrefix is prefixed to the SHA-256 hash of the Helm values
+// stored in a release description by a StatePresent Apply call.
+const managedValuesHashPrefix = "k8sd-managed:"
+
+// computeManagedHash returns a managed-hash string for the given Helm values.
+// It is stored in the Helm release description so that future StatePresent
+// comparisons can detect value changes without being misled by extra keys added
+// by concurrent StateUpgradeOnly calls on the same chart.
+func computeManagedHash(values map[string]any) (string, error) {
+	b, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal values for managed hash: %w", err)
+	}
+	sum := sha256.Sum256(b)
+	return managedValuesHashPrefix + hex.EncodeToString(sum[:]), nil
+}
+
+// extractManagedHash returns the managed-hash string from a release description,
+// or "" if the description does not contain one.
+func extractManagedHash(description string) string {
+	if strings.HasPrefix(description, managedValuesHashPrefix) {
+		return description
+	}
+	return ""
 }
 
 // sanitizeHelmValues converts a map[string]any to map[string]any with properly
