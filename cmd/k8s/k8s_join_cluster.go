@@ -11,6 +11,7 @@ import (
 	"github.com/canonical/k8sd/pkg/config"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/spf13/cobra"
+	"go.yaml.in/yaml/v2"
 )
 
 type JoinClusterResult struct {
@@ -23,11 +24,12 @@ func (b JoinClusterResult) String() string {
 
 func newJoinClusterCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	var opts struct {
-		name         string
-		address      string
-		configFile   string
-		outputFormat string
-		timeout      time.Duration
+		name              string
+		address           string
+		configFile        string
+		outputFormat      string
+		timeout           time.Duration
+		containerdBaseDir string
 	}
 	cmd := &cobra.Command{
 		Use:    "join-cluster <join-token>",
@@ -102,6 +104,40 @@ func newJoinClusterCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				joinClusterConfig = string(b)
 			}
 
+			if opts.containerdBaseDir != "" {
+				var joinConfigMap map[string]any
+				if joinClusterConfig != "" {
+					if err := yaml.Unmarshal([]byte(joinClusterConfig), &joinConfigMap); err != nil {
+						cmd.PrintErrf("Error: Failed to parse join configuration.\n\nThe error was: %v\n", err)
+						env.Exit(1)
+						return
+					}
+				}
+				if joinConfigMap == nil {
+					joinConfigMap = map[string]any{}
+				}
+
+				normalizedDir, err := normalizeContainerdBaseDir(opts.containerdBaseDir)
+				if err != nil {
+					cmd.PrintErrf("Error: invalid containerd-base-dir value.\n\nThe error was: %v\n", err)
+					env.Exit(1)
+					return
+				}
+
+				if isMemBackedFS(normalizedDir) {
+					cmd.PrintErrln("Warning: containerd-base-dir is on a memory-backed filesystem (tmpfs/ramfs). Containerd state (images, containers) will be lost on reboot.")
+				}
+
+				joinConfigMap["containerd-base-dir"] = normalizedDir
+				b, err := yaml.Marshal(joinConfigMap)
+				if err != nil {
+					cmd.PrintErrf("Error: Failed to serialize join configuration.\n\nThe error was: %v\n", err)
+					env.Exit(1)
+					return
+				}
+				joinClusterConfig = string(b)
+			}
+
 			if err := verifyJoinConfig(joinClusterConfig, token); err != nil {
 				cmd.PrintErrf("Join cluster config verification failed: %v", err)
 				env.Exit(1)
@@ -129,5 +165,5 @@ func newJoinClusterCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.Flags().StringVar(&opts.configFile, "file", "", "path to the YAML file containing your custom cluster join configuration. Use '-' to read from stdin.")
 	cmd.Flags().StringVar(&opts.outputFormat, "output-format", "plain", "set the output format to one of plain, json or yaml")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 90*time.Second, "the max time to wait for the command to execute")
-	return cmd
+	cmd.Flags().StringVar(&opts.containerdBaseDir, "containerd-base-dir", "", "set a dedicated absolute base directory for containerd")
 }
