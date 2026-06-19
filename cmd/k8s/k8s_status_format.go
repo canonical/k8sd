@@ -5,73 +5,318 @@ import (
 	"strings"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
+	"github.com/fatih/color"
 )
 
 type ClusterStatus apiv2.ClusterStatus
 
 // TICS -COV_GO_SUPPRESSED_ERROR
-// we are just formatting the output for the k8s status command, it is ok to ignore failures from result.WriteString()
+// We are just formatting the output for the k8s status command; it is ok to
+// ignore failures from strings.Builder writes.
 
-func (c ClusterStatus) isHA() bool {
-	voters := 0
-	for _, member := range c.Members {
-		if member.DatastoreRole == apiv2.DatastoreRoleVoter {
-			voters++
-		}
+// String renders the human-readable plain output of `k8s status`.
+//
+// Layout:
+//
+//	<cluster-icon> cluster: <status> [(<ha-qualifier>)]
+//	  nodes: <N> control-plane[ (<X> unreachable)], <M> worker
+//
+//	Networking:
+//	  <icon> <feature> [(<component> <version>)]
+//	      <human readable description>
+//	  ...
+//
+//	Storage:
+//	  ...
+//
+//	Observability:
+//	  ...
+//
+//	Suggestions:
+//	    <command>    <description>
+func (c ClusterStatus) String() string {
+	cs := apiv2.ClusterStatus(c)
+
+	var b strings.Builder
+	b.WriteString(renderClusterHeader(cs))
+	b.WriteString("\n")
+	b.WriteString(renderNodeCounts(cs.Members))
+	b.WriteString("\n\n")
+
+	for _, section := range featureSections(cs) {
+		b.WriteString(renderSection(section))
+		b.WriteString("\n")
 	}
-	return voters > 2
+
+	if s := formatSuggestions(suggestionsFor(cs)); s != "" {
+		b.WriteString(s)
+	}
+
+	return strings.TrimRight(b.String(), "\n")
 }
 
-// TODO: Print k8s version. However, multiple nodes can run different version, so we would need to query all nodes.
-func (c ClusterStatus) String() string {
-	result := strings.Builder{}
-
-	// Status
-	if c.Ready {
-		result.WriteString(fmt.Sprintf("%-25s %s", "cluster status:", "ready"))
-	} else {
-		result.WriteString(fmt.Sprintf("%-25s %s", "cluster status:", "not ready"))
-	}
-	result.WriteString("\n")
-
-	// Control Plane Nodes
-	result.WriteString(fmt.Sprintf("%-25s ", "control plane nodes:"))
-	if len(c.Members) > 0 {
-		members := make([]string, 0, len(c.Members))
-		for _, m := range c.Members {
-			members = append(members, fmt.Sprintf("%s (%s)", m.Address, m.DatastoreRole))
-		}
-		result.WriteString(strings.Join(members, ", "))
-	} else {
-		result.WriteString("none")
-	}
-	result.WriteString("\n")
-
-	// High availability
-	result.WriteString(fmt.Sprintf("%-25s ", "high availability:"))
-	if c.isHA() {
-		result.WriteString("yes")
-	} else {
-		result.WriteString("no")
-	}
-	result.WriteString("\n")
-
-	// Datastore
-	// TODO: how to understand if the ds is running or not?
-	if c.Datastore.Type != "" {
-		result.WriteString(fmt.Sprintf("%-25s %s\n", "datastore:", c.Datastore.Type))
-	} else {
-		result.WriteString(fmt.Sprintf("%-25s %s\n", "datastore:", "disabled"))
-	}
-
-	result.WriteString(fmt.Sprintf("%-25s %s\n", "network:", c.Network))
-	result.WriteString(fmt.Sprintf("%-25s %s\n", "dns:", c.DNS))
-	result.WriteString(fmt.Sprintf("%-25s %s\n", "ingress:", c.Ingress))
-	result.WriteString(fmt.Sprintf("%-25s %s\n", "load-balancer:", c.LoadBalancer))
-	result.WriteString(fmt.Sprintf("%-25s %s\n", "local-storage:", c.LocalStorage))
-	result.WriteString(fmt.Sprintf("%-25s %s", "gateway", c.Gateway))
-
-	return result.String()
+// FormatUnbootstrapped returns the human-readable message shown when
+// `k8s status` runs on a node that is not part of any cluster.
+func FormatUnbootstrapped() string {
+	var b strings.Builder
+	b.WriteString("This node is not part of a Kubernetes cluster.\n\n")
+	b.WriteString(formatSuggestions([]suggestion{
+		{cmd: "k8s bootstrap", desc: "Bootstrap a new Kubernetes cluster"},
+		{cmd: "k8s join-cluster <token>", desc: "Join an existing cluster. Requires a token created by running `k8s get-join-token` on a cluster member."},
+	}))
+	return b.String()
 }
 
 // TICS +COV_GO_SUPPRESSED_ERROR
+
+// -----------------------------------------------------------------------------
+// Icons & styles
+// -----------------------------------------------------------------------------
+
+var (
+	styleRedBold = color.New(color.FgRed, color.Bold)
+	styleYellow  = color.New(color.FgYellow)
+	styleDim     = color.New(color.Faint)
+)
+
+// Cluster-level icons.
+func iconClusterReady() string    { return "✓" }
+func iconClusterFailed() string   { return styleRedBold.Sprint("✘") }
+func iconClusterDegraded() string { return styleYellow.Sprint("⚠") }
+func iconClusterUnreachable() string {
+	// Used when the cluster is degraded specifically because a node is unreachable.
+	return styleYellow.Sprint("◌")
+}
+
+// Feature-level icons.
+func iconFeatureHealthy() string  { return "●" }
+func iconFeatureFailed() string   { return styleRedBold.Sprint("✘") }
+func iconFeatureDegraded() string { return styleYellow.Sprint("⚠") }
+func iconFeatureDisabled() string { return styleDim.Sprint("○") }
+
+// -----------------------------------------------------------------------------
+// Cluster header & node counts
+// -----------------------------------------------------------------------------
+
+func renderClusterHeader(c apiv2.ClusterStatus) string {
+	health := effectiveHealth(c)
+
+	var icon, label string
+	switch health {
+	case apiv2.ClusterHealthReady:
+		icon, label = iconClusterReady(), "ready"
+	case apiv2.ClusterHealthDegraded:
+		if hasUnreachableControlPlane(c.Members) {
+			icon = iconClusterUnreachable()
+		} else {
+			icon = iconClusterDegraded()
+		}
+		label = "degraded"
+	default: // ClusterHealthFailed or unknown
+		icon, label = iconClusterFailed(), "not ready"
+	}
+
+	if isHighlyAvailable(c.Members) {
+		label += " (high-available)"
+	}
+
+	return fmt.Sprintf("%s cluster: %s", icon, label)
+}
+
+func renderNodeCounts(members []apiv2.NodeStatus) string {
+	cp, worker, cpUnreachable := countNodes(members)
+
+	cpPart := fmt.Sprintf("%d control-plane", cp)
+	if cpUnreachable > 0 {
+		cpPart += fmt.Sprintf(" (%d unreachable)", cpUnreachable)
+	}
+	// TODO: worker node can be unreachable as well.
+	return fmt.Sprintf("  nodes: %s, %d worker", cpPart, worker)
+}
+
+// effectiveHealth returns c.Status when set, falling back to c.Ready for
+// backwards compatibility with older server responses.
+func effectiveHealth(c apiv2.ClusterStatus) apiv2.ClusterHealth {
+	if c.Status != "" {
+		return c.Status
+	}
+	if c.Ready {
+		return apiv2.ClusterHealthReady
+	}
+	return apiv2.ClusterHealthFailed
+}
+
+func countNodes(members []apiv2.NodeStatus) (cp, worker, cpUnreachable int) {
+	for _, m := range members {
+		switch m.ClusterRole {
+		case apiv2.ClusterRoleControlPlane:
+			cp++
+			if !m.Reachable {
+				cpUnreachable++
+			}
+		case apiv2.ClusterRoleWorker:
+			worker++
+		}
+	}
+	return cp, worker, cpUnreachable
+}
+
+func hasUnreachableControlPlane(members []apiv2.NodeStatus) bool {
+	for _, m := range members {
+		if m.ClusterRole == apiv2.ClusterRoleControlPlane && !m.Reachable {
+			return true
+		}
+	}
+	return false
+}
+
+func isHighlyAvailable(members []apiv2.NodeStatus) bool {
+	voters := 0
+	for _, m := range members {
+		if m.DatastoreRole == apiv2.DatastoreRoleVoter {
+			voters++
+		}
+	}
+	return voters >= 3
+}
+
+// -----------------------------------------------------------------------------
+// Feature sections
+// -----------------------------------------------------------------------------
+
+type featureRow struct {
+	name   string
+	status apiv2.FeatureStatus
+}
+
+type categorySection struct {
+	title string
+	rows  []featureRow
+}
+
+// featureSections returns the categorised list of features in the documented
+// display order.
+func featureSections(c apiv2.ClusterStatus) []categorySection {
+	return []categorySection{
+		{
+			title: "Networking",
+			rows: []featureRow{
+				{"network", c.Network},
+				{"dns", c.DNS},
+				{"load-balancer", c.LoadBalancer},
+				{"ingress", c.Ingress},
+				{"gateway", c.Gateway},
+			},
+		},
+		{
+			title: "Storage",
+			rows: []featureRow{
+				{"local-storage", c.LocalStorage},
+			},
+		},
+		{
+			title: "Observability",
+			rows: []featureRow{
+				{"metrics-server", c.MetricsServer},
+			},
+		},
+	}
+}
+
+func renderSection(s categorySection) string {
+	var b strings.Builder
+	b.WriteString(s.title)
+	b.WriteString(":\n")
+	for _, row := range s.rows {
+		b.WriteString(renderFeature(row.name, row.status))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func renderFeature(name string, fs apiv2.FeatureStatus) string {
+	if !fs.Enabled {
+		return fmt.Sprintf("  %s %s", iconFeatureDisabled(), styleDim.Sprint(name))
+	}
+
+	icon := iconFeatureHealthy()
+	switch fs.State {
+	case apiv2.FeatureStateFailed:
+		icon = iconFeatureFailed()
+	case apiv2.FeatureStateDegraded, apiv2.FeatureStateWaiting:
+		icon = iconFeatureDegraded()
+	}
+
+	header := fmt.Sprintf("  %s %s", icon, name)
+	if qualifier := componentQualifier(fs); qualifier != "" {
+		header += " " + qualifier
+	}
+
+	if fs.Message != "" {
+		return header + "\n      " + fs.Message
+	}
+	return header
+}
+
+// componentQualifier renders the "(<component> <version>)" suffix shown after
+// a feature name. Returns an empty string when neither field is populated.
+func componentQualifier(fs apiv2.FeatureStatus) string {
+	switch {
+	case fs.Component != "" && fs.Version != "":
+		return fmt.Sprintf("(%s %s)", fs.Component, fs.Version)
+	case fs.Component != "":
+		return fmt.Sprintf("(%s)", fs.Component)
+	case fs.Version != "":
+		return fmt.Sprintf("(%s)", fs.Version)
+	}
+	return ""
+}
+
+// -----------------------------------------------------------------------------
+// Suggestions
+// -----------------------------------------------------------------------------
+
+type suggestion struct {
+	cmd  string
+	desc string
+}
+
+// suggestionsFor picks the contextual suggestions block for the given cluster
+// state. Today only the ready branch is exercised end-to-end; the other
+// branches are stubbed for upcoming unhappy-path work.
+func suggestionsFor(c apiv2.ClusterStatus) []suggestion {
+	switch effectiveHealth(c) {
+	case apiv2.ClusterHealthReady:
+		return []suggestion{
+			{cmd: "k8s kubectl get nodes", desc: "View detailed node information"},
+			{cmd: "k8s get", desc: "View cluster configuration"},
+		}
+	case apiv2.ClusterHealthDegraded, apiv2.ClusterHealthFailed:
+		return []suggestion{
+			{cmd: "k8s inspect", desc: "Collect logs and debug information"},
+		}
+	}
+	return nil
+}
+
+// formatSuggestions renders a Suggestions block with command and description
+// columns aligned to the longest command in the group.
+func formatSuggestions(ss []suggestion) string {
+	if len(ss) == 0 {
+		return ""
+	}
+
+	maxCmd := 0
+	for _, s := range ss {
+		if n := len(s.cmd); n > maxCmd {
+			maxCmd = n
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("Suggestions:\n")
+	for _, s := range ss {
+		b.WriteString(fmt.Sprintf("    %-*s    %s\n", maxCmd, s.cmd, s.desc))
+	}
+	return strings.TrimRight(b.String(), "\n")
+}

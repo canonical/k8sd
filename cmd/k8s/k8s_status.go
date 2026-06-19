@@ -6,6 +6,7 @@ import (
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -13,6 +14,7 @@ func newStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	var opts struct {
 		waitReady    bool
 		outputFormat string
+		noColor      bool
 		timeout      time.Duration
 	}
 	cmd := &cobra.Command{
@@ -25,6 +27,10 @@ func newStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			if opts.timeout < minTimeout {
 				cmd.PrintErrf("Timeout %v is less than minimum of %v. Using the minimum %v instead.\n", opts.timeout, minTimeout, minTimeout)
 				opts.timeout = minTimeout
+			}
+
+			if opts.noColor {
+				color.NoColor = true
 			}
 
 			client, err := env.Snap.K8sdClient("")
@@ -42,7 +48,7 @@ func newStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				env.Exit(1)
 				return
 			} else if !initialized {
-				cmd.PrintErrln("Error: The node is not part of a Kubernetes cluster. You can bootstrap a new cluster with:\n\n  sudo k8s bootstrap")
+				cmd.Println(FormatUnbootstrapped())
 				env.Exit(1)
 				return
 			}
@@ -64,6 +70,7 @@ func newStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 
 	cmd.Flags().BoolVar(&opts.waitReady, "wait-ready", false, "wait until at least one cluster node is ready")
 	cmd.Flags().StringVar(&opts.outputFormat, "output-format", "plain", "set the output format to one of plain, json or yaml")
+	cmd.Flags().BoolVar(&opts.noColor, "no-color", false, "disable ANSI colors and styling in plain output")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 90*time.Second, "the max time to wait for the command to execute")
 	return cmd
 }
