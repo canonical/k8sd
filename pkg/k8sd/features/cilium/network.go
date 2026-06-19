@@ -291,7 +291,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
 	}
 	if cmOverrides != nil {
-		log.FromContext(ctx).Info("Applying ConfigMap overrides", "overrides", cmOverrides)
+		log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-cilium-values", "keys", len(cmOverrides))
 		values = helmoverride.MergeValues(values, cmOverrides)
 	}
 

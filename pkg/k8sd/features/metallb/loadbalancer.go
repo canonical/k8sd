@@ -45,7 +45,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
 	}
 	if cmOverrides != nil {
-		log.FromContext(ctx).Info("Applying ConfigMap overrides", "overrides", cmOverrides)
+		log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-metallb-values", "keys", len(cmOverrides))
 	}
 
 	if err := enableLoadBalancer(ctx, snap, loadbalancer, network, cmOverrides); err != nil {

@@ -193,7 +193,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
 	}
 	if cmOverrides != nil {
-		log.FromContext(ctx).Info("Applying ConfigMap overrides", "overrides", cmOverrides)
+		log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-coredns-values", "keys", len(cmOverrides))
 		values = helmoverride.MergeValues(values, cmOverrides)
 	}
 

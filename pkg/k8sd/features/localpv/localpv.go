@@ -70,7 +70,7 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 			log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
 		}
 		if cmOverrides != nil {
-			log.FromContext(ctx).Info("Applying ConfigMap overrides", "overrides", cmOverrides)
+			log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-localpv-values", "keys", len(cmOverrides))
 			values = helmoverride.MergeValues(values, cmOverrides)
 		}
 	}
