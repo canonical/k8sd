@@ -166,4 +166,6 @@ func newJoinClusterCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.Flags().StringVar(&opts.outputFormat, "output-format", "plain", "set the output format to one of plain, json or yaml")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 90*time.Second, "the max time to wait for the command to execute")
 	cmd.Flags().StringVar(&opts.containerdBaseDir, "containerd-base-dir", "", "set a dedicated absolute base directory for containerd")
+
+	return cmd
 }
