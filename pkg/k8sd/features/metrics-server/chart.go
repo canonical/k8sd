@@ -9,10 +9,9 @@ import (
 var (
 	// chart represents manifests to deploy metrics-server.
 	chart = helm.InstallableChart{
-		Name:          "metrics-server",
-		Namespace:     "kube-system",
-		ManifestPath:  filepath.Join("charts", "metrics-server-3.12.2.tgz"),
-		FullOwnership: true,
+		Name:         "metrics-server",
+		Namespace:    "kube-system",
+		ManifestPath: filepath.Join("charts", "metrics-server-3.12.2.tgz"),
 	}
 
 	// imageRepo is the image to use for metrics-server.

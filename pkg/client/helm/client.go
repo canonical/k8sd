@@ -139,15 +139,15 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		// NOTE(Hue) (KU-3592): We are ignoring the values that are overwritten by the user.
 		// The user can change some values in the chart, but we will revert them back upon an upgrade.
 		//
-		// For exclusively-owned charts (c.FullOwnership == true), we compare sanitizedValues
-		// directly against oldConfig so that removing a ConfigMap override (which drops keys
-		// from sanitizedValues) is correctly detected as a change and not silently skipped.
+		// For StatePresent calls (full state description), we compare sanitizedValues directly
+		// against oldConfig so that removing a ConfigMap override (which drops keys from
+		// sanitizedValues) is correctly detected as a change and not silently skipped.
 		//
-		// For shared charts (c.FullOwnership == false, e.g. ChartCilium which is partially
-		// updated by multiple features), we merge sanitizedValues into oldConfig before comparing
-		// so that a partial caller does not falsely detect a change due to keys it doesn't own.
+		// For StateUpgradeOnly calls (partial update, e.g. ApplyGateway/ApplyIngress sharing
+		// ChartCilium), we merge sanitizedValues into oldConfig before comparing so that keys
+		// owned by other features are not treated as a change.
 		var sameValues bool
-		if c.FullOwnership && desired == StatePresent {
+		if desired == StatePresent {
 			sameValues = jsonEqual(oldConfig, sanitizedValues)
 		} else {
 			// CoalesceTables mutates its first argument, so clone sanitizedValues first.
@@ -177,13 +177,13 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		// there is already a release installed, so we must run an upgrade action
 		upgrade := action.NewUpgrade(cfg)
 		upgrade.Namespace = c.Namespace
-		// For exclusively-owned charts, ResetValues ensures k8sd is the sole source of truth
-		// for Helm values. This means values removed from a ConfigMap override are properly
-		// reverted and any values set externally (e.g. via `helm upgrade --set`) are not
-		// preserved. For shared charts (e.g. ChartCilium), ResetThenReuseValues preserves
-		// values set by other features that share the same chart.
-		upgrade.ResetValues = c.FullOwnership && desired == StatePresent
-		upgrade.ResetThenReuseValues = !upgrade.ResetValues
+		// For StatePresent (full state description), ResetValues ensures k8sd is the sole
+		// source of truth for Helm values: keys removed from a ConfigMap override are properly
+		// reverted and any values set externally are not preserved.
+		// For StateUpgradeOnly (partial update), ResetThenReuseValues preserves values set by
+		// other features that share the same chart (e.g. Gateway/Ingress sharing ChartCilium).
+		upgrade.ResetValues = desired == StatePresent
+		upgrade.ResetThenReuseValues = desired != StatePresent
 		upgrade.Timeout = h.timeout
 		// NOTE(Hue): We need to set the upgrade.MaxHistory here since it overwrites the
 		// cfg.Releases.MaxHistory value.
