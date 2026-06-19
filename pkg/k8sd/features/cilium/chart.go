@@ -39,13 +39,13 @@ var (
 	ciliumAgentImageRepo = "ghcr.io/canonical/cilium"
 
 	// CiliumAgentImageTag is the tag to use for the cilium-agent image.
-	CiliumAgentImageTag = "1.19.4-ck0"
+	CiliumAgentImageTag = "afde0fa265d25cf8034a07f71e918548b3b9635d3062a35eff5fb7d3396a25af-amd64"
 
 	// ciliumOperatorImageRepo is the image to use for cilium-operator.
 	ciliumOperatorImageRepo = "ghcr.io/canonical/cilium-operator"
 
 	// ciliumOperatorImageTag is the tag to use for the cilium-operator image.
-	ciliumOperatorImageTag = "1.19.4-ck0"
+	ciliumOperatorImageTag = "aa29197d8b3294de4bc184952687624a52360ec769f6bc426c3107bef294e160-amd64"
 
 	ciliumDefaultVXLANPort = 8472
 
