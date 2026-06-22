@@ -31,7 +31,7 @@ func GetConfigMapOverrides(ctx context.Context, snap snap.Snap, configMapName st
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to get configmap: %w", err)
+		return nil, fmt.Errorf("%s: failed to get configmap: %w", configMapName, err)
 	}
 
 	valuesYAML, ok := cm.Data["values"]
@@ -41,7 +41,7 @@ func GetConfigMapOverrides(ctx context.Context, snap snap.Snap, configMapName st
 
 	overrides := make(map[string]any)
 	if err := yaml.Unmarshal([]byte(valuesYAML), &overrides); err != nil {
-		return nil, fmt.Errorf("failed to parse configmap values: %w", err)
+		return nil, fmt.Errorf("%s: failed to parse values: %w", configMapName, err)
 	}
 
 	return overrides, nil

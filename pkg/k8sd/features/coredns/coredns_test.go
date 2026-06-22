@@ -294,7 +294,7 @@ func TestConfigMapOverrides(t *testing.T) {
 		g.Expect(status.Enabled).To(BeTrue())
 		g.Expect(status.Message).To(ContainSubstring("enabled at"))
 		g.Expect(status.Message).To(ContainSubstring("warning:"))
-		g.Expect(status.Message).To(ContainSubstring("failed to parse configmap values"))
+		g.Expect(status.Message).To(ContainSubstring("failed to parse values"))
 		helmValues := snapM.Mock.HelmClient.(*helmmock.Mock).ApplyCalledWith[0].Values
 		hpa := helmValues["hpa"].(map[string]any)
 		g.Expect(hpa["minReplicas"]).To(Equal(2))

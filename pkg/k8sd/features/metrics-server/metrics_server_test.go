@@ -175,7 +175,7 @@ func TestConfigMapOverrides(t *testing.T) {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
 		g.Expect(status.Message).To(ContainSubstring("warning:"))
-		g.Expect(status.Message).To(ContainSubstring("failed to parse configmap values"))
+		g.Expect(status.Message).To(ContainSubstring("failed to parse values"))
 	})
 
 	t.Run("ValidOverrideHasNoWarningInStatus", func(t *testing.T) {
