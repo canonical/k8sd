@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	enabledMsgTmpl             = "Pods use %s, services use %s"
+	NetworkEnabledMsgTmpl      = "Pods use %s, services use %s"
 	NetworkDeleteFailedMsgTmpl = "Failed to delete Cilium Network, the error was: %v"
 	NetworkDeployFailedMsgTmpl = "Failed to deploy Cilium Network, the error was: %v"
 	component                  = "cilium"
@@ -342,7 +342,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}, err
 	}
 
-	msg := fmt.Sprintf(enabledMsgTmpl, ipv4CIDR, svcIpv4CIDR)
+	msg := fmt.Sprintf(NetworkEnabledMsgTmpl, ipv4CIDR, svcIpv4CIDR)
 
 	if cmOverrideErr != nil {
 		msg += fmt.Sprintf(" (warning: %v)", cmOverrideErr)
