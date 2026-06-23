@@ -5,12 +5,15 @@ import (
 	"fmt"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
 const (
 	enabledMsg          = "enabled at %s"
+	enabledWithWarning  = "enabled at %s (warning: %v)"
 	disabledMsg         = "disabled"
 	deployFailedMsgTmpl = "Failed to deploy Local Storage, the error was: %v"
 	deleteFailedMsgTmpl = "Failed to delete Local Storage, the error was: %v"
@@ -59,6 +62,19 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 		},
 	}
 
+	var cmOverrideErr error
+	if cfg.GetEnabled() {
+		var cmOverrides map[string]any
+		cmOverrides, cmOverrideErr = helmoverride.GetConfigMapOverrides(ctx, snap, "k8sd-localpv-values")
+		if cmOverrideErr != nil {
+			log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
+		}
+		if cmOverrides != nil {
+			log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-localpv-values", "keys", len(cmOverrides))
+			values = helmoverride.MergeValues(values, cmOverrides)
+		}
+	}
+
 	if _, err := m.Apply(ctx, Chart, helm.StatePresentOrDeleted(cfg.GetEnabled()), values); err != nil {
 		if cfg.GetEnabled() {
 			err = fmt.Errorf("failed to install rawfile-csi helm package: %w", err)
@@ -81,7 +97,12 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 		return types.FeatureStatus{
 			Enabled: true,
 			Version: ImageTag,
-			Message: fmt.Sprintf(enabledMsg, cfg.GetLocalPath()),
+			Message: func() string {
+				if cmOverrideErr != nil {
+					return fmt.Sprintf(enabledWithWarning, cfg.GetLocalPath(), cmOverrideErr)
+				}
+				return fmt.Sprintf(enabledMsg, cfg.GetLocalPath())
+			}(),
 		}, nil
 	} else {
 		return types.FeatureStatus{
