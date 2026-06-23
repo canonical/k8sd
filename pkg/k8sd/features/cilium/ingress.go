@@ -83,7 +83,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 				Enabled:   true,
 				Component: component,
 				Version:   CiliumAgentImageTag,
-				Message:   EnabledMsg,
+				Message:   fmt.Sprintf(IngressEnabledMsgTmpl, ingress.GetDefaultTLSSecret()),
 			}, nil
 		} else {
 			return types.FeatureStatus{
