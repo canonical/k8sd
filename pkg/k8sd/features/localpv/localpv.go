@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	enabledMsg          = "enabled at %s"
-	enabledWithWarning  = "enabled at %s (warning: %v)"
+	enabledMsg          = "Provisioning to %s, reclaim on %s"
+	enabledWithWarning  = "Provisioning to %s, reclaim on %s (warning: %v)"
 	disabledMsg         = "disabled"
 	deployFailedMsgTmpl = "Failed to deploy Local Storage, the error was: %v"
 	deleteFailedMsgTmpl = "Failed to delete Local Storage, the error was: %v"
@@ -102,9 +102,9 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 			Version: ImageTag,
 			Message: func() string {
 				if cmOverrideErr != nil {
-					return fmt.Sprintf(enabledWithWarning, cfg.GetLocalPath(), cmOverrideErr)
+					return fmt.Sprintf(enabledWithWarning, cfg.GetLocalPath(), cfg.GetReclaimPolicy())
 				}
-				return fmt.Sprintf(enabledMsg, cfg.GetLocalPath())
+				return fmt.Sprintf(enabledMsg, cfg.GetLocalPath(), cfg.GetReclaimPolicy())
 			}(),
 			Component: component,
 		}, nil
