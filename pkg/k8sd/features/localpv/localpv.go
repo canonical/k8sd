@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	enabledMsg          = "enabled at %s"
+	enabledMsg          = "Provisioning to %s, reclaim on %s"
 	disabledMsg         = "disabled"
 	deployFailedMsgTmpl = "Failed to deploy Local Storage, the error was: %v"
 	deleteFailedMsgTmpl = "Failed to delete Local Storage, the error was: %v"
@@ -85,7 +85,7 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 			Enabled:   true,
 			Component: component,
 			Version:   ImageTag,
-			Message:   fmt.Sprintf(enabledMsg, cfg.GetLocalPath()),
+			Message:   fmt.Sprintf(enabledMsg, cfg.GetLocalPath(), cfg.GetReclaimPolicy()),
 		}, nil
 	} else {
 		return types.FeatureStatus{
