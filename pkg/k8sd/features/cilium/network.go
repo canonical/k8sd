@@ -304,11 +304,25 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}, err
 	}
 
+	svcIpv4CIDR, _, err := utils.SplitCIDRStrings(network.GetServiceCIDR())
+	if err != nil {
+		// TODO: review the error msg later.
+		err = fmt.Errorf("invalid kube-proxy --cluster-cidr value: %w", err)
+		return types.FeatureStatus{
+			Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+			Component: component,
+			Version:   CiliumAgentImageTag,
+			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
+		}, err
+	}
+
+	successMsg := fmt.Sprintf("Pods use %s, services use %s", ipv4CIDR, svcIpv4CIDR)
+
 	return types.FeatureStatus{
 		Enabled:   true,
 		Component: component,
 		Version:   CiliumAgentImageTag,
-		Message:   EnabledMsg,
+		Message:   successMsg,
 	}, nil
 }
 
