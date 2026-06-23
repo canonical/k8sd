@@ -55,7 +55,7 @@ func (c *ClusterConfig) SetDefaults() {
 		c.LocalStorage.LocalPath = utils.Pointer("/var/snap/k8s/common/rawfile-storage")
 	}
 	if c.LocalStorage.GetReclaimPolicy() == "" {
-		c.LocalStorage.ReclaimPolicy = utils.Pointer("Retain")
+		c.LocalStorage.ReclaimPolicy = utils.Pointer("Delete")
 	}
 	if c.LocalStorage.Default == nil {
 		c.LocalStorage.Default = utils.Pointer(true)
