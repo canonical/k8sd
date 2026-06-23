@@ -322,21 +322,36 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 	if err := rolloutRestartCilium(ctx, snap, 3); err != nil {
 		err = fmt.Errorf("failed to rollout restart cilium to apply new network configuration: %w", err)
 		return types.FeatureStatus{
-			Enabled: false,
-			Version: CiliumAgentImageTag,
-			Message: fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
+			Enabled:   false,
+			Version:   CiliumAgentImageTag,
+			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
+			Component: component,
 		}, err
 	}
 
-	msg := EnabledMsg
-	if cmOverrideErr != nil {
-		msg = fmt.Sprintf("%s (warning: %v)", EnabledMsg, cmOverrideErr)
+	svcIpv4CIDR, _, err := utils.SplitCIDRStrings(network.GetServiceCIDR())
+	if err != nil {
+		// TODO: review the error msg later.
+		err = fmt.Errorf("invalid kube-proxy --cluster-cidr value: %w", err)
+		return types.FeatureStatus{
+			Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+			Component: component,
+			Version:   CiliumAgentImageTag,
+			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
+		}, err
 	}
+
+	successMsg := fmt.Sprintf("Pods use %s, services use %s", ipv4CIDR, svcIpv4CIDR)
+
+	if cmOverrideErr != nil {
+		successMsg += fmt.Sprintf(" (warning: %v)", cmOverrideErr)
+	}
+
 	return types.FeatureStatus{
 		Enabled:   true,
 		Version:   CiliumAgentImageTag,
-		Message:   msg,
 		Component: component,
+		Message:   successMsg,
 	}, nil
 }
 
