@@ -137,7 +137,7 @@ func renderNodeCounts(members []apiv2.NodeStatus) string {
 	}
 
 	if worker == 0 {
-		fmt.Sprintf("  nodes: %s", cpPart)
+		return fmt.Sprintf("  nodes: %s", cpPart)
 	}
 
 	return fmt.Sprintf("  nodes: %s, %s", cpPart, workerPart)
