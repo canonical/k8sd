@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	IngressEnabledMsgTmpl      = "Default TLS secret: %s"
 	IngressDeleteFailedMsgTmpl = "Failed to delete Cilium Ingress, the error was: %v"
 	IngressDeployFailedMsgTmpl = "Failed to deploy Cilium Ingress, the error was: %v"
 
@@ -117,6 +118,6 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 		Enabled:   true,
 		Component: component,
 		Version:   CiliumAgentImageTag,
-		Message:   EnabledMsg,
+		Message:   fmt.Sprintf(IngressEnabledMsgTmpl, ingress.GetDefaultTLSSecret()),
 	}, nil
 }

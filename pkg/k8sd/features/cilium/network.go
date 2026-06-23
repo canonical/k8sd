@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	enabledMsgTmpl             = "Pods use %s, services use %s"
+	NetworkEnabledMsgTmpl      = "Pods use %s, services use %s"
 	NetworkDeleteFailedMsgTmpl = "Failed to delete Cilium Network, the error was: %v"
 	NetworkDeployFailedMsgTmpl = "Failed to deploy Cilium Network, the error was: %v"
 	component                  = "cilium"
@@ -321,7 +321,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		Enabled:   true,
 		Component: component,
 		Version:   CiliumAgentImageTag,
-		Message:   fmt.Sprintf(enabledMsgTmpl, ipv4CIDR, svcIpv4CIDR),
+		Message:   fmt.Sprintf(NetworkEnabledMsgTmpl, ipv4CIDR, svcIpv4CIDR),
 	}, nil
 }
 
