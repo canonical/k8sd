@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	enabledMsg          = "enabled"
-	enabledWithWarning  = "enabled (warning: %v)"
+	enabledMsg          = "Collecting resource metrics from kubelets"
+	enabledWithWarning  = "Collecting resource metrics from kubelets (warning: %v)"
 	disabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete Metrics Server, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy Metrics Server, the error was: %v"
