@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	enabledMsgTmpl            = "enabled at %s"
-	enabledWithWarningMsgTmpl = "enabled at %s (warning: %v)"
+	enabledMsgTmpl            = "Serving at %s for %s"
+	enabledWithWarningMsgTmpl = "Serving at %s for %s (warning: %v)"
 	disabledMsg               = "disabled"
 	deleteFailedMsgTmpl       = "Failed to delete DNS, the error was: %v"
 	deployFailedMsgTmpl       = "Failed to deploy DNS, the error was: %v"
@@ -236,9 +236,9 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		Version: ImageTag,
 		Message: func() string {
 			if cmOverrideErr != nil {
-				return fmt.Sprintf(enabledWithWarningMsgTmpl, dnsIP, cmOverrideErr)
+				return fmt.Sprintf(enabledWithWarningMsgTmpl, dnsIP, kubelet.GetClusterDomain(), cmOverrideErr)
 			}
-			return fmt.Sprintf(enabledMsgTmpl, dnsIP)
+			return fmt.Sprintf(enabledMsgTmpl, dnsIP, kubelet.GetClusterDomain())
 		}(),
 		Component: component,
 	}, dnsIP, err
