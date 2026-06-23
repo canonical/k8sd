@@ -3,6 +3,7 @@ package metallb
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	enabledMsgTmpl      = "enabled, %s mode"
+	enabledMsgTmpl      = "%s mode, advertising %s"
 	DisabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete MetalLB, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
@@ -67,7 +68,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Enabled: true,
 			Version: ControllerImageTag,
 			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "BGP")
+				msg := fmt.Sprintf(enabledMsgTmpl, "BGP", formatAddrPools(*loadbalancer.IPRanges))
 				if cmOverrideErr != nil {
 					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
 				}
@@ -80,7 +81,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Enabled: true,
 			Version: ControllerImageTag,
 			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "L2")
+				msg := fmt.Sprintf(enabledMsgTmpl, "L2", formatAddrPools(*loadbalancer.IPRanges))
 				if cmOverrideErr != nil {
 					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
 				}
@@ -93,7 +94,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Enabled: true,
 			Version: ControllerImageTag,
 			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "Unknown")
+				msg := fmt.Sprintf(enabledMsgTmpl, "Unknown", *loadbalancer.IPRanges)
 				if cmOverrideErr != nil {
 					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
 				}
@@ -102,6 +103,16 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Component: component,
 		}, nil
 	}
+}
+
+func formatAddrPools(ranges []types.LoadBalancer_IPRange) string {
+	pools := make([]string, 0, len(ranges))
+
+	for _, ipRange := range ranges {
+		pools = append(pools, ipRange.Start+"-"+ipRange.Stop)
+	}
+
+	return strings.Join(pools, ", ")
 }
 
 func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Network) error {
