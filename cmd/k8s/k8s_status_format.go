@@ -116,7 +116,7 @@ func renderClusterHeader(c apiv2.ClusterStatus) string {
 		icon, label = iconClusterFailed(), "not ready"
 	}
 
-	if isHighlyAvailable(c.Members) {
+	if c.IsHA {
 		label += " (high-available)"
 	}
 
@@ -168,16 +168,6 @@ func hasUnreachableControlPlane(members []apiv2.NodeStatus) bool {
 		}
 	}
 	return false
-}
-
-func isHighlyAvailable(members []apiv2.NodeStatus) bool {
-	voters := 0
-	for _, m := range members {
-		if m.DatastoreRole == apiv2.DatastoreRoleVoter {
-			voters++
-		}
-	}
-	return voters >= 3
 }
 
 // -----------------------------------------------------------------------------

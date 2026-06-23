@@ -45,6 +45,18 @@ func GetKubernetesNodes(ctx context.Context, s mctypes.State, snap snap.Snap, cl
 	return k8sNode, nil
 }
 
+func IsHighlyAvailable(k8sNodes []apiv2.NodeStatus) bool {
+	cp := 0
+
+	for _, node := range k8sNodes {
+		if node.ClusterRole == apiv2.ClusterRoleControlPlane {
+			cp++
+		}
+	}
+
+	return cp >= 3
+}
+
 // GetLocalNodeStatus retrieves the status of the local node, including its roles within the cluster.
 // Unlike "GetClusterMembers" this also works on a worker node.
 func GetLocalNodeStatus(ctx context.Context, s mctypes.State, snap snap.Snap) (apiv2.NodeStatus, error) {
