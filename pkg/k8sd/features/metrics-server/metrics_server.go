@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	enabledMsg          = "enabled"
+	enabledMsg          = "Collecting resource metrics from kubelets"
 	disabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete Metrics Server, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy Metrics Server, the error was: %v"
