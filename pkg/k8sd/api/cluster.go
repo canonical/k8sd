@@ -73,6 +73,7 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 			Status:  deriveClusterHealth(ready),
 			Members: k8sNodes,
 			Config:  config.ToUserFacing(),
+			IsHA:    impl.IsHighlyAvailable(k8sNodes),
 			Datastore: apiv2.Datastore{
 				Type:    config.Datastore.GetType(),
 				Servers: config.Datastore.GetExternalServers(),
