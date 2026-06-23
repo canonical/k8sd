@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	enabledMsgTmpl      = "enabled at %s"
+	enabledMsgTmpl      = "Serving at %s for %s"
 	disabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete DNS, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy DNS, the error was: %v"
@@ -222,6 +222,6 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		Enabled:   true,
 		Component: component,
 		Version:   ImageTag,
-		Message:   fmt.Sprintf(enabledMsgTmpl, dnsIP),
+		Message:   fmt.Sprintf(enabledMsgTmpl, dnsIP, kubelet.GetClusterDomain()),
 	}, dnsIP, err
 }
