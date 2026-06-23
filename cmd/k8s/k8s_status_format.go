@@ -124,14 +124,23 @@ func renderClusterHeader(c apiv2.ClusterStatus) string {
 }
 
 func renderNodeCounts(members []apiv2.NodeStatus) string {
-	cp, worker, cpUnreachable := countNodes(members)
+	cp, worker, cpUnreachable, workerUnreachable := countNodes(members)
 
 	cpPart := fmt.Sprintf("%d control-plane", cp)
 	if cpUnreachable > 0 {
 		cpPart += fmt.Sprintf(" (%d unreachable)", cpUnreachable)
 	}
-	// TODO: worker node can be unreachable as well.
-	return fmt.Sprintf("  nodes: %s, %d worker", cpPart, worker)
+
+	workerPart := fmt.Sprintf("%d worker", worker)
+	if workerUnreachable > 0 {
+		workerPart += fmt.Sprintf(" (%d unreachable)", workerUnreachable)
+	}
+
+	if worker == 0 {
+		fmt.Sprintf("  nodes: %s", cpPart)
+	}
+
+	return fmt.Sprintf("  nodes: %s, %s", cpPart, workerPart)
 }
 
 // effectiveHealth returns c.Status when set, falling back to c.Ready for
@@ -146,7 +155,7 @@ func effectiveHealth(c apiv2.ClusterStatus) apiv2.ClusterHealth {
 	return apiv2.ClusterHealthFailed
 }
 
-func countNodes(members []apiv2.NodeStatus) (cp, worker, cpUnreachable int) {
+func countNodes(members []apiv2.NodeStatus) (cp, worker, cpUnreachable, workerUnreachable int) {
 	for _, m := range members {
 		switch m.ClusterRole {
 		case apiv2.ClusterRoleControlPlane:
@@ -156,9 +165,12 @@ func countNodes(members []apiv2.NodeStatus) (cp, worker, cpUnreachable int) {
 			}
 		case apiv2.ClusterRoleWorker:
 			worker++
+			if !m.Reachable {
+				workerUnreachable++
+			}
 		}
 	}
-	return cp, worker, cpUnreachable
+	return cp, worker, cpUnreachable, workerUnreachable
 }
 
 func hasUnreachableControlPlane(members []apiv2.NodeStatus) bool {
