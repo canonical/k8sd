@@ -220,14 +220,14 @@ func renderSection(s categorySection) string {
 	var b strings.Builder
 	b.WriteString(s.title)
 	b.WriteString(":\n")
-	for _, row := range s.rows {
-		b.WriteString(renderFeature(row.name, row.status))
+	for i, row := range s.rows {
+		b.WriteString(renderFeature(row.name, row.status, i == len(s.rows)-1))
 		b.WriteString("\n")
 	}
 	return b.String()
 }
 
-func renderFeature(name string, fs apiv2.FeatureStatus) string {
+func renderFeature(name string, fs apiv2.FeatureStatus, last bool) string {
 	if !fs.Enabled {
 		return fmt.Sprintf("  %s %s", iconFeatureDisabled(), styleDim.Sprint(name))
 	}
@@ -245,10 +245,13 @@ func renderFeature(name string, fs apiv2.FeatureStatus) string {
 		header += " " + qualifier
 	}
 
-	if fs.Message != "" {
-		return header + "\n      " + fs.Message
+	header += "\n      " + fs.Message
+
+	if fs.Enabled == true || !last {
+		return header
 	}
-	return header
+
+	return header + "\n"
 }
 
 // componentQualifier renders the "(<component> <version>)" suffix shown after
