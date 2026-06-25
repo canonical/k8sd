@@ -248,10 +248,10 @@ func renderFeature(name string, fs apiv2.FeatureStatus, last bool) string {
 	header += "\n      " + fs.Message
 
 	if fs.Enabled == true || !last {
-		return header
+		return header + "\n"
 	}
 
-	return header + "\n"
+	return header
 }
 
 // componentQualifier renders the "(<component> <version>)" suffix shown after
