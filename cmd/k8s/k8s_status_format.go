@@ -256,7 +256,10 @@ func renderFeature(name string, fs apiv2.FeatureStatus) string {
 func componentQualifier(fs apiv2.FeatureStatus) string {
 	switch {
 	case fs.Component != "" && fs.Version != "":
-		return fmt.Sprintf("(%s v%s)", fs.Component, fs.Version)
+		if fs.Version[0] != 'v' {
+			return fmt.Sprintf("(%s v%s)", fs.Component, fs.Version)
+		}
+		return fmt.Sprintf("(%s %s)", fs.Component, fs.Version)
 	case fs.Component != "":
 		return fmt.Sprintf("(%s)", fs.Component)
 	case fs.Version != "":
