@@ -247,7 +247,7 @@ func renderFeature(name string, fs apiv2.FeatureStatus, last bool) string {
 
 	header += "\n      " + fs.Message
 
-	if fs.Enabled == true || !last {
+	if (fs.Enabled == true && !last) || !last {
 		return header + "\n"
 	}
 
