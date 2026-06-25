@@ -82,10 +82,6 @@ var (
 func iconClusterReady() string    { return "✓" }
 func iconClusterFailed() string   { return styleBold.Sprint("✘") }
 func iconClusterDegraded() string { return fmt.Sprint("⚠") }
-func iconClusterUnreachable() string {
-	// Used when the cluster is degraded specifically because a node is unreachable.
-	return fmt.Sprint("◌")
-}
 
 // Feature-level icons.
 func iconFeatureHealthy() string  { return "●" }
@@ -105,11 +101,7 @@ func renderClusterHeader(c apiv2.ClusterStatus) string {
 	case apiv2.ClusterHealthReady:
 		icon, label = iconClusterReady(), "ready"
 	case apiv2.ClusterHealthDegraded:
-		if hasUnreachableControlPlane(c.Members) {
-			icon = iconClusterUnreachable()
-		} else {
-			icon = iconClusterDegraded()
-		}
+		icon = iconClusterDegraded()
 		label = "degraded"
 	default: // ClusterHealthFailed or unknown
 		icon, label = iconClusterFailed(), "not ready"
