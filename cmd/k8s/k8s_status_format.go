@@ -74,24 +74,23 @@ func FormatUnbootstrapped() string {
 // -----------------------------------------------------------------------------
 
 var (
-	styleRedBold = color.New(color.FgRed, color.Bold)
-	styleYellow  = color.New(color.FgYellow)
-	styleDim     = color.New(color.Faint)
+	styleBold = color.New(color.Bold)
+	styleDim  = color.New(color.Faint)
 )
 
 // Cluster-level icons.
 func iconClusterReady() string    { return "✓" }
-func iconClusterFailed() string   { return styleRedBold.Sprint("✘") }
-func iconClusterDegraded() string { return styleYellow.Sprint("⚠") }
+func iconClusterFailed() string   { return styleBold.Sprint("✘") }
+func iconClusterDegraded() string { return fmt.Sprint("⚠") }
 func iconClusterUnreachable() string {
 	// Used when the cluster is degraded specifically because a node is unreachable.
-	return styleYellow.Sprint("◌")
+	return fmt.Sprint("◌")
 }
 
 // Feature-level icons.
 func iconFeatureHealthy() string  { return "●" }
-func iconFeatureFailed() string   { return styleRedBold.Sprint("✘") }
-func iconFeatureDegraded() string { return styleYellow.Sprint("⚠") }
+func iconFeatureFailed() string   { return styleBold.Sprint("✘") }
+func iconFeatureDegraded() string { return fmt.Sprint("⚠") }
 func iconFeatureDisabled() string { return styleDim.Sprint("○") }
 
 // -----------------------------------------------------------------------------
