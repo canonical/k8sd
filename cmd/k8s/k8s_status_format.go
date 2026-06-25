@@ -108,7 +108,7 @@ func renderClusterHeader(c apiv2.ClusterStatus) string {
 	}
 
 	if c.IsHA {
-		label += " (high-available)"
+		label += " (high-availability)"
 	}
 
 	return fmt.Sprintf("%s cluster: %s", icon, label)
