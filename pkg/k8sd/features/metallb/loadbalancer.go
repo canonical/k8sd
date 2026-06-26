@@ -72,7 +72,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Enabled:   true,
 			Component: component,
 			Version:   ControllerImageTag,
-			Message:   fmt.Sprintf(enabledMsgTmpl, "Unknown"),
+			Message:   fmt.Sprintf(enabledMsgTmpl, "Unknown", "..."),
 		}, nil
 	}
 }

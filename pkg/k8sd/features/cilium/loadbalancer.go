@@ -3,6 +3,7 @@ package cilium
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
@@ -11,7 +12,7 @@ import (
 )
 
 const (
-	lbEnabledMsgTmpl      = "enabled, %s mode"
+	enabledMsgTmpl        = "%s mode, advertising %s"
 	LbDeleteFailedMsgTmpl = "Failed to delete Cilium Load Balancer, the error was: %v"
 	LbDeployFailedMsgTmpl = "Failed to deploy Cilium Load Balancer, the error was: %v"
 )
@@ -59,23 +60,33 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Enabled:   true,
 			Component: component,
 			Version:   CiliumAgentImageTag,
-			Message:   fmt.Sprintf(lbEnabledMsgTmpl, "BGP"),
+			Message:   fmt.Sprintf(enabledMsgTmpl, "BGP", formatAddrPools(*loadbalancer.IPRanges)),
 		}, nil
 	case loadbalancer.GetL2Mode():
 		return types.FeatureStatus{
 			Enabled:   true,
 			Component: component,
 			Version:   CiliumAgentImageTag,
-			Message:   fmt.Sprintf(lbEnabledMsgTmpl, "L2"),
+			Message:   fmt.Sprintf(enabledMsgTmpl, "L2", formatAddrPools(*loadbalancer.IPRanges)),
 		}, nil
 	default:
 		return types.FeatureStatus{
 			Enabled:   true,
 			Component: component,
 			Version:   CiliumAgentImageTag,
-			Message:   fmt.Sprintf(lbEnabledMsgTmpl, "Unknown"),
+			Message:   fmt.Sprintf(enabledMsgTmpl, "Unknown", "..."),
 		}, nil
 	}
+}
+
+func formatAddrPools(ranges []types.LoadBalancer_IPRange) string {
+	pools := make([]string, 0, len(ranges))
+
+	for _, ipRange := range ranges {
+		pools = append(pools, ipRange.Start+"-"+ipRange.Stop)
+	}
+
+	return strings.Join(pools, ", ")
 }
 
 func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Network) error {
