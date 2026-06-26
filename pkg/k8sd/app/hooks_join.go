@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
@@ -394,11 +395,19 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		log.Error(err, "Failed to apply custom CRDs")
 	}
 
-	if err := handleRollOutUpgrade(ctx, a.snap, s, k8sClient); err != nil {
-		log.Error(err, "Failed to handle rollout-upgrade")
-		return fmt.Errorf("failed to handle rollout-upgrade: %w", err)
+	config, err := databaseutil.GetClusterConfig(ctx, s)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster config: %w", err)
 	}
 
+	if _, ok := config.Annotations.Get(apiv1_annotations.AnnotationDisableSeparateFeatureUpgrades); ok {
+		log.Info("Post-join steps skipped due to user annotation override.")
+	} else {
+		if err := handleRollOutUpgrade(ctx, a.snap, s, k8sClient); err != nil {
+			log.Error(err, "Failed to handle rollout-upgrade")
+			return fmt.Errorf("failed to handle rollout-upgrade: %w", err)
+		}
+	}
 	reverter.Success()
 
 	return nil
