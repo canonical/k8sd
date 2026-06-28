@@ -4,9 +4,11 @@ import (
 	"context"
 	"testing"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/features/cilium"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -31,9 +33,11 @@ func TestCheckNetwork(t *testing.T) {
 			},
 		}
 
-		err := cilium.CheckNetwork(context.Background(), snapM)
+		got := cilium.CheckNetwork(context.Background(), snapM)
 
-		g.Expect(err).To(HaveOccurred())
+		g.Expect(got.Err).To(HaveOccurred())
+		g.Expect(got.State).To(Equal(apiv2.FeatureStateDegraded))
+		g.Expect(got.Message).NotTo(BeEmpty())
 	})
 
 	t.Run("operatorNoCiliumPods", func(t *testing.T) {
@@ -68,9 +72,11 @@ func TestCheckNetwork(t *testing.T) {
 			},
 		}
 
-		err := cilium.CheckNetwork(context.Background(), snapM)
+		got := cilium.CheckNetwork(context.Background(), snapM)
 
-		g.Expect(err).To(HaveOccurred())
+		g.Expect(got.Err).To(HaveOccurred())
+		g.Expect(got.State).To(Equal(apiv2.FeatureStateDegraded))
+		g.Expect(got.Message).NotTo(BeEmpty())
 	})
 
 	t.Run("allPodsPresent", func(t *testing.T) {
@@ -118,7 +124,22 @@ func TestCheckNetwork(t *testing.T) {
 			},
 		}
 
-		err := cilium.CheckNetwork(context.Background(), snapM)
-		g.Expect(err).NotTo(HaveOccurred())
+		got := cilium.CheckNetwork(context.Background(), snapM)
+		g.Expect(got).To(Equal(types.ProbeResult{}))
 	})
+}
+
+// TestCheckStubsReturnZeroProbeResult is a smoke test that the cilium
+// Check* stubs introduced in phase 1 return an empty ProbeResult, i.e.
+// they explicitly opt out of overlaying anything onto the DB-derived
+// FeatureStatus. Real probes for ingress/gateway/load-balancer will
+// replace these in a follow-up.
+func TestCheckStubsReturnZeroProbeResult(t *testing.T) {
+	g := NewWithT(t)
+	snapM := &snapmock.Snap{}
+	ctx := context.Background()
+
+	g.Expect(cilium.CheckIngress(ctx, snapM)).To(Equal(types.ProbeResult{}))
+	g.Expect(cilium.CheckGateway(ctx, snapM)).To(Equal(types.ProbeResult{}))
+	g.Expect(cilium.CheckLoadBalancer(ctx, snapM)).To(Equal(types.ProbeResult{}))
 }
