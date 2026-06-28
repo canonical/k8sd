@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -32,12 +33,14 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			return types.FeatureStatus{
 				Enabled:   false,
 				Component: component,
+				State:     apiv2.FeatureStateFailed,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(LbDeleteFailedMsgTmpl, err),
 			}, err
 		}
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateDisabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   DisabledMsg,
@@ -48,6 +51,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(LbDeployFailedMsgTmpl, err),
@@ -58,6 +62,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	case loadbalancer.GetBGPMode():
 		return types.FeatureStatus{
 			Enabled:   true,
+			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(enabledMsgTmpl, "BGP", formatAddrPools(*loadbalancer.IPRanges)),
@@ -65,6 +70,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	case loadbalancer.GetL2Mode():
 		return types.FeatureStatus{
 			Enabled:   true,
+			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(enabledMsgTmpl, "L2", formatAddrPools(*loadbalancer.IPRanges)),
@@ -72,6 +78,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	default:
 		return types.FeatureStatus{
 			Enabled:   true,
+			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(enabledMsgTmpl, "Unknown", "..."),

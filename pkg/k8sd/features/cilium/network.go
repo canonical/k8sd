@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
@@ -71,7 +72,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		if _, err := m.Apply(ctx, ChartCilium, helm.StateDeleted, nil); err != nil {
 			err = fmt.Errorf("failed to uninstall network: %w", err)
 			return types.FeatureStatus{
-				Enabled:   false, // TODO: here the status should be failed. Need discussion on this.
+				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(NetworkDeleteFailedMsgTmpl, err),
@@ -79,6 +81,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateDisabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   DisabledMsg,
@@ -89,7 +92,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 	if err != nil {
 		err = fmt.Errorf("failed to parse annotations: %w", err)
 		return types.FeatureStatus{
-			Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -100,7 +104,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 	if err != nil {
 		err = fmt.Errorf("failed to determine localhost address: %w", err)
 		return types.FeatureStatus{
-			Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -111,7 +116,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 	if nodeIP == nil {
 		err = fmt.Errorf("failed to parse node IP address %q", s.Address().Hostname())
 		return types.FeatureStatus{
-			Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -122,7 +128,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 	if err != nil {
 		err = fmt.Errorf("invalid kube-proxy --cluster-cidr value: %w", err)
 		return types.FeatureStatus{
-			Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -143,6 +150,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 	if err := checkAndSanitizeCiliumVXLAN(config.tunnelPort); err != nil {
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -232,7 +240,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		if err != nil {
 			err = fmt.Errorf("failed to get bpf mount path: %w", err)
 			return types.FeatureStatus{
-				Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -243,7 +252,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		if err != nil {
 			err = fmt.Errorf("failed to get cgroup2 mount path: %w", err)
 			return types.FeatureStatus{
-				Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -267,7 +277,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		if err != nil {
 			err = fmt.Errorf("failed to get mount propagation type for /sys: %w", err)
 			return types.FeatureStatus{
-				Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -282,7 +293,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 			if onLXD {
 				err := fmt.Errorf("/sys is not a shared mount on the LXD container, this might be resolved by updating LXD on the host to version 5.0.2 or newer")
 				return types.FeatureStatus{
-					Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+					Enabled:   false,
+					State:     apiv2.FeatureStateFailed,
 					Component: component,
 					Version:   CiliumAgentImageTag,
 					Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -292,6 +304,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 			err = fmt.Errorf("/sys is not a shared mount")
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -312,7 +325,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 	if _, err := m.Apply(ctx, ChartCilium, helm.StatePresent, values); err != nil {
 		err = fmt.Errorf("failed to enable network: %w", err)
 		return types.FeatureStatus{
-			Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -332,10 +346,10 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 
 	svcIpv4CIDR, _, err := utils.SplitCIDRStrings(network.GetServiceCIDR())
 	if err != nil {
-		// TODO: review the error msg later.
 		err = fmt.Errorf("invalid kube-proxy --cluster-cidr value: %w", err)
 		return types.FeatureStatus{
-			Enabled:   false, // TODO: the status here should be failed. With the error message shown.
+			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
@@ -350,6 +364,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 
 	return types.FeatureStatus{
 		Enabled:   true,
+		State:     apiv2.FeatureStateEnabled,
 		Version:   CiliumAgentImageTag,
 		Component: component,
 		Message:   msg,

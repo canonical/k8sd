@@ -1,5 +1,5 @@
 INSERT INTO
-    feature_status(name, component, message, version, timestamp, enabled)
+    feature_status(name, component, message, version, timestamp, enabled, state)
 VALUES
     (?, ?, ?, ?, ?, ?)
 ON CONFLICT(name) DO UPDATE SET
@@ -7,4 +7,5 @@ ON CONFLICT(name) DO UPDATE SET
     component=excluded.component,
     version=excluded.version,
     timestamp=excluded.timestamp,
-    enabled=excluded.enabled;
+    enabled=excluded.enabled,
+    state=excluded.state;

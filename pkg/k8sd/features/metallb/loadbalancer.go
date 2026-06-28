@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
@@ -31,6 +32,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			err = fmt.Errorf("failed to disable LoadBalancer: %w", err)
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   ControllerImageTag,
 				Message:   fmt.Sprintf(deleteFailedMsgTmpl, err),
@@ -38,6 +40,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		}
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateDisabled,
 			Component: component,
 			Version:   ControllerImageTag,
 			Message:   DisabledMsg,
@@ -56,6 +59,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   ControllerImageTag,
 			Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
@@ -74,6 +78,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 				}
 				return msg
 			}(),
+			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 		}, nil
 	case loadbalancer.GetL2Mode():
@@ -87,6 +92,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 				}
 				return msg
 			}(),
+			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 		}, nil
 	default:
@@ -100,6 +106,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 				}
 				return msg
 			}(),
+			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 		}, nil
 	}
