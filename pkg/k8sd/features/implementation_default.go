@@ -26,8 +26,13 @@ var Implementation Interface = &implementation{
 
 // StatusChecks implements the Canonical Kubernetes built-in feature status checks.
 var StatusChecks StatusInterface = &statusChecks{
-	checkNetwork: cilium.CheckNetwork,
-	checkDNS:     coredns.CheckDNS,
+	checkNetwork:       cilium.CheckNetwork,
+	checkDNS:           coredns.CheckDNS,
+	checkLoadBalancer:  metallb.CheckLoadBalancer,
+	checkIngress:       cilium.CheckIngress,
+	checkGateway:       cilium.CheckGateway,
+	checkLocalStorage:  localpv.CheckLocalStorage,
+	checkMetricsServer: metrics_server.CheckMetricsServer,
 }
 
 var Cleanup CleanupInterface = &cleanup{
