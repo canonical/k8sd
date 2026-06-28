@@ -30,6 +30,17 @@ type ProbeResult struct {
 	Err     error
 }
 
+// WorkloadResult is the per-workload outcome of a feature health probe.
+// A feature whose deployment spans multiple workloads (e.g. cilium-agent +
+// cilium-operator, or metallb-speaker + metallb-controller) collects one
+// WorkloadResult per workload and aggregates them into a single ProbeResult.
+type WorkloadResult struct {
+	Workload string
+	State    apiv2.FeatureState
+	Message  string
+	ProbeErr error
+}
+
 func (f FeatureStatus) ToAPI() apiv2.FeatureStatus {
 	return apiv2.FeatureStatus{
 		Enabled:   f.Enabled,
