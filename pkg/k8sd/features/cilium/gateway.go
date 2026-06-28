@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -37,6 +38,7 @@ func enableGateway(ctx context.Context, snap snap.Snap) (types.FeatureStatus, er
 		err = fmt.Errorf("failed to install Gateway API CRDs: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(GatewayDeployFailedMsgTmpl, err),
@@ -48,6 +50,7 @@ func enableGateway(ctx context.Context, snap snap.Snap) (types.FeatureStatus, er
 		err = fmt.Errorf("failed to install Gateway API GatewayClass: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(GatewayDeployFailedMsgTmpl, err),
@@ -70,6 +73,7 @@ func enableGateway(ctx context.Context, snap snap.Snap) (types.FeatureStatus, er
 		err = fmt.Errorf("failed to upgrade Gateway API cilium configuration: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(GatewayDeployFailedMsgTmpl, err),
@@ -79,6 +83,7 @@ func enableGateway(ctx context.Context, snap snap.Snap) (types.FeatureStatus, er
 	if !changed {
 		return types.FeatureStatus{
 			Enabled:   true,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   EnabledMsg,
@@ -89,6 +94,7 @@ func enableGateway(ctx context.Context, snap snap.Snap) (types.FeatureStatus, er
 		err = fmt.Errorf("failed to rollout restart cilium to enable Gateway API: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(GatewayDeployFailedMsgTmpl, err),
@@ -97,6 +103,7 @@ func enableGateway(ctx context.Context, snap snap.Snap) (types.FeatureStatus, er
 
 	return types.FeatureStatus{
 		Enabled:   true,
+		State:     apiv2.FeatureStateEnabled,
 		Component: component,
 		Version:   CiliumAgentImageTag,
 		Message:   EnabledMsg,
@@ -111,6 +118,7 @@ func disableGateway(ctx context.Context, snap snap.Snap, network types.Network) 
 		err = fmt.Errorf("failed to delete Gateway API GatewayClass: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(GatewayDeleteFailedMsgTmpl, err),
@@ -122,6 +130,7 @@ func disableGateway(ctx context.Context, snap snap.Snap, network types.Network) 
 		err = fmt.Errorf("failed to delete Gateway API cilium configuration: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(GatewayDeleteFailedMsgTmpl, err),
@@ -134,6 +143,7 @@ func disableGateway(ctx context.Context, snap snap.Snap, network types.Network) 
 		err = fmt.Errorf("failed to delete Gateway API CRDs: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(GatewayDeleteFailedMsgTmpl, err),
@@ -143,6 +153,7 @@ func disableGateway(ctx context.Context, snap snap.Snap, network types.Network) 
 	if !changed {
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateDisabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   DisabledMsg,
@@ -153,6 +164,7 @@ func disableGateway(ctx context.Context, snap snap.Snap, network types.Network) 
 		err = fmt.Errorf("failed to rollout restart cilium to disable Gateway API: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(GatewayDeployFailedMsgTmpl, err),
@@ -161,6 +173,7 @@ func disableGateway(ctx context.Context, snap snap.Snap, network types.Network) 
 
 	return types.FeatureStatus{
 		Enabled:   false,
+		State:     apiv2.FeatureStateDisabled,
 		Component: component,
 		Version:   CiliumAgentImageTag,
 		Message:   DisabledMsg,

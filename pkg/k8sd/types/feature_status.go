@@ -34,7 +34,7 @@ func (f FeatureStatus) ToAPI() apiv2.FeatureStatus {
 	return apiv2.FeatureStatus{
 		Enabled:   f.Enabled,
 		Component: f.Component,
-		State:     apiv2.FeatureStateEnabled,
+		State:     f.State,
 		Message:   f.Message,
 		Version:   f.Version,
 		UpdatedAt: f.UpdatedAt,

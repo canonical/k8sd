@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -65,6 +66,7 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 			err = fmt.Errorf("failed to install rawfile-csi helm package: %w", err)
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   ImageTag,
 				Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
@@ -73,6 +75,7 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 			err = fmt.Errorf("failed to delete rawfile-csi helm package: %w", err)
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   ImageTag,
 				Message:   fmt.Sprintf(deleteFailedMsgTmpl, err),
@@ -83,6 +86,7 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 	if cfg.GetEnabled() {
 		return types.FeatureStatus{
 			Enabled:   true,
+			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 			Version:   ImageTag,
 			Message:   fmt.Sprintf(enabledMsg, cfg.GetLocalPath(), cfg.GetReclaimPolicy()),
@@ -90,6 +94,7 @@ func ApplyLocalStorage(ctx context.Context, snap snap.Snap, cfg types.LocalStora
 	} else {
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateDisabled,
 			Component: component,
 			Version:   ImageTag,
 			Message:   disabledMsg,

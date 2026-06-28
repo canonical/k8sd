@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -62,6 +63,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 			err = fmt.Errorf("failed to enable ingress: %w", err)
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(IngressDeployFailedMsgTmpl, err),
@@ -70,6 +72,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 			err = fmt.Errorf("failed to disable ingress: %w", err)
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(IngressDeleteFailedMsgTmpl, err),
@@ -81,6 +84,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 		if ingress.GetEnabled() {
 			return types.FeatureStatus{
 				Enabled:   true,
+				State:     apiv2.FeatureStateEnabled,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   fmt.Sprintf(IngressEnabledMsgTmpl, ingress.GetDefaultTLSSecret()),
@@ -88,6 +92,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 		} else {
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateDisabled,
 				Component: component,
 				Version:   CiliumAgentImageTag,
 				Message:   DisabledMsg,
@@ -98,6 +103,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 	if !ingress.GetEnabled() {
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateDisabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   DisabledMsg,
@@ -108,6 +114,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 		err = fmt.Errorf("failed to rollout restart cilium to apply ingress: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   fmt.Sprintf(IngressDeployFailedMsgTmpl, err),
@@ -116,6 +123,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 
 	return types.FeatureStatus{
 		Enabled:   true,
+		State:     apiv2.FeatureStateEnabled,
 		Component: component,
 		Version:   CiliumAgentImageTag,
 		Message:   fmt.Sprintf(IngressEnabledMsgTmpl, ingress.GetDefaultTLSSecret()),

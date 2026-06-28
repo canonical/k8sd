@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/database"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
@@ -20,6 +21,7 @@ func TestFeatureStatus(t *testing.T) {
 			t0, _ := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 			networkStatus := types.FeatureStatus{
 				Enabled:   true,
+				State:     apiv2.FeatureStateEnabled,
 				Component: "cilium",
 				Message:   "enabled",
 				Version:   "1.2.3",
@@ -27,6 +29,7 @@ func TestFeatureStatus(t *testing.T) {
 			}
 			dnsStatus := types.FeatureStatus{
 				Enabled:   true,
+				State:     apiv2.FeatureStateEnabled,
 				Component: "coredns",
 				Message:   "enabled at 10.0.0.1",
 				Version:   "4.5.6",
@@ -34,6 +37,7 @@ func TestFeatureStatus(t *testing.T) {
 			}
 			dnsStatus2 := types.FeatureStatus{
 				Enabled:   true,
+				State:     apiv2.FeatureStateEnabled,
 				Component: "coredns",
 				Message:   "enabled at 10.0.0.2",
 				Version:   "4.5.7",
@@ -41,6 +45,7 @@ func TestFeatureStatus(t *testing.T) {
 			}
 			gatewayStatus := types.FeatureStatus{
 				Enabled:   true,
+				State:     apiv2.FeatureStateEnabled,
 				Component: "cilium",
 				Message:   "disabled",
 				Version:   "10.20.30",
@@ -68,11 +73,13 @@ func TestFeatureStatus(t *testing.T) {
 
 				g.Expect(ss[features.Network].Enabled).To(Equal(networkStatus.Enabled))
 				g.Expect(ss[features.Network].Component).To(Equal(networkStatus.Component))
+				g.Expect(ss[features.Network].State).To(Equal(networkStatus.State))
 				g.Expect(ss[features.Network].Message).To(Equal(networkStatus.Message))
 				g.Expect(ss[features.Network].Version).To(Equal(networkStatus.Version))
 				g.Expect(ss[features.Network].UpdatedAt).To(Equal(networkStatus.UpdatedAt))
 
 				g.Expect(ss[features.DNS].Enabled).To(Equal(dnsStatus.Enabled))
+				g.Expect(ss[features.DNS].State).To(Equal(dnsStatus.State))
 				g.Expect(ss[features.DNS].Component).To(Equal(dnsStatus.Component))
 				g.Expect(ss[features.DNS].Message).To(Equal(dnsStatus.Message))
 				g.Expect(ss[features.DNS].Version).To(Equal(dnsStatus.Version))
@@ -100,6 +107,7 @@ func TestFeatureStatus(t *testing.T) {
 
 				// network stayed the same
 				g.Expect(ss[features.Network].Enabled).To(Equal(networkStatus.Enabled))
+				g.Expect(ss[features.Network].State).To(Equal(networkStatus.State))
 				g.Expect(ss[features.Network].Component).To(Equal(networkStatus.Component))
 				g.Expect(ss[features.Network].Message).To(Equal(networkStatus.Message))
 				g.Expect(ss[features.Network].Version).To(Equal(networkStatus.Version))
@@ -107,6 +115,7 @@ func TestFeatureStatus(t *testing.T) {
 
 				// dns is updated
 				g.Expect(ss[features.DNS].Enabled).To(Equal(dnsStatus2.Enabled))
+				g.Expect(ss[features.DNS].State).To(Equal(dnsStatus2.State))
 				g.Expect(ss[features.DNS].Component).To(Equal(dnsStatus2.Component))
 				g.Expect(ss[features.DNS].Message).To(Equal(dnsStatus2.Message))
 				g.Expect(ss[features.DNS].Version).To(Equal(dnsStatus2.Version))
@@ -114,6 +123,7 @@ func TestFeatureStatus(t *testing.T) {
 
 				// gateway is added
 				g.Expect(ss[features.Gateway].Enabled).To(Equal(gatewayStatus.Enabled))
+				g.Expect(ss[features.Gateway].State).To(Equal(gatewayStatus.State))
 				g.Expect(ss[features.Gateway].Component).To(Equal(gatewayStatus.Component))
 				g.Expect(ss[features.Gateway].Message).To(Equal(gatewayStatus.Message))
 				g.Expect(ss[features.Gateway].Version).To(Equal(gatewayStatus.Version))

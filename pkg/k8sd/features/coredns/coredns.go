@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -34,6 +35,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 			err = fmt.Errorf("failed to uninstall coredns: %w", err)
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   ImageTag,
 				Message:   fmt.Sprintf(deleteFailedMsgTmpl, err),
@@ -41,6 +43,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		}
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateDisabled,
 			Component: component,
 			Version:   ImageTag,
 			Message:   disabledMsg,
@@ -191,6 +194,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		err = fmt.Errorf("failed to apply coredns: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   ImageTag,
 			Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
@@ -202,6 +206,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		err = fmt.Errorf("failed to create kubernetes client: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   ImageTag,
 			Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
@@ -212,6 +217,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		err = fmt.Errorf("failed to retrieve the coredns service: %w", err)
 		return types.FeatureStatus{
 			Enabled:   false,
+			State:     apiv2.FeatureStateFailed,
 			Component: component,
 			Version:   ImageTag,
 			Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
@@ -220,6 +226,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 
 	return types.FeatureStatus{
 		Enabled:   true,
+		State:     apiv2.FeatureStateEnabled,
 		Component: component,
 		Version:   ImageTag,
 		Message:   fmt.Sprintf(enabledMsgTmpl, dnsIP, kubelet.GetClusterDomain()),

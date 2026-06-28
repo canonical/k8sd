@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -45,6 +46,7 @@ func ApplyMetricsServer(ctx context.Context, snap snap.Snap, cfg types.MetricsSe
 			err = fmt.Errorf("failed to install metrics server chart: %w", err)
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   imageTag,
 				Message:   fmt.Sprintf(deployFailedMsgTmpl, err),
@@ -53,6 +55,7 @@ func ApplyMetricsServer(ctx context.Context, snap snap.Snap, cfg types.MetricsSe
 			err = fmt.Errorf("failed to delete metrics server chart: %w", err)
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateFailed,
 				Component: component,
 				Version:   imageTag,
 				Message:   fmt.Sprintf(deleteFailedMsgTmpl, err),
@@ -62,6 +65,7 @@ func ApplyMetricsServer(ctx context.Context, snap snap.Snap, cfg types.MetricsSe
 		if cfg.GetEnabled() {
 			return types.FeatureStatus{
 				Enabled:   true,
+				State:     apiv2.FeatureStateEnabled,
 				Component: component,
 				Version:   imageTag,
 				Message:   enabledMsg,
@@ -69,6 +73,7 @@ func ApplyMetricsServer(ctx context.Context, snap snap.Snap, cfg types.MetricsSe
 		} else {
 			return types.FeatureStatus{
 				Enabled:   false,
+				State:     apiv2.FeatureStateDisabled,
 				Component: component,
 				Version:   imageTag,
 				Message:   disabledMsg,
