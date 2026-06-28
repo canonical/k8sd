@@ -8,6 +8,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ListPods list all the pods matching the additional options in the given namespace.
+func (c *Client) ListPods(ctx context.Context, namespace string, listOptions metav1.ListOptions) ([]corev1.Pod, error) {
+	pods, err := c.CoreV1().Pods(namespace).List(ctx, listOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	return pods.Items, nil
+}
+
 // CheckForReadyPods checks if all pods in the specified namespace are ready.
 // It returns an error if any of the pods are not ready.
 // The listOptions specify additional options for listing the pods, e.g. labels.
@@ -15,16 +25,16 @@ import (
 // If any of the pods are not ready, it returns an error with the names of the not ready pods.
 // If all pods are ready, it returns nil.
 func (c *Client) CheckForReadyPods(ctx context.Context, namespace string, listOptions metav1.ListOptions) error {
-	pods, err := c.CoreV1().Pods(namespace).List(ctx, listOptions)
+	pods, err := c.ListPods(ctx, namespace, listOptions)
 	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
+		return err
 	}
-	if len(pods.Items) == 0 {
+	if len(pods) == 0 {
 		return fmt.Errorf("no pods in %v namespace on the cluster", namespace)
 	}
 
 	notReadyPods := []string{}
-	for _, pod := range pods.Items {
+	for _, pod := range pods {
 		if !podIsReady(pod) {
 			notReadyPods = append(notReadyPods, pod.Name)
 		}
