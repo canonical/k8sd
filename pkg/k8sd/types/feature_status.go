@@ -23,6 +23,13 @@ type FeatureStatus struct {
 	UpdatedAt time.Time
 }
 
+// Outcome of a feature health probe.
+type ProbeResult struct {
+	State   apiv2.FeatureState
+	Message string
+	Err     error
+}
+
 func (f FeatureStatus) ToAPI() apiv2.FeatureStatus {
 	return apiv2.FeatureStatus{
 		Enabled:   f.Enabled,
