@@ -19,7 +19,7 @@ func CheckNetwork(ctx context.Context, snap snap.Snap) types.ProbeResult {
 	client, err := snap.KubernetesClient("kube-system")
 	if err != nil {
 		return types.ProbeResult{
-			State:   apiv2.FeatureStateDegraded,
+			State:   apiv2.FeatureStateFailed,
 			Message: fmt.Sprintf("Could not verify cilium pod health: %v", err),
 			Err:     err,
 		}
@@ -37,7 +37,7 @@ func CheckNetwork(ctx context.Context, snap snap.Snap) types.ProbeResult {
 			LabelSelector: metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: check.labels}),
 		}); err != nil {
 			return types.ProbeResult{
-				State:   apiv2.FeatureStateDegraded,
+				State:   apiv2.FeatureStateFailed,
 				Message: fmt.Sprintf("Could not verify cilium pod health: %v", err),
 				Err:     err,
 			}
