@@ -228,7 +228,8 @@ func renderSection(s categorySection) string {
 }
 
 func renderFeature(name string, fs apiv2.FeatureStatus, last bool) string {
-	if !fs.Enabled {
+	state := fs.State
+	if state == apiv2.FeatureStateFailed {
 		return fmt.Sprintf("  %s %s", iconFeatureDisabled(), styleDim.Sprint(name))
 	}
 
@@ -247,7 +248,7 @@ func renderFeature(name string, fs apiv2.FeatureStatus, last bool) string {
 
 	header += "\n      " + fs.Message
 
-	if (fs.Enabled == true && !last) || !last {
+	if (state == apiv2.FeatureStateEnabled && !last) || !last {
 		return header + "\n"
 	}
 
