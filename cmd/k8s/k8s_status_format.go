@@ -229,7 +229,7 @@ func renderSection(s categorySection) string {
 
 func renderFeature(name string, fs apiv2.FeatureStatus, last bool) string {
 	state := fs.State
-	if state == apiv2.FeatureStateFailed {
+	if state == apiv2.FeatureStateDisabled {
 		return fmt.Sprintf("  %s %s", iconFeatureDisabled(), styleDim.Sprint(name))
 	}
 
