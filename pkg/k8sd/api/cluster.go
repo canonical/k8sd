@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
@@ -15,9 +17,16 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	"golang.org/x/sync/errgroup"
 )
+
+// featureProbeTimeout caps how long a single feature probe can run before
+// it is cancelled. The probe is expected to translate the cancellation
+// into a Degraded ProbeResult; the overlay does not synthesise one.
+const featureProbeTimeout = 2 * time.Second
 
 func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.Response {
 	log := log.FromContext(r.Context()).WithValues("endpoint", "getClusterStatus")
@@ -67,10 +76,25 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 		return mctypes.InternalError(fmt.Errorf("database transaction failed: %w", err))
 	}
 
+	// Overlay live probe results on top of the DB-persisted statuses. Only
+	// features that are currently Enabled in the DB are probed; Failed and
+	// Disabled rows are already authoritative from the last Apply*.
+	overlayFeatureProbes(r.Context(), e.provider.Snap(), features.StatusChecks, statuses)
+
+	featureList := []apiv2.FeatureStatus{
+		statuses[features.DNS].ToAPI(),
+		statuses[features.Network].ToAPI(),
+		statuses[features.LoadBalancer].ToAPI(),
+		statuses[features.Ingress].ToAPI(),
+		statuses[features.Gateway].ToAPI(),
+		statuses[features.MetricsServer].ToAPI(),
+		statuses[features.LocalStorage].ToAPI(),
+	}
+
 	return mctypes.SyncResponse(true, &apiv2.ClusterStatusResponse{
 		ClusterStatus: apiv2.ClusterStatus{
 			Ready:   ready,
-			Status:  deriveClusterHealth(ready),
+			Status:  deriveClusterHealth(ready, featureList),
 			Members: k8sNodes,
 			Config:  config.ToUserFacing(),
 			IsHA:    impl.IsHighlyAvailable(k8sNodes),
@@ -78,13 +102,13 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 				Type:    config.Datastore.GetType(),
 				Servers: config.Datastore.GetExternalServers(),
 			},
-			DNS:           statuses[features.DNS].ToAPI(),
-			Network:       statuses[features.Network].ToAPI(),
-			LoadBalancer:  statuses[features.LoadBalancer].ToAPI(),
-			Ingress:       statuses[features.Ingress].ToAPI(),
-			Gateway:       statuses[features.Gateway].ToAPI(),
-			MetricsServer: statuses[features.MetricsServer].ToAPI(),
-			LocalStorage:  statuses[features.LocalStorage].ToAPI(),
+			DNS:           featureList[0],
+			Network:       featureList[1],
+			LoadBalancer:  featureList[2],
+			Ingress:       featureList[3],
+			Gateway:       featureList[4],
+			MetricsServer: featureList[5],
+			LocalStorage:  featureList[6],
 		},
 	})
 }
@@ -117,11 +141,112 @@ func (e *Endpoints) checkKubeletClusterDNS(ctx context.Context, client *kubernet
 	return nil
 }
 
-func deriveClusterHealth(ready bool) apiv2.ClusterHealth {
-	// TODO: The exact health status should be implemented
-	if ready {
-		return apiv2.ClusterHealthReady
+// deriveClusterHealth maps node readiness and per-feature state into a
+// single cluster-wide health verdict:
+//
+//   - !ready                      → Failed (nodes are not Ready)
+//   - any feature Failed          → Failed (a critical component is broken)
+//   - any feature Degraded/Waiting → Degraded (cluster works but limping)
+//   - otherwise                   → Ready
+//
+// Disabled features and features with no persisted state are ignored —
+// the cluster is healthy as long as every Enabled feature is healthy.
+func deriveClusterHealth(ready bool, featureList []apiv2.FeatureStatus) apiv2.ClusterHealth {
+	if !ready {
+		return apiv2.ClusterHealthFailed
 	}
 
-	return apiv2.ClusterHealthFailed
+	hasDegraded := false
+	for _, f := range featureList {
+		switch effectiveState(f) {
+		case apiv2.FeatureStateFailed:
+			return apiv2.ClusterHealthFailed
+		case apiv2.FeatureStateDegraded, apiv2.FeatureStateWaiting:
+			hasDegraded = true
+		}
+	}
+	if hasDegraded {
+		return apiv2.ClusterHealthDegraded
+	}
+	return apiv2.ClusterHealthReady
+}
+
+// effectiveState handles the upgrade-window only: rows persisted by pre-PR
+// k8sd carry State="" (the migration's DEFAULT ''). Once every feature
+// has reconciled at least once post-upgrade, every row has a real State
+// and this fallback is unreachable. Kept narrowly for safety; remove in
+// a follow-up once we are sure every persisted row has been rewritten.
+func effectiveState(fs apiv2.FeatureStatus) apiv2.FeatureState {
+	if fs.State != "" {
+		return fs.State
+	}
+	if fs.Enabled {
+		return apiv2.FeatureStateEnabled
+	}
+	return apiv2.FeatureStateDisabled
+}
+
+// overlayFeatureProbes runs the configured Check* probe for every feature
+// whose persisted state is Enabled, then overlays the probe's State and
+// Message onto the corresponding entry in `statuses` in place.
+//
+// Probes run concurrently with a per-probe timeout. Each probe is
+// best-effort: a probe error or empty result simply leaves the DB-derived
+// status untouched. This function never returns an error and never
+// removes a feature from the map.
+//
+// Features whose persisted state is not Enabled (Failed, Disabled,
+// Waiting, or missing entirely) are skipped — Apply* has already written
+// the authoritative status for those.
+func overlayFeatureProbes(
+	ctx context.Context,
+	sn snap.Snap,
+	checks features.StatusInterface,
+	statuses map[types.FeatureName]types.FeatureStatus,
+) {
+	probes := []struct {
+		name  types.FeatureName
+		check func(context.Context, snap.Snap) types.ProbeResult
+	}{
+		{features.DNS, checks.CheckDNS},
+		{features.Network, checks.CheckNetwork},
+		{features.LoadBalancer, checks.CheckLoadBalancer},
+		{features.Ingress, checks.CheckIngress},
+		{features.Gateway, checks.CheckGateway},
+		{features.LocalStorage, checks.CheckLocalStorage},
+		{features.MetricsServer, checks.CheckMetricsServer},
+	}
+
+	results := make(map[types.FeatureName]types.ProbeResult, len(probes))
+	var mu sync.Mutex
+
+	g, gctx := errgroup.WithContext(ctx)
+	for _, p := range probes {
+		cur, ok := statuses[p.name]
+		if !ok || cur.State != apiv2.FeatureStateEnabled {
+			continue
+		}
+		p := p
+		g.Go(func() error {
+			pctx, cancel := context.WithTimeout(gctx, featureProbeTimeout)
+			defer cancel()
+			res := p.check(pctx, sn)
+			mu.Lock()
+			results[p.name] = res
+			mu.Unlock()
+			return nil
+		})
+	}
+	// Callbacks never return an error; Wait is used only to fan-in.
+	_ = g.Wait()
+
+	for name, res := range results {
+		if res.State == "" {
+			continue
+		}
+		fs := statuses[name]
+		fs.State = res.State
+		fs.Message = res.Message
+		statuses[name] = fs
+	}
 }
