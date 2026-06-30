@@ -142,15 +142,7 @@ func (e *Endpoints) checkKubeletClusterDNS(ctx context.Context, client *kubernet
 }
 
 // deriveClusterHealth maps node readiness and per-feature state into a
-// single cluster-wide health verdict:
-//
-//   - !ready                      → Failed (nodes are not Ready)
-//   - any feature Failed          → Failed (a critical component is broken)
-//   - any feature Degraded/Waiting → Degraded (cluster works but limping)
-//   - otherwise                   → Ready
-//
-// Disabled features and features with no persisted state are ignored —
-// the cluster is healthy as long as every Enabled feature is healthy.
+// single cluster-wide health verdict.
 func deriveClusterHealth(ready bool, featureList []apiv2.FeatureStatus) apiv2.ClusterHealth {
 	if !ready {
 		return apiv2.ClusterHealthFailed
@@ -158,7 +150,7 @@ func deriveClusterHealth(ready bool, featureList []apiv2.FeatureStatus) apiv2.Cl
 
 	hasDegraded := false
 	for _, f := range featureList {
-		switch effectiveState(f) {
+		switch f.State {
 		case apiv2.FeatureStateFailed:
 			return apiv2.ClusterHealthFailed
 		case apiv2.FeatureStateDegraded, apiv2.FeatureStateWaiting:
@@ -171,33 +163,9 @@ func deriveClusterHealth(ready bool, featureList []apiv2.FeatureStatus) apiv2.Cl
 	return apiv2.ClusterHealthReady
 }
 
-// effectiveState handles the upgrade-window only: rows persisted by pre-PR
-// k8sd carry State="" (the migration's DEFAULT ''). Once every feature
-// has reconciled at least once post-upgrade, every row has a real State
-// and this fallback is unreachable. Kept narrowly for safety; remove in
-// a follow-up once we are sure every persisted row has been rewritten.
-func effectiveState(fs apiv2.FeatureStatus) apiv2.FeatureState {
-	if fs.State != "" {
-		return fs.State
-	}
-	if fs.Enabled {
-		return apiv2.FeatureStateEnabled
-	}
-	return apiv2.FeatureStateDisabled
-}
-
 // overlayFeatureProbes runs the configured Check* probe for every feature
 // whose persisted state is Enabled, then overlays the probe's State and
 // Message onto the corresponding entry in `statuses` in place.
-//
-// Probes run concurrently with a per-probe timeout. Each probe is
-// best-effort: a probe error or empty result simply leaves the DB-derived
-// status untouched. This function never returns an error and never
-// removes a feature from the map.
-//
-// Features whose persisted state is not Enabled (Failed, Disabled,
-// Waiting, or missing entirely) are skipped — Apply* has already written
-// the authoritative status for those.
 func overlayFeatureProbes(
 	ctx context.Context,
 	sn snap.Snap,
@@ -226,7 +194,7 @@ func overlayFeatureProbes(
 		if !ok || cur.State != apiv2.FeatureStateEnabled {
 			continue
 		}
-		p := p
+
 		g.Go(func() error {
 			pctx, cancel := context.WithTimeout(gctx, featureProbeTimeout)
 			defer cancel()
