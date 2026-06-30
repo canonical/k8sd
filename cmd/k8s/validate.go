@@ -80,6 +80,12 @@ func verifyConfig(cfg types.ClusterConfig, svcConfigs types.K8sServiceConfigs, c
 		return fmt.Errorf("invalid cluster configuration: %w", err)
 	}
 
+	var err error
+	containerdBaseDir, err = normalizeContainerdBaseDir(containerdBaseDir)
+	if err != nil {
+		return fmt.Errorf("invalid containerd-base-dir value: %w", err)
+	}
+
 	s := snap.NewSnap(snap.SnapOpts{
 		SnapDir:           os.Getenv("SNAP"),
 		SnapCommonDir:     os.Getenv("SNAP_COMMON"),

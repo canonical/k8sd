@@ -52,6 +52,10 @@ type Config struct {
 	DisableUpdateNodeConfigController bool
 	// DisableFeatureController is a bool flag to disable feature controller
 	DisableFeatureController bool
+	// DisableHelmOverrideController is a bool flag to disable the ConfigMap-based Helm
+	// value override controller for all features (CoreDNS, Cilium, MetalLB, LocalPV,
+	// metrics-server).
+	DisableHelmOverrideController bool
 	// DisableDNSRebalancerController is a bool flag to disable dns rebalancer controller
 	DisableDNSRebalancerController bool
 	// DisableCSRSigningController is a bool flag to disable csrsigning controller.
@@ -248,6 +252,14 @@ func New(cfg Config) (*App, error) {
 		},
 		controllers.DNSRebalancerControllerOptions{
 			Disable: cfg.DisableDNSRebalancerController,
+		},
+		controllers.HelmOverrideControllerOptions{
+			NotifyDNS:           app.NotifyDNS,
+			NotifyNetwork:       app.NotifyNetwork,
+			NotifyLoadBalancer:  app.NotifyLoadBalancer,
+			NotifyLocalStorage:  app.NotifyLocalStorage,
+			NotifyMetricsServer: app.NotifyMetricsServer,
+			Disable:             cfg.DisableHelmOverrideController || cfg.DisableFeatureController,
 		},
 	)
 

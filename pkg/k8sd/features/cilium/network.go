@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -122,8 +123,9 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 
 	ciliumNodePortValues := map[string]any{
 		"enabled": true,
-		// kube-proxy also binds to the same port for health checks so we need to disable it
-		"enableHealthCheck": false,
+		// With kube-proxy replacement enabled, we can safely enable the health check
+		// since kube-proxy won't be running and won't conflict with the health check port
+		"enableHealthCheck": true,
 	}
 
 	if config.directRoutingDevice != "" {
@@ -185,7 +187,9 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		"envoy": map[string]any{
 			"enabled": false, // 1.16+ installs envoy as a standalone daemonset by default if not explicitly disabled
 		},
-		// https://docs.cilium.io/en/v1.15/network/kubernetes/kubeproxy-free/#kube-proxy-hybrid-modes
+		// Enable kube-proxy replacement mode so that Cilium handles all kube-proxy functionality
+		// https://docs.cilium.io/en/v1.15/network/kubernetes/kubeproxy-free/
+		"kubeProxyReplacement":     true,
 		"nodePort":                 ciliumNodePortValues,
 		"disableEnvoyVersionCheck": true,
 		// socketLB requires an endpoint to the apiserver that's not managed by the kube-proxy
@@ -281,6 +285,16 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}
 	}
 
+	var cmOverrideErr error
+	cmOverrides, cmOverrideErr := helmoverride.GetConfigMapOverrides(ctx, snap, "k8sd-cilium-values")
+	if cmOverrideErr != nil {
+		log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
+	}
+	if cmOverrides != nil {
+		log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-cilium-values", "keys", len(cmOverrides))
+		values = helmoverride.MergeValues(values, cmOverrides)
+	}
+
 	if _, err := m.Apply(ctx, ChartCilium, helm.StatePresent, values); err != nil {
 		err = fmt.Errorf("failed to enable network: %w", err)
 		return types.FeatureStatus{
@@ -290,10 +304,24 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}, err
 	}
 
+	// TODO(Hue): we should only rollout restart if necessary.
+	if err := rolloutRestartCilium(ctx, snap, 3); err != nil {
+		err = fmt.Errorf("failed to rollout restart cilium to apply new network configuration: %w", err)
+		return types.FeatureStatus{
+			Enabled: false,
+			Version: CiliumAgentImageTag,
+			Message: fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
+		}, err
+	}
+
+	msg := EnabledMsg
+	if cmOverrideErr != nil {
+		msg = fmt.Sprintf("%s (warning: %v)", EnabledMsg, cmOverrideErr)
+	}
 	return types.FeatureStatus{
 		Enabled: true,
 		Version: CiliumAgentImageTag,
-		Message: EnabledMsg,
+		Message: msg,
 	}, nil
 }
 

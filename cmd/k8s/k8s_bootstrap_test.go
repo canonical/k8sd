@@ -36,7 +36,8 @@ var testCases = []testCase{
 		expectedConfig: apiv2.BootstrapConfig{
 			ClusterConfig: apiv2.UserFacingClusterConfig{
 				Network: apiv2.NetworkConfig{
-					Enabled: utils.Pointer(true),
+					Enabled:          utils.Pointer(true),
+					KubeProxyEnabled: utils.Pointer(false),
 				},
 				DNS: apiv2.DNSConfig{
 					Enabled:       utils.Pointer(true),
@@ -152,4 +153,55 @@ func TestGetConfigFromYaml_Stdin(t *testing.T) {
 
 	expectedConfig := apiv2.BootstrapConfig{SecurePort: utils.Pointer(5000)}
 	g.Expect(config).To(Equal(expectedConfig))
+}
+
+func TestIsMemBackedFS(t *testing.T) {
+	t.Run("tmpfs path", func(t *testing.T) {
+		g := NewWithT(t)
+		// /dev/shm is always tmpfs on Linux
+		g.Expect(isMemBackedFS("/dev/shm")).To(BeTrue())
+	})
+
+	t.Run("non-tmpfs path", func(t *testing.T) {
+		g := NewWithT(t)
+		// root filesystem is not tmpfs or ramfs
+		g.Expect(isMemBackedFS("/")).To(BeFalse())
+	})
+
+	t.Run("non-existent path walks up to ancestor", func(t *testing.T) {
+		g := NewWithT(t)
+		// /dev/shm/nonexistent doesn't exist, but ancestor /dev/shm is tmpfs
+		g.Expect(isMemBackedFS("/dev/shm/nonexistent/path")).To(BeTrue())
+	})
+
+	t.Run("non-existent path on non-tmpfs", func(t *testing.T) {
+		g := NewWithT(t)
+		g.Expect(isMemBackedFS("/usr/nonexistent/path")).To(BeFalse())
+	})
+}
+
+func TestNormalizeContainerdBaseDir(t *testing.T) {
+	t.Run("empty path", func(t *testing.T) {
+		g := NewWithT(t)
+
+		normalized, err := normalizeContainerdBaseDir("")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(normalized).To(Equal(""))
+	})
+
+	t.Run("relative path rejected", func(t *testing.T) {
+		g := NewWithT(t)
+
+		_, err := normalizeContainerdBaseDir("relative/path")
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("must be an absolute path"))
+	})
+
+	t.Run("absolute path is cleaned", func(t *testing.T) {
+		g := NewWithT(t)
+
+		normalized, err := normalizeContainerdBaseDir("/opt/k8s/../k8s-containerd//")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(normalized).To(Equal("/opt/k8s-containerd"))
+	})
 }

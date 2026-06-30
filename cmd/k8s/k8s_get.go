@@ -10,6 +10,7 @@ import (
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/spf13/cobra"
+	"k8s.io/utils/ptr"
 )
 
 func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
@@ -56,6 +57,9 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				return
 			}
 			config := response.Config
+			if config.Network.KubeProxyEnabled == nil {
+				config.Network.KubeProxyEnabled = ptr.To(true)
+			}
 
 			config.MetricsServer = apiv2.MetricsServerConfig{}
 			config.CloudProvider = nil
@@ -84,6 +88,8 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				output = config.LoadBalancer
 			case fmt.Sprintf("%s.enabled", features.Network):
 				output = config.Network.GetEnabled()
+			case fmt.Sprintf("%s.kube-proxy-enabled", features.Network):
+				output = config.Network.GetKubeProxyEnabled()
 			case fmt.Sprintf("%s.enabled", features.DNS):
 				output = config.DNS.GetEnabled()
 			case fmt.Sprintf("%s.upstream-nameservers", features.DNS):

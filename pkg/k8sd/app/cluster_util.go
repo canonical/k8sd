@@ -5,13 +5,15 @@ import (
 	"fmt"
 
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
+	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 )
 
 // startControlPlaneServices starts the control plane services based on the datastore type.
-func startControlPlaneServices(ctx context.Context, snap snap.Snap, datastore string) error {
+func startControlPlaneServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig) error {
 	// Start services
+	datastore := cfg.Datastore.GetType()
 	switch datastore {
 	case "etcd":
 		if err := snaputil.StartEtcdServices(ctx, snap); err != nil {
@@ -23,7 +25,7 @@ func startControlPlaneServices(ctx context.Context, snap snap.Snap, datastore st
 		return fmt.Errorf("unsupported datastore %s, must be one of %v", datastore, setup.SupportedDatastores)
 	}
 
-	if err := snaputil.StartControlPlaneServices(ctx, snap); err != nil {
+	if err := snaputil.StartControlPlaneServices(ctx, snap, cfg); err != nil {
 		return fmt.Errorf("failed to start control plane services: %w", err)
 	}
 	return nil

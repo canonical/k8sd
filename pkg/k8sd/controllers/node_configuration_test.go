@@ -179,6 +179,8 @@ func TestConfigPropagation(t *testing.T) {
 		},
 	}
 
+	tmpDir := t.TempDir()
+
 	clientset := fake.NewSimpleClientset(
 		&corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
@@ -189,7 +191,8 @@ func TestConfigPropagation(t *testing.T) {
 
 	s := &mock.Snap{
 		Mock: mock.Mock{
-			ServiceArgumentsDir:  filepath.Join(t.TempDir(), "args"),
+			ServiceArgumentsDir:  filepath.Join(tmpDir, "args"),
+			LockFilesDir:         tmpDir,
 			UID:                  os.Getuid(),
 			GID:                  os.Getgid(),
 			KubernetesNodeClient: &kubernetes.Client{Interface: clientset},
@@ -202,7 +205,10 @@ func TestConfigPropagation(t *testing.T) {
 
 	keyCh := make(chan *rsa.PublicKey)
 
-	go ctrl.Run(ctx, func(ctx context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil })
+	go ctrl.Run(ctx, func(ctx context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil },
+		func(ctx context.Context, b bool) error {
+			return nil
+		})
 	defer watcher.Stop()
 
 	// WatchConfigMap now does an initial Get to seed the reconcile. Drain that
@@ -221,10 +227,11 @@ func TestConfigPropagation(t *testing.T) {
 			g := NewWithT(t)
 
 			if tc.privKey != nil {
-				kubelet, err := types.KubeletFromConfigMap(tc.configmap.Data, nil)
+				// Create ClusterConfig from test configmap data for signing
+				config, err := types.ConfigMapToClusterConfig(tc.configmap.Data, nil)
 				g.Expect(err).To(Not(HaveOccurred()))
 
-				tc.configmap.Data, err = kubelet.ToConfigMap(tc.privKey)
+				tc.configmap.Data, err = types.ClusterConfigToConfigMap(config, tc.privKey)
 				g.Expect(err).To(Not(HaveOccurred()))
 			}
 
@@ -251,4 +258,195 @@ func TestConfigPropagation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKubeProxyEnabled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	g := NewWithT(t)
+
+	tmpDir := t.TempDir()
+
+	clientset := fake.NewSimpleClientset(
+		&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+		},
+	)
+	watcher := watch.NewFake()
+	clientset.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(watcher, nil))
+
+	s := &mock.Snap{
+		Mock: mock.Mock{
+			ServiceArgumentsDir:  filepath.Join(tmpDir, "args"),
+			LockFilesDir:         tmpDir,
+			UID:                  os.Getuid(),
+			GID:                  os.Getgid(),
+			KubernetesNodeClient: &kubernetes.Client{Interface: clientset},
+		},
+	}
+
+	g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
+
+	ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute)
+
+	keyCh := make(chan *rsa.PublicKey)
+
+	updateKubeProxyCalled := make(chan bool, 100)
+	go ctrl.Run(ctx, func(ctx context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil },
+		func(ctx context.Context, b bool) error {
+			updateKubeProxyCalled <- b
+			return nil
+		})
+	defer watcher.Stop()
+
+	// WatchConfigMap now does an initial Get to seed the reconcile. Drain that
+	// seed reconcile (empty configmap, nil key → no-op) before the test loop.
+	keyCh <- nil
+	select {
+	case <-ctrl.ReconciledCh():
+	case <-time.After(channelSendTimeout):
+		g.Fail("Timed out waiting for seed reconcile to complete")
+	}
+
+	t.Run("DisableKubeProxy", func(t *testing.T) {
+		g := NewWithT(t)
+		s.StopServicesCalledWith = nil
+		for len(updateKubeProxyCalled) > 0 {
+			<-updateKubeProxyCalled
+		}
+
+		// Send configmap with kube-proxy-enabled set to false
+		configmap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data: map[string]string{
+				"kube-proxy-enabled": "false",
+			},
+		}
+
+		watcher.Add(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+
+		// Verify kube-proxy was stopped
+		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+		g.Expect(updateKubeProxyCalled).To(Receive(BeFalse()))
+	})
+
+	t.Run("EnableKubeProxy", func(t *testing.T) {
+		g := NewWithT(t)
+		s.StartServicesCalledWith = nil
+		for len(updateKubeProxyCalled) > 0 {
+			<-updateKubeProxyCalled
+		}
+
+		// Send configmap with kube-proxy-enabled set to true
+		configmap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data: map[string]string{
+				"kube-proxy-enabled": "true",
+			},
+		}
+
+		watcher.Add(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+
+		// Verify kube-proxy was started
+		g.Expect(s.StartServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StartServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+		g.Expect(updateKubeProxyCalled).To(Receive(BeTrue()))
+	})
+
+	// NOTE: these subtests share the controller goroutine, watcher, keyCh, and snap mock.
+	// They are inherently sequential and must NOT be run with t.Parallel().
+	t.Run("ChangeWhenStateMatches", func(t *testing.T) {
+		// When the config map changes the reconciler will try to start or stop kubeproxy
+		// based on the config. Systemd service start/start will be a noop if the service
+		// is already in the right state.
+		// in this test we perform a series of config updates and make sure the service
+		// start/stop calls match the requested state.
+		g := NewWithT(t)
+		s.StartServicesCalledWith = nil
+		s.StopServicesCalledWith = nil
+		for len(updateKubeProxyCalled) > 0 {
+			<-updateKubeProxyCalled
+		}
+
+		// Send configmap with kube-proxy-enabled set to true (matching current state)
+		configmap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data: map[string]string{
+				"kube-proxy-enabled": "true",
+			},
+		}
+
+		watcher.Add(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+
+		// Verify only one start was called
+		g.Expect(s.StartServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StartServicesCalledWith).To(HaveLen(1))
+		g.Expect(s.StartServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
+		g.Expect(updateKubeProxyCalled).To(Receive(BeTrue()))
+		g.Expect(updateKubeProxyCalled).ToNot(Receive())
+
+		watcher.Modify(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+		g.Expect(s.StartServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StartServicesCalledWith).To(HaveLen(2))
+		g.Expect(s.StartServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+		g.Expect(s.StartServicesCalledWith[1]).To(ContainElement("kube-proxy"))
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
+		g.Expect(updateKubeProxyCalled).To(Receive(BeTrue()))
+		g.Expect(updateKubeProxyCalled).ToNot(Receive())
+
+		configmap = &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data: map[string]string{
+				"kube-proxy-enabled": "false",
+			},
+		}
+		watcher.Modify(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+		g.Expect(s.StartServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StartServicesCalledWith).To(HaveLen(2))
+		g.Expect(s.StartServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+		g.Expect(s.StartServicesCalledWith[1]).To(ContainElement("kube-proxy"))
+		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StopServicesCalledWith).To(HaveLen(1))
+		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+		g.Expect(updateKubeProxyCalled).To(Receive(BeFalse()))
+		g.Expect(updateKubeProxyCalled).ToNot(Receive())
+	})
 }
