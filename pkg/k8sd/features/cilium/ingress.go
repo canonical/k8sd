@@ -80,6 +80,11 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 		}
 	}
 
+	enabledMsg := fmt.Sprintf(IngressEnabledMsgTmpl, ingress.GetDefaultTLSSecret())
+	if ingress.GetDefaultTLSSecret() == "" {
+		enabledMsg = "No default TLS secret configured."
+	}
+
 	if !changed {
 		if ingress.GetEnabled() {
 			return types.FeatureStatus{
@@ -87,7 +92,7 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 				State:     apiv2.FeatureStateEnabled,
 				Component: component,
 				Version:   CiliumAgentImageTag,
-				Message:   fmt.Sprintf(IngressEnabledMsgTmpl, ingress.GetDefaultTLSSecret()),
+				Message:   enabledMsg,
 			}, nil
 		} else {
 			return types.FeatureStatus{
@@ -126,6 +131,6 @@ func ApplyIngress(ctx context.Context, snap snap.Snap, ingress types.Ingress, ne
 		State:     apiv2.FeatureStateEnabled,
 		Component: component,
 		Version:   CiliumAgentImageTag,
-		Message:   fmt.Sprintf(IngressEnabledMsgTmpl, ingress.GetDefaultTLSSecret()),
+		Message:   enabledMsg,
 	}, nil
 }
