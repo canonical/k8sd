@@ -77,13 +77,10 @@ func ProbeWorkload(ctx context.Context, client *kubernetes.Client, namespace, wo
 		return types.WorkloadResult{
 			Workload: workload,
 			State:    apiv2.FeatureStateWaiting,
-			Message:  fmt.Sprintf("Waiting for %s pods to be scheduled. %s", workload, checkEventsHint(namespace)),
+			Message:  fmt.Sprintf("Waiting for %s pods to be scheduled.", workload),
 		}
 	case readyN < total:
 		msg := fmt.Sprintf("Waiting for %s pods to become ready (%d/%d pods ready)", workload, readyN, total)
-		if readyN == 0 {
-			msg += ". " + checkEventsHint(namespace)
-		}
 		return types.WorkloadResult{
 			Workload: workload,
 			State:    apiv2.FeatureStateWaiting,
@@ -92,13 +89,6 @@ func ProbeWorkload(ctx context.Context, client *kubernetes.Client, namespace, wo
 	default: // readyN == total > 0
 		return types.WorkloadResult{Workload: workload, State: apiv2.FeatureStateEnabled}
 	}
-}
-
-// checkEventsHint is appended to Waiting messages when no pods are ready,
-// pointing the user at cluster events for the actual reason (scheduling
-// failures, image pulls, etc.).
-func checkEventsHint(namespace string) string {
-	return fmt.Sprintf("Check cluster events for details: k8s kubectl get events -n %s", namespace)
 }
 
 // classifyFailingPod scans init, regular, and ephemeral containers and
