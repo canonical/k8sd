@@ -151,6 +151,8 @@ func deriveClusterHealth(ready bool, featureList []apiv2.FeatureStatus) apiv2.Cl
 	hasDegraded := false
 	for _, f := range featureList {
 		switch f.State {
+		case "":
+			return apiv2.ClusterHealthFailed
 		case apiv2.FeatureStateFailed:
 			return apiv2.ClusterHealthFailed
 		case apiv2.FeatureStateDegraded, apiv2.FeatureStateWaiting:
