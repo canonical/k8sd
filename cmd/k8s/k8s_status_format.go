@@ -235,6 +235,8 @@ func renderFeature(name string, fs apiv2.FeatureStatus, last bool) string {
 
 	icon := iconFeatureHealthy()
 	switch fs.State {
+	case "":
+		icon = iconFeatureDisabled()
 	case apiv2.FeatureStateFailed:
 		icon = iconFeatureFailed()
 	case apiv2.FeatureStateDegraded, apiv2.FeatureStateWaiting:
