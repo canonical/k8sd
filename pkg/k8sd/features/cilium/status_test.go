@@ -138,14 +138,64 @@ func TestCheckNetwork(t *testing.T) {
 	})
 }
 
-// TestCheckStubsReturnZeroProbeResult is a smoke test that the cilium
-// Check* stubs introduced in phase 1 return an empty ProbeResult.
-func TestCheckStubsReturnZeroProbeResult(t *testing.T) {
-	g := NewWithT(t)
-	snapM := &snapmock.Snap{}
-	ctx := context.Background()
+// TestCheckCiliumFeatureProbes verifies that the ingress, gateway and
+// load-balancer probes derive their health from the same cilium operator +
+// agent workloads as the network probe, differing only in the Degraded
+// message qualifier.
+func TestCheckCiliumFeatureProbes(t *testing.T) {
+	checks := map[string]struct {
+		fn      func(context.Context, snap.Snap) types.ProbeResult
+		feature string
+	}{
+		"ingress":      {fn: cilium.CheckIngress, feature: "ingress"},
+		"gateway":      {fn: cilium.CheckGateway, feature: "gateway"},
+		"loadbalancer": {fn: cilium.CheckLoadBalancer, feature: "load-balancer"},
+	}
 
-	g.Expect(cilium.CheckIngress(ctx, snapM)).To(Equal(types.ProbeResult{}))
-	g.Expect(cilium.CheckGateway(ctx, snapM)).To(Equal(types.ProbeResult{}))
-	g.Expect(cilium.CheckLoadBalancer(ctx, snapM)).To(Equal(types.ProbeResult{}))
+	for name, tc := range checks {
+		t.Run(name+"/healthy", func(t *testing.T) {
+			g := NewWithT(t)
+			sn := snapWithPods(
+				readyPod("cilium-operator", operatorLabelKey, operatorLabelValue),
+				readyPod("cilium-agent-abc", agentLabelKey, agentLabelValue),
+			)
+
+			got := tc.fn(context.Background(), sn)
+
+			g.Expect(got).To(Equal(types.ProbeResult{}))
+		})
+
+		t.Run(name+"/failed", func(t *testing.T) {
+			g := NewWithT(t)
+			sn := snapWithPods(
+				readyPod("cilium-operator", operatorLabelKey, operatorLabelValue),
+				readyPod("cilium-agent-aaa", agentLabelKey, agentLabelValue),
+				failingPod("cilium-agent-bbb", agentLabelKey, agentLabelValue, "CrashLoopBackOff", 7),
+			)
+
+			got := tc.fn(context.Background(), sn)
+
+			g.Expect(got.State).To(Equal(apiv2.FeatureStateFailed))
+			g.Expect(got.Message).To(Equal("CrashLoopBackOff on cilium-agent (1/2 pods, 7 restarts max)"))
+		})
+
+		t.Run(name+"/degraded", func(t *testing.T) {
+			g := NewWithT(t)
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("list", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, errors.New("boom")
+			})
+			sn := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					KubernetesClient: &kubernetes.Client{Interface: cs},
+				},
+			}
+
+			got := tc.fn(context.Background(), sn)
+
+			g.Expect(got.State).To(Equal(apiv2.FeatureStateDegraded))
+			g.Expect(got.Message).To(ContainSubstring("Could not verify cilium " + tc.feature + " pod health"))
+			g.Expect(got.Err).To(HaveOccurred())
+		})
+	}
 }

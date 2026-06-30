@@ -33,9 +33,32 @@ const (
 // CheckNetwork probes the cilium operator and agent workloads.
 // Empty ProbeResult ⇒ healthy, no overlay.
 func CheckNetwork(ctx context.Context, sn snap.Snap) types.ProbeResult {
+	return probeCiliumWorkloads(ctx, sn, "network")
+}
+
+// CheckIngress probes cilium's health for the ingress feature. Cilium serves
+// ingress via the Envoy proxy embedded in the cilium-agent (k8sd disables the
+// standalone cilium-envoy DaemonSet), so ingress health derives from the same
+// operator + agent workloads as the network feature.
+func CheckIngress(ctx context.Context, sn snap.Snap) types.ProbeResult {
+	return probeCiliumWorkloads(ctx, sn, "ingress")
+}
+
+// CheckGateway probes cilium's health for the gateway feature. Like ingress,
+// the Gateway API is served by the cilium-operator + cilium-agent workloads,
+// so gateway health derives from probing those.
+func CheckGateway(ctx context.Context, sn snap.Snap) types.ProbeResult {
+	return probeCiliumWorkloads(ctx, sn, "gateway")
+}
+
+// probeCiliumWorkloads probes the cilium operator and agent workloads and
+// aggregates the result. feature is used only to qualify the Degraded message
+// (e.g. "Could not verify cilium <feature> pod health").
+// Empty ProbeResult ⇒ healthy, no overlay.
+func probeCiliumWorkloads(ctx context.Context, sn snap.Snap, feature string) types.ProbeResult {
 	client, err := sn.KubernetesClient("")
 	if err != nil {
-		return networkDegraded(err)
+		return ciliumDegraded(feature, err)
 	}
 
 	var operator, agent types.WorkloadResult
@@ -54,36 +77,29 @@ func CheckNetwork(ctx context.Context, sn snap.Snap) types.ProbeResult {
 
 	// Agent checked first so its message wins when both list calls fail.
 	if agent.ProbeErr != nil {
-		return networkDegraded(agent.ProbeErr)
+		return ciliumDegraded(feature, agent.ProbeErr)
 	}
 	if operator.ProbeErr != nil {
-		return networkDegraded(operator.ProbeErr)
+		return ciliumDegraded(feature, operator.ProbeErr)
 	}
 
 	return probeUtil.AggregateProbeResults(operator, agent)
 }
 
-// networkDegraded wraps an error into the standard Degraded ProbeResult
-// for the network probe.
-func networkDegraded(err error) types.ProbeResult {
+// ciliumDegraded wraps an error into the standard Degraded ProbeResult for a
+// cilium feature probe.
+func ciliumDegraded(feature string, err error) types.ProbeResult {
 	return types.ProbeResult{
 		State:   apiv2.FeatureStateDegraded,
-		Message: fmt.Sprintf("Could not verify cilium network pod health: %v", err),
+		Message: fmt.Sprintf("Could not verify cilium %s pod health: %v", feature, err),
 		Err:     err,
 	}
 }
 
-// CheckIngress is a placeholder; a real probe will be added later.
-func CheckIngress(ctx context.Context, sn snap.Snap) types.ProbeResult {
-	return types.ProbeResult{}
-}
-
-// CheckGateway is a placeholder; a real probe will be added later.
-func CheckGateway(ctx context.Context, sn snap.Snap) types.ProbeResult {
-	return types.ProbeResult{}
-}
-
-// CheckLoadBalancer is a placeholder; a real probe will be added later.
+// CheckLoadBalancer probes cilium's health for the load-balancer feature.
+// Cilium's LoadBalancer (L2 announcements / BGP / externalIPs) is served by
+// the cilium-operator + cilium-agent workloads rather than dedicated pods, so
+// load-balancer health derives from probing those.
 func CheckLoadBalancer(ctx context.Context, sn snap.Snap) types.ProbeResult {
-	return types.ProbeResult{}
+	return probeCiliumWorkloads(ctx, sn, "load-balancer")
 }
