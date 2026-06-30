@@ -5,39 +5,44 @@ import (
 	"fmt"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
+	probeUtil "github.com/canonical/k8sd/pkg/k8sd/features/podHealthProbe"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// CheckDNS checks the CoreDNS deployment in the cluster.
-func CheckDNS(ctx context.Context, snap snap.Snap) types.ProbeResult {
-	client, err := snap.KubernetesClient("kube-system")
+// corednsNamespace is where the coredns workload is deployed.
+const corednsNamespace = "kube-system"
+
+// DNS-specific workload identifiers used by CheckDNS.
+const (
+	dnsWorkload   = "coredns"
+	dnsLabelKey   = "app.kubernetes.io/name"
+	dnsLabelValue = "coredns"
+)
+
+// CheckDNS probes the coredns workload.
+// Empty ProbeResult ⇒ healthy, no overlay.
+func CheckDNS(ctx context.Context, sn snap.Snap) types.ProbeResult {
+	client, err := sn.KubernetesClient("")
 	if err != nil {
-		return types.ProbeResult{
-			State:   apiv2.FeatureStateFailed,
-			Message: fmt.Sprintf("Could not verify dns pod health: %v", err),
-			Err:     err,
-		}
+		return dnsDegraded(err)
 	}
 
-	for _, check := range []struct {
-		name      string
-		namespace string
-		labels    map[string]string
-	}{
-		{name: "coredns", namespace: "kube-system", labels: map[string]string{"app.kubernetes.io/name": "coredns"}},
-	} {
-		if err := client.CheckForReadyPods(ctx, check.namespace, metav1.ListOptions{
-			LabelSelector: metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: check.labels}),
-		}); err != nil {
-			return types.ProbeResult{
-				State:   apiv2.FeatureStateFailed,
-				Message: fmt.Sprintf("Could not verify dns pod health: %v", err),
-				Err:     err,
-			}
-		}
+	result := probeUtil.ProbeWorkload(ctx, client, corednsNamespace, dnsWorkload,
+		map[string]string{dnsLabelKey: dnsLabelValue})
+	if result.ProbeErr != nil {
+		return dnsDegraded(result.ProbeErr)
 	}
 
-	return types.ProbeResult{}
+	return probeUtil.AggregateProbeResults(result)
+}
+
+// dnsDegraded wraps an error into the standard Degraded ProbeResult
+// for the dns probe.
+func dnsDegraded(err error) types.ProbeResult {
+	return types.ProbeResult{
+		State:   apiv2.FeatureStateDegraded,
+		Message: fmt.Sprintf("Could not verify dns pod health: %v", err),
+		Err:     err,
+	}
 }
