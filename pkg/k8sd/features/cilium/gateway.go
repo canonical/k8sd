@@ -83,7 +83,7 @@ func enableGateway(ctx context.Context, snap snap.Snap) (types.FeatureStatus, er
 	if !changed {
 		return types.FeatureStatus{
 			Enabled:   true,
-			State:     apiv2.FeatureStateFailed,
+			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
 			Message:   EnabledMsg,
