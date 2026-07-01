@@ -24,9 +24,17 @@ import (
 )
 
 // featureProbeTimeout caps how long a single feature probe can run before
-// it is cancelled. The probe is expected to translate the cancellation
-// into a Degraded ProbeResult; the overlay does not synthesise one.
+// it is cancelled.
 const featureProbeTimeout = 2 * time.Second
+const networkWaitingMessage = "Waiting for network to become ready"
+
+// networkDependents cannot function until the `network` feature is healthy.
+var networkDependents = []types.FeatureName{
+	features.DNS,
+	features.LoadBalancer,
+	features.Ingress,
+	features.Gateway,
+}
 
 func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.Response {
 	log := log.FromContext(r.Context()).WithValues("endpoint", "getClusterStatus")
@@ -80,6 +88,10 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 	// features that are currently Enabled in the DB are probed; Failed and
 	// Disabled rows are already authoritative from the last Apply*.
 	overlayFeatureProbes(r.Context(), e.provider.Snap(), features.StatusChecks, statuses)
+
+	// When `network` is unhealthy, dependents that can't start their pods are
+	// shown as waiting on it rather than surfacing their own probe errors.
+	applyNetworkDependencyWaiting(statuses)
 
 	featureList := []apiv2.FeatureStatus{
 		statuses[features.DNS].ToAPI(),
@@ -218,5 +230,37 @@ func overlayFeatureProbes(
 		fs.State = res.State
 		fs.Message = res.Message
 		statuses[name] = fs
+	}
+}
+
+// applyNetworkDependencyWaiting attributes a dependent's stalled startup to the
+// `network` feature: when `network` is unhealthy, a dependent that is merely
+// Waiting (its pods can't start) is relabeled to point at network. Dependents
+// that are Failed/Degraded keep their own message, so a real error (a runtime
+// crash or a persisted Apply-time failure) is never masked. Must run after
+// overlayFeatureProbes.
+func applyNetworkDependencyWaiting(statuses map[types.FeatureName]types.FeatureStatus) {
+	if isHealthyOrInactive(statuses[features.Network].State) {
+		return
+	}
+
+	for _, name := range networkDependents {
+		fs, ok := statuses[name]
+		if !ok || fs.State != apiv2.FeatureStateWaiting {
+			continue // only a dependent that can't start its pods is attributed to network
+		}
+		fs.Message = networkWaitingMessage
+		statuses[name] = fs
+	}
+}
+
+// isHealthyOrInactive reports states the overlay leaves untouched: Enabled,
+// Disabled, or unset.
+func isHealthyOrInactive(s apiv2.FeatureState) bool {
+	switch s {
+	case apiv2.FeatureStateEnabled, apiv2.FeatureStateDisabled, "":
+		return true
+	default:
+		return false
 	}
 }
