@@ -28,6 +28,7 @@ import (
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 )
 
@@ -320,12 +321,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		// The etcd server will reject the promotion if the learner is not
 		// ready, so we retry until it succeeds or the context expires.
 		log.Info("Promoting etcd learner to voting member", "memberID", learnerID)
-		if err := control.RetryFor(ctx, 30, 2*time.Second, func() error {
-			if _, err := etcdClient.MemberPromote(ctx, learnerID); err != nil {
-				return fmt.Errorf("failed to promote etcd learner %s (ID: %d): %w", s.Name(), learnerID, err)
-			}
-			return nil
-		}); err != nil {
+		if err := promoteEtcdLearnerIdempotent(ctx, etcdClient, learnerID, s.Name()); err != nil {
 			return fmt.Errorf("failed to promote etcd learner after retries: %w", err)
 		}
 		promoted = true
@@ -625,6 +621,42 @@ func lowestHighestK8sVersions(k8sVersionMap map[string]*versionutil.Version) (lo
 // Note: learner members that have already started (i.e. have a name and peer
 // URLs) are included, since they are legitimate peers that the joining node
 // needs to know about during bootstrap.
+// etcdCluster is the subset of the etcd client API used during learner promotion.
+// It is defined as an interface to allow unit testing without a real etcd server.
+type etcdCluster interface {
+	MemberList(ctx context.Context) (*clientv3.MemberListResponse, error)
+	MemberPromote(ctx context.Context, id uint64) (*clientv3.MemberPromoteResponse, error)
+}
+
+// promoteEtcdLearnerIdempotent promotes an etcd learner to a voting member with
+// retry, and is safe to call even when the promotion has already succeeded.
+//
+// When a MemberPromote call succeeds but the response is lost in transit (e.g.
+// due to a timeout on a slow or FIPS-enabled machine), k8sd retries and receives
+// rpctypes.ErrMemberNotLearner — meaning the member is already a voter. This
+// function detects that case by checking the live member list and treats it as
+// success rather than a fatal error.
+func promoteEtcdLearnerIdempotent(ctx context.Context, cluster etcdCluster, learnerID uint64, name string) error {
+	return control.RetryFor(ctx, 30, 2*time.Second, func() error {
+		if _, err := cluster.MemberPromote(ctx, learnerID); err != nil {
+			if errors.Is(err, rpctypes.ErrMemberNotLearner) {
+				// The member is no longer a learner — the promotion already
+				// went through. Confirm by checking the live member list.
+				if listResp, listErr := cluster.MemberList(ctx); listErr == nil {
+					for _, m := range listResp.Members {
+						if m.ID == learnerID && !m.IsLearner {
+							log.Info("Etcd member is already a voter, treating promotion as successful", "memberID", learnerID)
+							return nil
+						}
+					}
+				}
+			}
+			return fmt.Errorf("failed to promote etcd learner %s (ID: %d): %w", name, learnerID, err)
+		}
+		return nil
+	})
+}
+
 func buildInitialClusterMembers(members []*etcdserverpb.Member) map[string]string {
 	initialCluster := make(map[string]string)
 	for _, member := range members {
