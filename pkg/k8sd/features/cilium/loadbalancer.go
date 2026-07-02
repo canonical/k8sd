@@ -65,7 +65,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
-			Message:   fmt.Sprintf(enabledMsgTmpl, "BGP", formatAddrPools(*loadbalancer.IPRanges)),
+			Message:   fmt.Sprintf(enabledMsgTmpl, "BGP", formatAdvertisedPools(loadbalancer)),
 		}, nil
 	case loadbalancer.GetL2Mode():
 		return types.FeatureStatus{
@@ -73,7 +73,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
-			Message:   fmt.Sprintf(enabledMsgTmpl, "L2", formatAddrPools(*loadbalancer.IPRanges)),
+			Message:   fmt.Sprintf(enabledMsgTmpl, "L2", formatAdvertisedPools(loadbalancer)),
 		}, nil
 	default:
 		return types.FeatureStatus{
@@ -81,16 +81,21 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			State:     apiv2.FeatureStateEnabled,
 			Component: component,
 			Version:   CiliumAgentImageTag,
-			Message:   fmt.Sprintf(enabledMsgTmpl, "Unknown", "..."),
+			Message:   fmt.Sprintf(enabledMsgTmpl, "Unknown", formatAdvertisedPools(loadbalancer)),
 		}, nil
 	}
 }
 
-func formatAddrPools(ranges []types.LoadBalancer_IPRange) string {
-	pools := make([]string, 0, len(ranges))
+func formatAdvertisedPools(lb types.LoadBalancer) string {
+	pools := make([]string, 0)
 
-	for _, ipRange := range ranges {
+	pools = append(pools, lb.GetCIDRs()...)
+	for _, ipRange := range lb.GetIPRanges() {
 		pools = append(pools, ipRange.Start+"-"+ipRange.Stop)
+	}
+
+	if len(pools) == 0 {
+		return "none (no address pools configured)"
 	}
 
 	return strings.Join(pools, ", ")

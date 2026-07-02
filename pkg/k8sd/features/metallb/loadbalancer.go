@@ -72,7 +72,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Enabled: true,
 			Version: ControllerImageTag,
 			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "BGP", formatAddrPools(*loadbalancer.IPRanges))
+				msg := fmt.Sprintf(enabledMsgTmpl, "BGP", formatAdvertisedPools(loadbalancer))
 				if cmOverrideErr != nil {
 					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
 				}
@@ -86,7 +86,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Enabled: true,
 			Version: ControllerImageTag,
 			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "L2", formatAddrPools(*loadbalancer.IPRanges))
+				msg := fmt.Sprintf(enabledMsgTmpl, "L2", formatAdvertisedPools(loadbalancer))
 				if cmOverrideErr != nil {
 					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
 				}
@@ -100,7 +100,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			Enabled: true,
 			Version: ControllerImageTag,
 			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "Unknown", *loadbalancer.IPRanges)
+				msg := fmt.Sprintf(enabledMsgTmpl, "Unknown", formatAdvertisedPools(loadbalancer))
 				if cmOverrideErr != nil {
 					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
 				}
@@ -112,11 +112,16 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	}
 }
 
-func formatAddrPools(ranges []types.LoadBalancer_IPRange) string {
-	pools := make([]string, 0, len(ranges))
+func formatAdvertisedPools(lb types.LoadBalancer) string {
+	pools := make([]string, 0)
 
-	for _, ipRange := range ranges {
+	pools = append(pools, lb.GetCIDRs()...)
+	for _, ipRange := range lb.GetIPRanges() {
 		pools = append(pools, ipRange.Start+"-"+ipRange.Stop)
+	}
+
+	if len(pools) == 0 {
+		return "none (no address pools configured)"
 	}
 
 	return strings.Join(pools, ", ")
