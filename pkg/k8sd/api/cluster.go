@@ -235,10 +235,7 @@ func overlayFeatureProbes(
 
 // applyNetworkDependencyWaiting attributes a dependent's stalled startup to the
 // `network` feature: when `network` is unhealthy, a dependent that is merely
-// Waiting (its pods can't start) is relabeled to point at network. Dependents
-// that are Failed/Degraded keep their own message, so a real error (a runtime
-// crash or a persisted Apply-time failure) is never masked. Must run after
-// overlayFeatureProbes.
+// unhealthy is relabeled to point at network.
 func applyNetworkDependencyWaiting(statuses map[types.FeatureName]types.FeatureStatus) {
 	if isHealthyOrInactive(statuses[features.Network].State) {
 		return
@@ -246,7 +243,7 @@ func applyNetworkDependencyWaiting(statuses map[types.FeatureName]types.FeatureS
 
 	for _, name := range networkDependents {
 		fs, ok := statuses[name]
-		if !ok || fs.State != apiv2.FeatureStateWaiting {
+		if !ok || isHealthyOrInactive(fs.State) {
 			continue // only a dependent that can't start its pods is attributed to network
 		}
 		fs.Message = networkWaitingMessage
