@@ -1,4 +1,4 @@
-package metallb_test
+package metallb
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"github.com/canonical/k8sd/pkg/client/helm"
 	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
-	"github.com/canonical/k8sd/pkg/k8sd/features/metallb"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
@@ -35,16 +34,16 @@ func TestDisabled(t *testing.T) {
 			Enabled: ptr.To(false),
 		}
 
-		status, err := metallb.ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
 
 		g.Expect(err).To(MatchError(applyErr))
 		g.Expect(status.Enabled).To(BeFalse())
 		g.Expect(status.Message).To(ContainSubstring(applyErr.Error()))
-		g.Expect(status.Version).To(Equal(metallb.ControllerImageTag))
+		g.Expect(status.Version).To(Equal(ControllerImageTag))
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
 
 		callArgs := helmM.ApplyCalledWith[0]
-		g.Expect(callArgs.Chart).To(Equal(metallb.ChartMetalLBLoadBalancer))
+		g.Expect(callArgs.Chart).To(Equal(ChartMetalLBLoadBalancer))
 		g.Expect(callArgs.State).To(Equal(helm.StateDeleted))
 		g.Expect(callArgs.Values).To(BeNil())
 	})
@@ -61,21 +60,21 @@ func TestDisabled(t *testing.T) {
 			Enabled: ptr.To(false),
 		}
 
-		status, err := metallb.ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeFalse())
-		g.Expect(status.Message).To(Equal(metallb.DisabledMsg))
-		g.Expect(status.Version).To(Equal(metallb.ControllerImageTag))
+		g.Expect(status.Message).To(Equal(DisabledMsg))
+		g.Expect(status.Version).To(Equal(ControllerImageTag))
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 
 		firstCallArgs := helmM.ApplyCalledWith[0]
-		g.Expect(firstCallArgs.Chart).To(Equal(metallb.ChartMetalLBLoadBalancer))
+		g.Expect(firstCallArgs.Chart).To(Equal(ChartMetalLBLoadBalancer))
 		g.Expect(firstCallArgs.State).To(Equal(helm.StateDeleted))
 		g.Expect(firstCallArgs.Values).To(BeNil())
 
 		secondCallArgs := helmM.ApplyCalledWith[1]
-		g.Expect(secondCallArgs.Chart).To(Equal(metallb.ChartMetalLB))
+		g.Expect(secondCallArgs.Chart).To(Equal(ChartMetalLB))
 		g.Expect(secondCallArgs.State).To(Equal(helm.StateDeleted))
 		g.Expect(secondCallArgs.Values).To(BeNil())
 	})
@@ -98,16 +97,16 @@ func TestEnabled(t *testing.T) {
 			Enabled: ptr.To(true),
 		}
 
-		status, err := metallb.ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
 
 		g.Expect(err).To(MatchError(applyErr))
 		g.Expect(status.Enabled).To(BeFalse())
 		g.Expect(status.Message).To(ContainSubstring(applyErr.Error()))
-		g.Expect(status.Version).To(Equal(metallb.ControllerImageTag))
+		g.Expect(status.Version).To(Equal(ControllerImageTag))
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
 
 		callArgs := helmM.ApplyCalledWith[0]
-		g.Expect(callArgs.Chart).To(Equal(metallb.ChartMetalLB))
+		g.Expect(callArgs.Chart).To(Equal(ChartMetalLB))
 		g.Expect(callArgs.State).To(Equal(helm.StatePresent))
 		// we don't validate values since it's just a static struct
 		// and won't be changed by configurations
@@ -160,22 +159,22 @@ func TestEnabled(t *testing.T) {
 			}),
 		}
 
-		status, err := metallb.ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
-		g.Expect(status.Version).To(Equal(metallb.ControllerImageTag))
+		g.Expect(status.Version).To(Equal(ControllerImageTag))
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 
 		firstCallArgs := helmM.ApplyCalledWith[0]
-		g.Expect(firstCallArgs.Chart).To(Equal(metallb.ChartMetalLB))
+		g.Expect(firstCallArgs.Chart).To(Equal(ChartMetalLB))
 		g.Expect(firstCallArgs.State).To(Equal(helm.StatePresent))
 		// we don't validate values since it's just a static struct
 		// and won't be changed by configurations
 		g.Expect(firstCallArgs.Values).ToNot(BeNil())
 
 		secondCallArgs := helmM.ApplyCalledWith[1]
-		g.Expect(secondCallArgs.Chart).To(Equal(metallb.ChartMetalLBLoadBalancer))
+		g.Expect(secondCallArgs.Chart).To(Equal(ChartMetalLBLoadBalancer))
 		g.Expect(secondCallArgs.State).To(Equal(helm.StatePresent))
 		expectedNeighbors := []map[string]any{
 			{
@@ -224,13 +223,13 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 			BGPLocalASN: ptr.To(64512),
 			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
 		}
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    179,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    179,
 		}}
 
-		values := metallb.BuildLoadBalancerValues(lbCfg, neighbors, false)
+		values := buildLoadBalancerValues(lbCfg, neighbors, false)
 
 		bgp := values["bgp"].(map[string]any)
 		g.Expect(bgp["enabled"]).To(Equal(true))
@@ -258,28 +257,28 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 			BGPLocalASN: ptr.To(64512),
 			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
 		}
-		neighbors := []metallb.BGPNeighbor{
+		neighbors := []bgpNeighbor{
 			{
-				PeerAddress:  "10.0.0.1",
-				PeerASN:      64513,
-				PeerPort:     179,
-				NodeSelector: map[string]string{"zone": "a"},
+				peerAddress:  "10.0.0.1",
+				peerASN:      64513,
+				peerPort:     179,
+				nodeSelector: map[string]string{"zone": "a"},
 			},
 			{
-				PeerAddress:  "10.0.0.2",
-				PeerASN:      64514,
-				PeerPort:     179,
-				NodeSelector: map[string]string{"zone": "b"},
+				peerAddress:  "10.0.0.2",
+				peerASN:      64514,
+				peerPort:     179,
+				nodeSelector: map[string]string{"zone": "b"},
 			},
 			{
-				PeerAddress:  "10.0.0.3",
-				PeerASN:      64515,
-				PeerPort:     1790,
-				NodeSelector: map[string]string{"zone": "c", "rack": "1"},
+				peerAddress:  "10.0.0.3",
+				peerASN:      64515,
+				peerPort:     1790,
+				nodeSelector: map[string]string{"zone": "c", "rack": "1"},
 			},
 		}
 
-		values := metallb.BuildLoadBalancerValues(lbCfg, neighbors, false)
+		values := buildLoadBalancerValues(lbCfg, neighbors, false)
 
 		bgp := values["bgp"].(map[string]any)
 		neighborMaps := bgp["neighbors"].([]map[string]any)
@@ -307,14 +306,14 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 			BGPLocalASN: ptr.To(64512),
 			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
 		}
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    179,
-			MyASN:       65099,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    179,
+			myASN:       65099,
 		}}
 
-		values := metallb.BuildLoadBalancerValues(lbCfg, neighbors, false)
+		values := buildLoadBalancerValues(lbCfg, neighbors, false)
 
 		bgp := values["bgp"].(map[string]any)
 		neighborMaps := bgp["neighbors"].([]map[string]any)
@@ -330,13 +329,13 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 			BGPLocalASN: ptr.To(64512),
 			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
 		}
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    179,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    179,
 		}}
 
-		values := metallb.BuildLoadBalancerValues(lbCfg, neighbors, true)
+		values := buildLoadBalancerValues(lbCfg, neighbors, true)
 
 		bgp := values["bgp"].(map[string]any)
 		g.Expect(bgp["advertiseAllPools"]).To(Equal(true))
@@ -350,13 +349,13 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 			BGPLocalASN: ptr.To(64512),
 			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
 		}
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    0,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    0,
 		}}
 
-		values := metallb.BuildLoadBalancerValues(lbCfg, neighbors, false)
+		values := buildLoadBalancerValues(lbCfg, neighbors, false)
 
 		bgp := values["bgp"].(map[string]any)
 		neighborMaps := bgp["neighbors"].([]map[string]any)
@@ -369,54 +368,54 @@ func TestValidateBGPNeighbors(t *testing.T) {
 	t.Run("ValidSingleNeighbor", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    179,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    179,
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).ToNot(HaveOccurred())
 	})
 
 	t.Run("ValidThreeNeighborsWithNodeSelectors", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{
+		neighbors := []bgpNeighbor{
 			{
-				PeerAddress:  "10.0.0.1",
-				PeerASN:      64513,
-				PeerPort:     179,
-				NodeSelector: map[string]string{"zone": "a"},
+				peerAddress:  "10.0.0.1",
+				peerASN:      64513,
+				peerPort:     179,
+				nodeSelector: map[string]string{"zone": "a"},
 			},
 			{
-				PeerAddress:  "10.0.0.2",
-				PeerASN:      64514,
-				PeerPort:     179,
-				NodeSelector: map[string]string{"zone": "b"},
+				peerAddress:  "10.0.0.2",
+				peerASN:      64514,
+				peerPort:     179,
+				nodeSelector: map[string]string{"zone": "b"},
 			},
 			{
-				PeerAddress:  "10.0.0.3",
-				PeerASN:      64515,
-				PeerPort:     179,
-				NodeSelector: map[string]string{"zone": "c"},
+				peerAddress:  "10.0.0.3",
+				peerASN:      64515,
+				peerPort:     179,
+				nodeSelector: map[string]string{"zone": "c"},
 			},
 		}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).ToNot(HaveOccurred())
 	})
 
 	t.Run("PeerASNZero", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     0,
-			PeerPort:    179,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     0,
+			peerPort:    179,
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("peerASN 0 out of range"))
 	})
@@ -424,13 +423,13 @@ func TestValidateBGPNeighbors(t *testing.T) {
 	t.Run("PeerASNTooLarge", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     4294967296,
-			PeerPort:    179,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     4294967296,
+			peerPort:    179,
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("peerASN 4294967296 out of range"))
 	})
@@ -438,28 +437,28 @@ func TestValidateBGPNeighbors(t *testing.T) {
 	t.Run("MyASNZeroAllowed", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    179,
-			MyASN:       0,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    179,
+			myASN:       0,
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).ToNot(HaveOccurred())
 	})
 
 	t.Run("MyASNNegative", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    179,
-			MyASN:       -1,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    179,
+			myASN:       -1,
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("myASN -1 out of range"))
 	})
@@ -467,26 +466,26 @@ func TestValidateBGPNeighbors(t *testing.T) {
 	t.Run("PeerPortZeroAllowed", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    0,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    0,
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).ToNot(HaveOccurred())
 	})
 
 	t.Run("PeerPortTooLarge", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "10.0.0.1",
-			PeerASN:     64513,
-			PeerPort:    65536,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "10.0.0.1",
+			peerASN:     64513,
+			peerPort:    65536,
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("peerPort 65536 out of range"))
 	})
@@ -494,13 +493,13 @@ func TestValidateBGPNeighbors(t *testing.T) {
 	t.Run("InvalidPeerAddress", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress: "not-an-ip",
-			PeerASN:     64513,
-			PeerPort:    179,
+		neighbors := []bgpNeighbor{{
+			peerAddress: "not-an-ip",
+			peerASN:     64513,
+			peerPort:    179,
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("invalid peerAddress"))
 	})
@@ -508,14 +507,14 @@ func TestValidateBGPNeighbors(t *testing.T) {
 	t.Run("NodeSelectorEmptyKey", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []metallb.BGPNeighbor{{
-			PeerAddress:  "10.0.0.1",
-			PeerASN:      64513,
-			PeerPort:     179,
-			NodeSelector: map[string]string{"": "value"},
+		neighbors := []bgpNeighbor{{
+			peerAddress:  "10.0.0.1",
+			peerASN:      64513,
+			peerPort:     179,
+			nodeSelector: map[string]string{"": "value"},
 		}}
 
-		err := metallb.ValidateBGPNeighbors(neighbors)
+		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("nodeSelector has empty key"))
 	})

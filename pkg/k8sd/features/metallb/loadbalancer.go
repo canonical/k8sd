@@ -18,33 +18,31 @@ const (
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
 )
 
-// BGPNeighbor is an internal representation of a single MetalLB BGPPeer.
-// Exported for testing purposes only.
-type BGPNeighbor struct {
-	PeerAddress  string
-	PeerASN      int
-	PeerPort     int
-	MyASN        int
-	NodeSelector map[string]string
+// bgpNeighbor is an internal representation of a single MetalLB BGPPeer.
+type bgpNeighbor struct {
+	peerAddress  string
+	peerASN      int
+	peerPort     int
+	myASN        int
+	nodeSelector map[string]string
 }
 
-// ValidateBGPNeighbors returns an error if any neighbor in the slice is invalid.
-// Exported for testing purposes only.
-func ValidateBGPNeighbors(neighbors []BGPNeighbor) error {
+// validateBGPNeighbors returns an error if any neighbor in the slice is invalid.
+func validateBGPNeighbors(neighbors []bgpNeighbor) error {
 	for i, n := range neighbors {
-		if n.PeerASN < 1 || n.PeerASN > 4294967295 {
-			return fmt.Errorf("neighbor[%d]: peerASN %d out of range [1, 4294967295]", i, n.PeerASN)
+		if n.peerASN < 1 || n.peerASN > 4294967295 {
+			return fmt.Errorf("neighbor[%d]: peerASN %d out of range [1, 4294967295]", i, n.peerASN)
 		}
-		if n.MyASN != 0 && (n.MyASN < 1 || n.MyASN > 4294967295) {
-			return fmt.Errorf("neighbor[%d]: myASN %d out of range [1, 4294967295]", i, n.MyASN)
+		if n.myASN != 0 && (n.myASN < 1 || n.myASN > 4294967295) {
+			return fmt.Errorf("neighbor[%d]: myASN %d out of range [1, 4294967295]", i, n.myASN)
 		}
-		if n.PeerPort != 0 && (n.PeerPort < 1 || n.PeerPort > 65535) {
-			return fmt.Errorf("neighbor[%d]: peerPort %d out of range [1, 65535]", i, n.PeerPort)
+		if n.peerPort != 0 && (n.peerPort < 1 || n.peerPort > 65535) {
+			return fmt.Errorf("neighbor[%d]: peerPort %d out of range [1, 65535]", i, n.peerPort)
 		}
-		if _, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:179", n.PeerAddress)); err != nil {
-			return fmt.Errorf("neighbor[%d]: invalid peerAddress %q: %w", i, n.PeerAddress, err)
+		if _, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:179", n.peerAddress)); err != nil {
+			return fmt.Errorf("neighbor[%d]: invalid peerAddress %q: %w", i, n.peerAddress, err)
 		}
-		for k := range n.NodeSelector {
+		for k := range n.nodeSelector {
 			if k == "" {
 				return fmt.Errorf("neighbor[%d]: nodeSelector has empty key", i)
 			}
@@ -118,11 +116,10 @@ func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Netw
 	return nil
 }
 
-// BuildLoadBalancerValues constructs the Helm values map for the ck-loadbalancer chart.
+// buildLoadBalancerValues constructs the Helm values map for the ck-loadbalancer chart.
 // neighbors is the list of BGP peers to render; advertiseAllPools controls the
 // BGPAdvertisement spec (empty spec when true, named pool when false).
-// Exported for testing purposes only.
-func BuildLoadBalancerValues(lb types.LoadBalancer, neighbors []BGPNeighbor, advertiseAllPools bool) map[string]any {
+func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, advertiseAllPools bool) map[string]any {
 	cidrs := []map[string]any{}
 	for _, cidr := range lb.GetCIDRs() {
 		cidrs = append(cidrs, map[string]any{"cidr": cidr})
@@ -134,15 +131,15 @@ func BuildLoadBalancerValues(lb types.LoadBalancer, neighbors []BGPNeighbor, adv
 	neighborMaps := make([]map[string]any, 0, len(neighbors))
 	for _, n := range neighbors {
 		nm := map[string]any{
-			"peerAddress": n.PeerAddress,
-			"peerASN":     n.PeerASN,
-			"peerPort":    n.PeerPort,
+			"peerAddress": n.peerAddress,
+			"peerASN":     n.peerASN,
+			"peerPort":    n.peerPort,
 		}
-		if n.MyASN != 0 {
-			nm["myASN"] = n.MyASN
+		if n.myASN != 0 {
+			nm["myASN"] = n.myASN
 		}
-		if len(n.NodeSelector) > 0 {
-			nm["nodeSelector"] = n.NodeSelector
+		if len(n.nodeSelector) > 0 {
+			nm["nodeSelector"] = n.nodeSelector
 		}
 		neighborMaps = append(neighborMaps, nm)
 	}
@@ -201,12 +198,12 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		return fmt.Errorf("failed to wait for required MetalLB CRDs: %w", err)
 	}
 
-	neighbors := []BGPNeighbor{{
-		PeerAddress: loadbalancer.GetBGPPeerAddress(),
-		PeerASN:     loadbalancer.GetBGPPeerASN(),
-		PeerPort:    loadbalancer.GetBGPPeerPort(),
+	neighbors := []bgpNeighbor{{
+		peerAddress: loadbalancer.GetBGPPeerAddress(),
+		peerASN:     loadbalancer.GetBGPPeerASN(),
+		peerPort:    loadbalancer.GetBGPPeerPort(),
 	}}
-	values := BuildLoadBalancerValues(loadbalancer, neighbors, false)
+	values := buildLoadBalancerValues(loadbalancer, neighbors, false)
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StatePresent, values); err != nil {
 		return fmt.Errorf("failed to apply MetalLB LoadBalancer configuration: %w", err)
