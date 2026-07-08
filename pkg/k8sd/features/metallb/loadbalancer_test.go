@@ -519,3 +519,367 @@ func TestValidateBGPNeighbors(t *testing.T) {
 		g.Expect(err.Error()).To(ContainSubstring("nodeSelector has empty key"))
 	})
 }
+
+func TestAnnotationParsing(t *testing.T) {
+	t.Run("AnnotationAbsent", func(t *testing.T) {
+		g := NewWithT(t)
+
+		neighbors, advertiseAll, active, err := neighborsFromAnnotations(nil)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(active).To(BeFalse())
+		g.Expect(neighbors).To(BeNil())
+		g.Expect(advertiseAll).To(BeFalse())
+
+		// Also test with empty map
+		neighbors, advertiseAll, active, err = neighborsFromAnnotations(types.Annotations{})
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(active).To(BeFalse())
+		g.Expect(neighbors).To(BeNil())
+		g.Expect(advertiseAll).To(BeFalse())
+	})
+
+	t.Run("ThreePeers", func(t *testing.T) {
+		g := NewWithT(t)
+
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.116.3.164
+  peerASN: 65001
+  nodeSelector:
+    topology.kubernetes.io/zone: i1
+- peerAddress: 10.116.3.165
+  peerASN: 65002
+  nodeSelector:
+    topology.kubernetes.io/zone: i2
+- peerAddress: 10.116.3.166
+  peerASN: 65003
+  nodeSelector:
+    topology.kubernetes.io/zone: i3
+`,
+		}
+
+		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(active).To(BeTrue())
+		g.Expect(advertiseAll).To(BeFalse())
+		g.Expect(neighbors).To(HaveLen(3))
+
+		g.Expect(neighbors[0].peerAddress).To(Equal("10.116.3.164"))
+		g.Expect(neighbors[0].peerASN).To(Equal(65001))
+		g.Expect(neighbors[0].nodeSelector).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i1"}))
+
+		g.Expect(neighbors[1].peerAddress).To(Equal("10.116.3.165"))
+		g.Expect(neighbors[1].peerASN).To(Equal(65002))
+		g.Expect(neighbors[1].nodeSelector).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i2"}))
+
+		g.Expect(neighbors[2].peerAddress).To(Equal("10.116.3.166"))
+		g.Expect(neighbors[2].peerASN).To(Equal(65003))
+		g.Expect(neighbors[2].nodeSelector).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i3"}))
+	})
+
+	t.Run("MalformedYAML", func(t *testing.T) {
+		g := NewWithT(t)
+
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": "not: valid: yaml: [{",
+		}
+
+		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("failed to parse bgp-peers annotation"))
+		g.Expect(active).To(BeTrue())
+		g.Expect(neighbors).To(BeNil())
+		g.Expect(advertiseAll).To(BeFalse())
+	})
+
+	t.Run("AdvertiseAllPoolsTrue", func(t *testing.T) {
+		g := NewWithT(t)
+
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.0.0.1
+  peerASN: 65001
+`,
+			"k8sd/v1alpha1/metallb/advertise-all-pools": "true",
+		}
+
+		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(active).To(BeTrue())
+		g.Expect(advertiseAll).To(BeTrue())
+		g.Expect(neighbors).To(HaveLen(1))
+	})
+
+	t.Run("AdvertiseAllPoolsFalse", func(t *testing.T) {
+		g := NewWithT(t)
+
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.0.0.1
+  peerASN: 65001
+`,
+			"k8sd/v1alpha1/metallb/advertise-all-pools": "false",
+		}
+
+		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(active).To(BeTrue())
+		g.Expect(advertiseAll).To(BeFalse())
+	})
+
+	t.Run("AdvertiseAllPoolsInvalid", func(t *testing.T) {
+		g := NewWithT(t)
+
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.0.0.1
+  peerASN: 65001
+`,
+			"k8sd/v1alpha1/metallb/advertise-all-pools": "notabool",
+		}
+
+		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("failed to parse advertise-all-pools annotation"))
+		g.Expect(active).To(BeTrue())
+		g.Expect(neighbors).To(BeNil())
+		g.Expect(advertiseAll).To(BeFalse())
+	})
+
+	t.Run("EmptyPeersList", func(t *testing.T) {
+		g := NewWithT(t)
+
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": "[]",
+		}
+
+		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(active).To(BeTrue())
+		g.Expect(advertiseAll).To(BeFalse())
+		g.Expect(neighbors).To(HaveLen(0))
+	})
+}
+
+func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
+	// Helper to build fake snap with helm and kubernetes mocks
+	buildFakeSnap := func(helmM *helmmock.Mock) *snapmock.Snap {
+		clientset := fake.NewSimpleClientset()
+		fd, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		if !ok {
+			panic("failed to cast to FakeDiscovery")
+		}
+		fd.Resources = []*metav1.APIResourceList{
+			{
+				GroupVersion: "metallb.io/v1beta1",
+				APIResources: []metav1.APIResource{
+					{Name: "ipaddresspools"},
+					{Name: "l2advertisements"},
+					{Name: "bgpadvertisements"},
+				},
+			},
+			{
+				GroupVersion: "metallb.io/v1beta2",
+				APIResources: []metav1.APIResource{
+					{Name: "bgppeers"},
+				},
+			},
+		}
+		return &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient: helmM,
+				KubernetesClient: &kubernetes.Client{
+					Interface: clientset,
+				},
+			},
+		}
+	}
+
+	t.Run("MultiPeerAnnotation", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:     ptr.To(true),
+			BGPMode:     ptr.To(true),
+			BGPLocalASN: ptr.To(64512),
+			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+		}
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.116.3.164
+  peerASN: 65001
+  peerPort: 179
+  nodeSelector:
+    topology.kubernetes.io/zone: i1
+- peerAddress: 10.116.3.165
+  peerASN: 65002
+  peerPort: 179
+  nodeSelector:
+    topology.kubernetes.io/zone: i2
+- peerAddress: 10.116.3.166
+  peerASN: 65003
+  peerPort: 179
+  nodeSelector:
+    topology.kubernetes.io/zone: i3
+`,
+		}
+
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha)"))
+
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
+		lbValues := helmM.ApplyCalledWith[1].Values
+		bgp := lbValues["bgp"].(map[string]any)
+		neighbors := bgp["neighbors"].([]map[string]any)
+		g.Expect(neighbors).To(HaveLen(3))
+
+		g.Expect(neighbors[0]["peerAddress"]).To(Equal("10.116.3.164"))
+		g.Expect(neighbors[0]["peerASN"]).To(Equal(65001))
+		g.Expect(neighbors[0]["nodeSelector"]).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i1"}))
+
+		g.Expect(neighbors[1]["peerAddress"]).To(Equal("10.116.3.165"))
+		g.Expect(neighbors[1]["peerASN"]).To(Equal(65002))
+		g.Expect(neighbors[1]["nodeSelector"]).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i2"}))
+
+		g.Expect(neighbors[2]["peerAddress"]).To(Equal("10.116.3.166"))
+		g.Expect(neighbors[2]["peerASN"]).To(Equal(65003))
+		g.Expect(neighbors[2]["nodeSelector"]).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i3"}))
+
+		g.Expect(bgp["advertiseAllPools"]).To(Equal(false))
+	})
+
+	t.Run("AnnotationReplacesTypedKeys", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:        ptr.To(true),
+			BGPMode:        ptr.To(true),
+			BGPLocalASN:    ptr.To(64512),
+			BGPPeerAddress: ptr.To("10.0.0.99"),
+			BGPPeerASN:     ptr.To(64999),
+			BGPPeerPort:    ptr.To(179),
+			CIDRs:          ptr.To([]string{"192.0.2.0/24"}),
+		}
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.116.3.164
+  peerASN: 65001
+- peerAddress: 10.116.3.165
+  peerASN: 65002
+- peerAddress: 10.116.3.166
+  peerASN: 65003
+`,
+		}
+
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha) - warning: single-peer typed keys are ignored"))
+
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
+		lbValues := helmM.ApplyCalledWith[1].Values
+		bgp := lbValues["bgp"].(map[string]any)
+		neighbors := bgp["neighbors"].([]map[string]any)
+		g.Expect(neighbors).To(HaveLen(3))
+
+		// Verify annotation neighbors are used, not typed keys
+		g.Expect(neighbors[0]["peerAddress"]).To(Equal("10.116.3.164"))
+		g.Expect(neighbors[1]["peerAddress"]).To(Equal("10.116.3.165"))
+		g.Expect(neighbors[2]["peerAddress"]).To(Equal("10.116.3.166"))
+	})
+
+	t.Run("InvalidAnnotation_DegradedStatus", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:     ptr.To(true),
+			BGPMode:     ptr.To(true),
+			BGPLocalASN: ptr.To(64512),
+			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+		}
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": "not: valid: yaml: [{",
+		}
+
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("invalid BGP peer annotation"))
+		g.Expect(status.Enabled).To(BeFalse())
+		g.Expect(status.Message).To(ContainSubstring("failed to parse bgp-peers annotation"))
+	})
+
+	t.Run("AnnotationValidationFail", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:     ptr.To(true),
+			BGPMode:     ptr.To(true),
+			BGPLocalASN: ptr.To(64512),
+			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+		}
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.0.0.1
+  peerASN: 0
+`,
+		}
+
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("invalid BGP peers"))
+		g.Expect(status.Enabled).To(BeFalse())
+		g.Expect(status.Message).To(ContainSubstring("invalid BGP peers"))
+	})
+
+	t.Run("AdvertiseAllPoolsAnnotation", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:     ptr.To(true),
+			BGPMode:     ptr.To(true),
+			BGPLocalASN: ptr.To(64512),
+			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+		}
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.0.0.1
+  peerASN: 65001
+`,
+			"k8sd/v1alpha1/metallb/advertise-all-pools": "true",
+		}
+
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha)"))
+
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
+		lbValues := helmM.ApplyCalledWith[1].Values
+		bgp := lbValues["bgp"].(map[string]any)
+		g.Expect(bgp["advertiseAllPools"]).To(Equal(true))
+	})
+}
