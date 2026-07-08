@@ -296,6 +296,11 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 	return nil
 }
 
+// waitForRequiredLoadBalancerCRDs blocks until the MetalLB CRDs required for
+// the current configuration are registered. The check is presence-only
+// (count-based), independent of how many BGPPeer CRs will be created — so
+// multi-peer configurations (including those driven by the bgp-peers annotation)
+// require no changes here.
 func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMode bool) error {
 	client, err := snap.KubernetesClient("")
 	if err != nil {
