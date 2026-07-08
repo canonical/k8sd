@@ -3,6 +3,7 @@ package metallb
 import (
 	"context"
 	"fmt"
+	"net"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
@@ -16,6 +17,41 @@ const (
 	deleteFailedMsgTmpl = "Failed to delete MetalLB, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
 )
+
+// BGPNeighbor is an internal representation of a single MetalLB BGPPeer.
+// Exported for testing purposes only.
+type BGPNeighbor struct {
+	PeerAddress  string
+	PeerASN      int
+	PeerPort     int
+	MyASN        int
+	NodeSelector map[string]string
+}
+
+// ValidateBGPNeighbors returns an error if any neighbor in the slice is invalid.
+// Exported for testing purposes only.
+func ValidateBGPNeighbors(neighbors []BGPNeighbor) error {
+	for i, n := range neighbors {
+		if n.PeerASN < 1 || n.PeerASN > 4294967295 {
+			return fmt.Errorf("neighbor[%d]: peerASN %d out of range [1, 4294967295]", i, n.PeerASN)
+		}
+		if n.MyASN != 0 && (n.MyASN < 1 || n.MyASN > 4294967295) {
+			return fmt.Errorf("neighbor[%d]: myASN %d out of range [1, 4294967295]", i, n.MyASN)
+		}
+		if n.PeerPort != 0 && (n.PeerPort < 1 || n.PeerPort > 65535) {
+			return fmt.Errorf("neighbor[%d]: peerPort %d out of range [1, 65535]", i, n.PeerPort)
+		}
+		if _, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:179", n.PeerAddress)); err != nil {
+			return fmt.Errorf("neighbor[%d]: invalid peerAddress %q: %w", i, n.PeerAddress, err)
+		}
+		for k := range n.NodeSelector {
+			if k == "" {
+				return fmt.Errorf("neighbor[%d]: nodeSelector has empty key", i)
+			}
+		}
+	}
+	return nil
+}
 
 // ApplyLoadBalancer will always return a FeatureStatus indicating the current status of the
 // deployment.
@@ -82,6 +118,53 @@ func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Netw
 	return nil
 }
 
+// BuildLoadBalancerValues constructs the Helm values map for the ck-loadbalancer chart.
+// neighbors is the list of BGP peers to render; advertiseAllPools controls the
+// BGPAdvertisement spec (empty spec when true, named pool when false).
+// Exported for testing purposes only.
+func BuildLoadBalancerValues(lb types.LoadBalancer, neighbors []BGPNeighbor, advertiseAllPools bool) map[string]any {
+	cidrs := []map[string]any{}
+	for _, cidr := range lb.GetCIDRs() {
+		cidrs = append(cidrs, map[string]any{"cidr": cidr})
+	}
+	for _, ipRange := range lb.GetIPRanges() {
+		cidrs = append(cidrs, map[string]any{"start": ipRange.Start, "stop": ipRange.Stop})
+	}
+
+	neighborMaps := make([]map[string]any, 0, len(neighbors))
+	for _, n := range neighbors {
+		nm := map[string]any{
+			"peerAddress": n.PeerAddress,
+			"peerASN":     n.PeerASN,
+			"peerPort":    n.PeerPort,
+		}
+		if n.MyASN != 0 {
+			nm["myASN"] = n.MyASN
+		}
+		if len(n.NodeSelector) > 0 {
+			nm["nodeSelector"] = n.NodeSelector
+		}
+		neighborMaps = append(neighborMaps, nm)
+	}
+
+	return map[string]any{
+		"driver": "metallb",
+		"l2": map[string]any{
+			"enabled":    lb.GetL2Mode(),
+			"interfaces": lb.GetL2Interfaces(),
+		},
+		"ipPool": map[string]any{
+			"cidrs": cidrs,
+		},
+		"bgp": map[string]any{
+			"enabled":           lb.GetBGPMode(),
+			"localASN":          lb.GetBGPLocalASN(),
+			"neighbors":         neighborMaps,
+			"advertiseAllPools": advertiseAllPools,
+		},
+	}
+}
+
 func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network) error {
 	m := snap.HelmClient()
 
@@ -118,35 +201,12 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		return fmt.Errorf("failed to wait for required MetalLB CRDs: %w", err)
 	}
 
-	cidrs := []map[string]any{}
-	for _, cidr := range loadbalancer.GetCIDRs() {
-		cidrs = append(cidrs, map[string]any{"cidr": cidr})
-	}
-	for _, ipRange := range loadbalancer.GetIPRanges() {
-		cidrs = append(cidrs, map[string]any{"start": ipRange.Start, "stop": ipRange.Stop})
-	}
-
-	values := map[string]any{
-		"driver": "metallb",
-		"l2": map[string]any{
-			"enabled":    loadbalancer.GetL2Mode(),
-			"interfaces": loadbalancer.GetL2Interfaces(),
-		},
-		"ipPool": map[string]any{
-			"cidrs": cidrs,
-		},
-		"bgp": map[string]any{
-			"enabled":  loadbalancer.GetBGPMode(),
-			"localASN": loadbalancer.GetBGPLocalASN(),
-			"neighbors": []map[string]any{
-				{
-					"peerAddress": loadbalancer.GetBGPPeerAddress(),
-					"peerASN":     loadbalancer.GetBGPPeerASN(),
-					"peerPort":    loadbalancer.GetBGPPeerPort(),
-				},
-			},
-		},
-	}
+	neighbors := []BGPNeighbor{{
+		PeerAddress: loadbalancer.GetBGPPeerAddress(),
+		PeerASN:     loadbalancer.GetBGPPeerASN(),
+		PeerPort:    loadbalancer.GetBGPPeerPort(),
+	}}
+	values := BuildLoadBalancerValues(loadbalancer, neighbors, false)
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StatePresent, values); err != nil {
 		return fmt.Errorf("failed to apply MetalLB LoadBalancer configuration: %w", err)
