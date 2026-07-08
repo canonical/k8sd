@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
-	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -285,16 +284,6 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}
 	}
 
-	var cmOverrideErr error
-	cmOverrides, cmOverrideErr := helmoverride.GetConfigMapOverrides(ctx, snap, "k8sd-cilium-values")
-	if cmOverrideErr != nil {
-		log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
-	}
-	if cmOverrides != nil {
-		log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-cilium-values", "keys", len(cmOverrides))
-		values = helmoverride.MergeValues(values, cmOverrides)
-	}
-
 	if _, err := m.Apply(ctx, ChartCilium, helm.StatePresent, values); err != nil {
 		err = fmt.Errorf("failed to enable network: %w", err)
 		return types.FeatureStatus{
@@ -314,14 +303,10 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}, err
 	}
 
-	msg := EnabledMsg
-	if cmOverrideErr != nil {
-		msg = fmt.Sprintf("%s (warning: %v)", EnabledMsg, cmOverrideErr)
-	}
 	return types.FeatureStatus{
 		Enabled: true,
 		Version: CiliumAgentImageTag,
-		Message: msg,
+		Message: EnabledMsg,
 	}, nil
 }
 
