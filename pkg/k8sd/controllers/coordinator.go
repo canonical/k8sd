@@ -30,7 +30,6 @@ type Coordinator struct {
 	upgradeControllerOptions       UpgradeControllerOptions
 	csrSigningControllerOptions    CSRSigningControllerOptions
 	dnsRebalancerControllerOptions DNSRebalancerControllerOptions
-	helmOverrideControllerOptions  HelmOverrideControllerOptions
 }
 
 type UpgradeControllerOptions struct {
@@ -53,7 +52,6 @@ func NewCoordinator(
 	upgradeControllerOptions UpgradeControllerOptions,
 	csrSigningControllerOptions CSRSigningControllerOptions,
 	dnsRebalancerControllerOptions DNSRebalancerControllerOptions,
-	helmOverrideControllerOptions HelmOverrideControllerOptions,
 ) *Coordinator {
 	return &Coordinator{
 		snap:                           snap,
@@ -61,7 +59,6 @@ func NewCoordinator(
 		upgradeControllerOptions:       upgradeControllerOptions,
 		csrSigningControllerOptions:    csrSigningControllerOptions,
 		dnsRebalancerControllerOptions: dnsRebalancerControllerOptions,
-		helmOverrideControllerOptions:  helmOverrideControllerOptions,
 	}
 }
 
@@ -149,10 +146,6 @@ func (c *Coordinator) setupControllers(
 
 	if err := c.setupDNSRebalancerController(getClusterConfig, mgr); err != nil {
 		return fmt.Errorf("failed to setup DNS rebalancer controller: %w", err)
-	}
-
-	if err := c.setupHelmOverrideController(mgr); err != nil {
-		return fmt.Errorf("failed to setup Helm override controller: %w", err)
 	}
 
 	return nil
@@ -246,27 +239,6 @@ func (c *Coordinator) setupDNSRebalancerController(
 func featureUpgradesDisabled(clusterConfig types.ClusterConfig) bool {
 	_, ok := clusterConfig.Annotations.Get(apiv1_annotations.AnnotationDisableSeparateFeatureUpgrades)
 	return ok
-}
-
-func (c *Coordinator) setupHelmOverrideController(mgr manager.Manager) error {
-	logger := mgr.GetLogger()
-
-	if c.helmOverrideControllerOptions.Disable {
-		logger.Info("Helm override controller is disabled. Skipping setup.")
-		return nil
-	}
-
-	helmOverrideController := NewHelmOverrideController(
-		logger,
-		mgr.GetClient(),
-		c.helmOverrideControllerOptions,
-	)
-
-	if err := helmOverrideController.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("failed to setup Helm override controller with manager: %w", err)
-	}
-
-	return nil
 }
 
 func (c *Coordinator) getRESTConfig(ctx context.Context) (*rest.Config, error) {

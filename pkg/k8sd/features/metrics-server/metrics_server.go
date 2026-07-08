@@ -5,15 +5,12 @@ import (
 	"fmt"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
-	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
-	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
 const (
 	enabledMsg          = "enabled"
-	enabledWithWarning  = "enabled (warning: %v)"
 	disabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete Metrics Server, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy Metrics Server, the error was: %v"
@@ -41,19 +38,6 @@ func ApplyMetricsServer(ctx context.Context, snap snap.Snap, cfg types.MetricsSe
 		},
 	}
 
-	var cmOverrideErr error
-	if cfg.GetEnabled() {
-		var cmOverrides map[string]any
-		cmOverrides, cmOverrideErr = helmoverride.GetConfigMapOverrides(ctx, snap, "k8sd-metrics-server-values")
-		if cmOverrideErr != nil {
-			log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
-		}
-		if cmOverrides != nil {
-			log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-metrics-server-values", "keys", len(cmOverrides))
-			values = helmoverride.MergeValues(values, cmOverrides)
-		}
-	}
-
 	_, err := m.Apply(ctx, chart, helm.StatePresentOrDeleted(cfg.GetEnabled()), values)
 	if err != nil {
 		if cfg.GetEnabled() {
@@ -76,12 +60,7 @@ func ApplyMetricsServer(ctx context.Context, snap snap.Snap, cfg types.MetricsSe
 			return types.FeatureStatus{
 				Enabled: true,
 				Version: imageTag,
-				Message: func() string {
-					if cmOverrideErr != nil {
-						return fmt.Sprintf(enabledWithWarning, cmOverrideErr)
-					}
-					return enabledMsg
-				}(),
+				Message: enabledMsg,
 			}, nil
 		} else {
 			return types.FeatureStatus{

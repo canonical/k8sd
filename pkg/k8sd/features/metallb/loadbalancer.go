@@ -5,9 +5,7 @@ import (
 	"fmt"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
-	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
-	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils/control"
 )
@@ -40,15 +38,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		}, nil
 	}
 
-	cmOverrides, cmOverrideErr := helmoverride.GetConfigMapOverrides(ctx, snap, "k8sd-metallb-values")
-	if cmOverrideErr != nil {
-		log.FromContext(ctx).Error(cmOverrideErr, "Failed to read ConfigMap overrides, using defaults")
-	}
-	if cmOverrides != nil {
-		log.FromContext(ctx).Info("Applying ConfigMap overrides", "configmap", "k8sd-metallb-values", "keys", len(cmOverrides))
-	}
-
-	if err := enableLoadBalancer(ctx, snap, loadbalancer, network, cmOverrides); err != nil {
+	if err := enableLoadBalancer(ctx, snap, loadbalancer, network); err != nil {
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
 			Enabled: false,
@@ -62,37 +52,19 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		return types.FeatureStatus{
 			Enabled: true,
 			Version: ControllerImageTag,
-			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "BGP")
-				if cmOverrideErr != nil {
-					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
-				}
-				return msg
-			}(),
+			Message: fmt.Sprintf(enabledMsgTmpl, "BGP"),
 		}, nil
 	case loadbalancer.GetL2Mode():
 		return types.FeatureStatus{
 			Enabled: true,
 			Version: ControllerImageTag,
-			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "L2")
-				if cmOverrideErr != nil {
-					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
-				}
-				return msg
-			}(),
+			Message: fmt.Sprintf(enabledMsgTmpl, "L2"),
 		}, nil
 	default:
 		return types.FeatureStatus{
 			Enabled: true,
 			Version: ControllerImageTag,
-			Message: func() string {
-				msg := fmt.Sprintf(enabledMsgTmpl, "Unknown")
-				if cmOverrideErr != nil {
-					return fmt.Sprintf("%s (warning: %v)", msg, cmOverrideErr)
-				}
-				return msg
-			}(),
+			Message: fmt.Sprintf(enabledMsgTmpl, "Unknown"),
 		}, nil
 	}
 }
@@ -110,7 +82,7 @@ func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Netw
 	return nil
 }
 
-func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, cmOverrides map[string]any) error {
+func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network) error {
 	m := snap.HelmClient()
 
 	metalLBValues := map[string]any{
@@ -137,9 +109,6 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 				},
 			},
 		},
-	}
-	if cmOverrides != nil {
-		metalLBValues = helmoverride.MergeValues(metalLBValues, cmOverrides)
 	}
 	if _, err := m.Apply(ctx, ChartMetalLB, helm.StatePresent, metalLBValues); err != nil {
 		return fmt.Errorf("failed to apply MetalLB configuration: %w", err)

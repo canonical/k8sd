@@ -11,7 +11,6 @@ import (
 	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/features/cilium"
-	"github.com/canonical/k8sd/pkg/k8sd/features/helmoverride"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
@@ -20,9 +19,7 @@ import (
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/ktesting"
@@ -543,74 +540,4 @@ func validateNetworkValues(g Gomega, values map[string]any, network types.Networ
 	_, exists = annotations.Get(apiv1_annotations.AnnotationSCTPEnabled)
 	sctpValues := values["sctp"].(map[string]interface{})
 	g.Expect(sctpValues["enabled"]).To(Equal(exists))
-}
-
-func TestNetworkConfigMapOverrides(t *testing.T) {
-	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
-		newSnap := func(objects ...k8sruntime.Object) *snapmock.Snap {
-			clientset := fake.NewSimpleClientset(objects...)
-			return &snapmock.Snap{
-				Mock: snapmock.Mock{
-					KubernetesClient: &kubernetes.Client{Interface: clientset},
-				},
-			}
-		}
-
-		configMap := func(valuesYAML string) *corev1.ConfigMap {
-			return &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{Name: "k8sd-cilium-values", Namespace: "kube-system"},
-				Data:       map[string]string{"values": valuesYAML},
-			}
-		}
-
-		// These tests call helmoverride helpers directly to avoid the ip command
-		// dependency introduced by ApplyNetwork's VXLAN interface check.
-
-		t.Run("NoConfigMap", func(t *testing.T) {
-			g := NewWithT(t)
-			snapM := newSnap()
-			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(overrides).To(BeNil())
-		})
-
-		t.Run("OverrideScalarValue", func(t *testing.T) {
-			g := NewWithT(t)
-			snapM := newSnap(configMap("sessionAffinity: false\n"))
-			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
-			g.Expect(err).NotTo(HaveOccurred())
-			base := map[string]any{"debug": true}
-			merged := helmoverride.MergeValues(base, overrides)
-			g.Expect(merged["sessionAffinity"]).To(BeFalse())
-			g.Expect(merged["debug"]).To(BeTrue())
-		})
-
-		t.Run("DeepMergePreservesUnrelatedKeys", func(t *testing.T) {
-			g := NewWithT(t)
-			snapM := newSnap(configMap("socketLB:\n  enabled: false\n"))
-			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
-			g.Expect(err).NotTo(HaveOccurred())
-			base := map[string]any{"socketLB": map[string]any{"enabled": true, "other": "value"}}
-			merged := helmoverride.MergeValues(base, overrides)
-			socketLB := merged["socketLB"].(map[string]any)
-			g.Expect(socketLB["enabled"]).To(BeFalse())
-			g.Expect(socketLB["other"]).To(Equal("value"))
-		})
-
-		t.Run("InvalidYAMLReturnsError", func(t *testing.T) {
-			g := NewWithT(t)
-			snapM := newSnap(configMap("this: is: not: valid: yaml: :::"))
-			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
-			g.Expect(err).To(HaveOccurred())
-			g.Expect(overrides).To(BeNil())
-		})
-
-		t.Run("ValidOverrideHasNoError", func(t *testing.T) {
-			g := NewWithT(t)
-			snapM := newSnap(configMap("sessionAffinity: false\n"))
-			overrides, err := helmoverride.GetConfigMapOverrides(ctx, snapM, "k8sd-cilium-values")
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(overrides).NotTo(BeNil())
-		})
-	})
 }
