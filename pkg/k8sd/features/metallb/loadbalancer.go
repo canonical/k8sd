@@ -272,8 +272,10 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		// Annotation path: REPLACES single-peer typed keys entirely.
 		neighbors = annNeighbors
 		advertiseAll = annAdvertiseAll
-	} else {
-		// Fallback: single-peer typed keys (existing behaviour, unchanged)
+	} else if loadbalancer.GetBGPMode() {
+		// Fallback: single-peer typed keys (existing behaviour, unchanged).
+		// Only populated in BGP mode — L2 mode leaves neighbors empty and
+		// skips BGP validation entirely.
 		neighbors = []bgpNeighbor{{
 			peerAddress: loadbalancer.GetBGPPeerAddress(),
 			peerASN:     loadbalancer.GetBGPPeerASN(),
@@ -282,7 +284,8 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		advertiseAll = false
 	}
 
-	// Validate neighbors (fail-late: this runs at reconcile time)
+	// Validate BGP neighbors at reconcile time (fail-late).
+	// Skipped for L2 mode where neighbors is nil.
 	if err := validateBGPNeighbors(neighbors); err != nil {
 		return fmt.Errorf("invalid BGP peers: %w", err)
 	}
