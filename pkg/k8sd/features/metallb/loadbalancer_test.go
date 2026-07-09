@@ -630,6 +630,7 @@ func TestAnnotationParsing(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(active).To(BeTrue())
 		g.Expect(advertiseAll).To(BeFalse())
+		g.Expect(neighbors).To(HaveLen(1))
 	})
 
 	t.Run("AdvertiseAllPoolsInvalid", func(t *testing.T) {
