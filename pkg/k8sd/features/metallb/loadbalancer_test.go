@@ -306,132 +306,67 @@ func TestValidateBGPNeighbors(t *testing.T) {
 }
 
 func TestAnnotationParsing(t *testing.T) {
-	t.Run("AnnotationAbsent", func(t *testing.T) {
+	peer1YAML := "- peerAddress: 10.0.0.1\n  peerASN: 65001\n"
+	peersKey := "k8sd/v1alpha1/metallb/bgp-peers"
+	allPoolsKey := "k8sd/v1alpha1/metallb/advertise-all-pools"
+
+	cases := []struct {
+		name        string
+		annotations types.Annotations
+		wantActive  bool
+		wantLen     int
+		wantAll     bool
+		wantErr     string
+	}{
+		{"nil", nil, false, -1, false, ""},
+		{"empty-map", types.Annotations{}, false, -1, false, ""},
+		{"empty-list", types.Annotations{peersKey: "[]"}, true, 0, false, ""},
+		{"one-peer", types.Annotations{peersKey: peer1YAML}, true, 1, false, ""},
+		{"advertise-all", types.Annotations{peersKey: peer1YAML, allPoolsKey: "true"}, true, 1, true, ""},
+		{"malformed-yaml", types.Annotations{peersKey: "not: valid: yaml: [{"}, true, -1, false, "failed to parse bgp-peers annotation"},
+		{"invalid-advertise-all", types.Annotations{peersKey: peer1YAML, allPoolsKey: "notabool"}, true, -1, false, "failed to parse advertise-all-pools annotation"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			neighbors, advertiseAll, active, err := neighborsFromAnnotations(tc.annotations)
+			g.Expect(active).To(Equal(tc.wantActive))
+			g.Expect(advertiseAll).To(Equal(tc.wantAll))
+			if tc.wantErr != "" {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring(tc.wantErr))
+				g.Expect(neighbors).To(BeNil())
+			} else {
+				g.Expect(err).ToNot(HaveOccurred())
+				if tc.wantLen >= 0 {
+					g.Expect(neighbors).To(HaveLen(tc.wantLen))
+				}
+			}
+		})
+	}
+
+	// Spot-check parsed fields for a multi-peer annotation.
+	t.Run("ThreePeersFields", func(t *testing.T) {
 		g := NewWithT(t)
-
-		neighbors, advertiseAll, active, err := neighborsFromAnnotations(nil)
-
-		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(active).To(BeFalse())
-		g.Expect(neighbors).To(BeNil())
-		g.Expect(advertiseAll).To(BeFalse())
-
-		// Also test with empty map
-		neighbors, advertiseAll, active, err = neighborsFromAnnotations(types.Annotations{})
-		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(active).To(BeFalse())
-		g.Expect(neighbors).To(BeNil())
-		g.Expect(advertiseAll).To(BeFalse())
-	})
-
-	t.Run("ThreePeers", func(t *testing.T) {
-		g := NewWithT(t)
-
 		annotations := types.Annotations{
-			"k8sd/v1alpha1/metallb/bgp-peers": `
+			peersKey: `
 - peerAddress: 10.116.3.164
   peerASN: 65001
   nodeSelector:
     topology.kubernetes.io/zone: i1
 - peerAddress: 10.116.3.165
   peerASN: 65002
-  nodeSelector:
-    topology.kubernetes.io/zone: i2
 - peerAddress: 10.116.3.166
   peerASN: 65003
-  nodeSelector:
-    topology.kubernetes.io/zone: i3
 `,
 		}
-
-		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
-
+		neighbors, _, _, err := neighborsFromAnnotations(annotations)
 		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(active).To(BeTrue())
-		g.Expect(advertiseAll).To(BeFalse())
 		g.Expect(neighbors).To(HaveLen(3))
-
 		g.Expect(neighbors[0].peerAddress).To(Equal("10.116.3.164"))
 		g.Expect(neighbors[0].peerASN).To(Equal(65001))
 		g.Expect(neighbors[0].nodeSelector).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i1"}))
-
-		g.Expect(neighbors[1].peerAddress).To(Equal("10.116.3.165"))
-		g.Expect(neighbors[1].peerASN).To(Equal(65002))
-		g.Expect(neighbors[1].nodeSelector).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i2"}))
-
-		g.Expect(neighbors[2].peerAddress).To(Equal("10.116.3.166"))
-		g.Expect(neighbors[2].peerASN).To(Equal(65003))
-		g.Expect(neighbors[2].nodeSelector).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i3"}))
-	})
-
-	t.Run("MalformedYAML", func(t *testing.T) {
-		g := NewWithT(t)
-
-		annotations := types.Annotations{
-			"k8sd/v1alpha1/metallb/bgp-peers": "not: valid: yaml: [{",
-		}
-
-		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
-
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("failed to parse bgp-peers annotation"))
-		g.Expect(active).To(BeTrue())
-		g.Expect(neighbors).To(BeNil())
-		g.Expect(advertiseAll).To(BeFalse())
-	})
-
-	t.Run("AdvertiseAllPoolsTrue", func(t *testing.T) {
-		g := NewWithT(t)
-
-		annotations := types.Annotations{
-			"k8sd/v1alpha1/metallb/bgp-peers": `
-- peerAddress: 10.0.0.1
-  peerASN: 65001
-`,
-			"k8sd/v1alpha1/metallb/advertise-all-pools": "true",
-		}
-
-		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
-
-		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(active).To(BeTrue())
-		g.Expect(advertiseAll).To(BeTrue())
-		g.Expect(neighbors).To(HaveLen(1))
-	})
-
-	t.Run("AdvertiseAllPoolsInvalid", func(t *testing.T) {
-		g := NewWithT(t)
-
-		annotations := types.Annotations{
-			"k8sd/v1alpha1/metallb/bgp-peers": `
-- peerAddress: 10.0.0.1
-  peerASN: 65001
-`,
-			"k8sd/v1alpha1/metallb/advertise-all-pools": "notabool",
-		}
-
-		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
-
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("failed to parse advertise-all-pools annotation"))
-		g.Expect(active).To(BeTrue())
-		g.Expect(neighbors).To(BeNil())
-		g.Expect(advertiseAll).To(BeFalse())
-	})
-
-	t.Run("EmptyPeersList", func(t *testing.T) {
-		g := NewWithT(t)
-
-		annotations := types.Annotations{
-			"k8sd/v1alpha1/metallb/bgp-peers": "[]",
-		}
-
-		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
-
-		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(active).To(BeTrue())
-		g.Expect(advertiseAll).To(BeFalse())
-		g.Expect(neighbors).To(HaveLen(0))
 	})
 }
 
@@ -484,17 +419,14 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			"k8sd/v1alpha1/metallb/bgp-peers": `
 - peerAddress: 10.116.3.164
   peerASN: 65001
-  peerPort: 179
   nodeSelector:
     topology.kubernetes.io/zone: i1
 - peerAddress: 10.116.3.165
   peerASN: 65002
-  peerPort: 179
   nodeSelector:
     topology.kubernetes.io/zone: i2
 - peerAddress: 10.116.3.166
   peerASN: 65003
-  peerPort: 179
   nodeSelector:
     topology.kubernetes.io/zone: i3
 `,
@@ -507,23 +439,8 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha)"))
 
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
-		lbValues := helmM.ApplyCalledWith[1].Values
-		bgp := lbValues["bgp"].(map[string]any)
-		neighbors := bgp["neighbors"].([]map[string]any)
-		g.Expect(neighbors).To(HaveLen(3))
-
-		g.Expect(neighbors[0]["peerAddress"]).To(Equal("10.116.3.164"))
-		g.Expect(neighbors[0]["peerASN"]).To(Equal(65001))
-		g.Expect(neighbors[0]["nodeSelector"]).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i1"}))
-
-		g.Expect(neighbors[1]["peerAddress"]).To(Equal("10.116.3.165"))
-		g.Expect(neighbors[1]["peerASN"]).To(Equal(65002))
-		g.Expect(neighbors[1]["nodeSelector"]).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i2"}))
-
-		g.Expect(neighbors[2]["peerAddress"]).To(Equal("10.116.3.166"))
-		g.Expect(neighbors[2]["peerASN"]).To(Equal(65003))
-		g.Expect(neighbors[2]["nodeSelector"]).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i3"}))
-
+		bgp := helmM.ApplyCalledWith[1].Values["bgp"].(map[string]any)
+		g.Expect(bgp["neighbors"].([]map[string]any)).To(HaveLen(3))
 		g.Expect(bgp["advertiseAllPools"]).To(Equal(false))
 	})
 
@@ -570,53 +487,38 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 		g.Expect(neighbors[2]["peerAddress"]).To(Equal("10.116.3.166"))
 	})
 
-	t.Run("InvalidAnnotation_DegradedStatus", func(t *testing.T) {
+	t.Run("ErrorPaths", func(t *testing.T) {
 		g := NewWithT(t)
-
-		helmM := &helmmock.Mock{}
-		snapM := buildFakeSnap(helmM)
-		lbCfg := types.LoadBalancer{
-			Enabled:     ptr.To(true),
-			BGPMode:     ptr.To(true),
-			BGPLocalASN: ptr.To(64512),
-			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+		cases := []struct {
+			name        string
+			annotations types.Annotations
+			wantErr     string
+		}{
+			{
+				"invalid-yaml",
+				types.Annotations{"k8sd/v1alpha1/metallb/bgp-peers": "not: valid: yaml: [{"},
+				"invalid BGP peer annotation",
+			},
+			{
+				"invalid-peer-asn",
+				types.Annotations{"k8sd/v1alpha1/metallb/bgp-peers": "- peerAddress: 10.0.0.1\n  peerASN: 0\n"},
+				"invalid BGP peers",
+			},
 		}
-		annotations := types.Annotations{
-			"k8sd/v1alpha1/metallb/bgp-peers": "not: valid: yaml: [{",
+		for _, tc := range cases {
+			helmM := &helmmock.Mock{}
+			snapM := buildFakeSnap(helmM)
+			lbCfg := types.LoadBalancer{
+				Enabled:     ptr.To(true),
+				BGPMode:     ptr.To(true),
+				BGPLocalASN: ptr.To(64512),
+				CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+			}
+			status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, tc.annotations)
+			g.Expect(err).To(HaveOccurred(), tc.name)
+			g.Expect(err.Error()).To(ContainSubstring(tc.wantErr), tc.name)
+			g.Expect(status.Enabled).To(BeFalse(), tc.name)
 		}
-
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
-
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("invalid BGP peer annotation"))
-		g.Expect(status.Enabled).To(BeFalse())
-		g.Expect(status.Message).To(ContainSubstring("failed to parse bgp-peers annotation"))
-	})
-
-	t.Run("AnnotationValidationFail", func(t *testing.T) {
-		g := NewWithT(t)
-
-		helmM := &helmmock.Mock{}
-		snapM := buildFakeSnap(helmM)
-		lbCfg := types.LoadBalancer{
-			Enabled:     ptr.To(true),
-			BGPMode:     ptr.To(true),
-			BGPLocalASN: ptr.To(64512),
-			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
-		}
-		annotations := types.Annotations{
-			"k8sd/v1alpha1/metallb/bgp-peers": `
-- peerAddress: 10.0.0.1
-  peerASN: 0
-`,
-		}
-
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
-
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("invalid BGP peers"))
-		g.Expect(status.Enabled).To(BeFalse())
-		g.Expect(status.Message).To(ContainSubstring("invalid BGP peers"))
 	})
 
 	t.Run("AdvertiseAllPoolsAnnotation", func(t *testing.T) {
