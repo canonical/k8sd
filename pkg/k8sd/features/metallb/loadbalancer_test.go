@@ -215,264 +215,93 @@ func validateLoadBalancerValues(g Gomega, values map[string]interface{}, lbCfg t
 }
 
 func TestBuildLoadBalancerValues(t *testing.T) {
-	t.Run("SinglePeerRegression", func(t *testing.T) {
-		g := NewWithT(t)
+	baseLB := types.LoadBalancer{
+		BGPMode:     ptr.To(true),
+		BGPLocalASN: ptr.To(64512),
+		CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
+	}
 
-		lbCfg := types.LoadBalancer{
-			BGPMode:     ptr.To(true),
-			BGPLocalASN: ptr.To(64512),
-			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
-		}
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    179,
-		}}
-
-		values := buildLoadBalancerValues(lbCfg, neighbors, false)
-
-		bgp := values["bgp"].(map[string]any)
-		g.Expect(bgp["enabled"]).To(Equal(true))
-		g.Expect(bgp["localASN"]).To(Equal(64512))
-		g.Expect(bgp["advertiseAllPools"]).To(Equal(false))
-
-		neighborMaps := bgp["neighbors"].([]map[string]any)
-		g.Expect(neighborMaps).To(HaveLen(1))
-
-		n := neighborMaps[0]
-		g.Expect(n["peerAddress"]).To(Equal("10.0.0.1"))
-		g.Expect(n["peerASN"]).To(Equal(64513))
-		g.Expect(n["peerPort"]).To(Equal(179))
-		_, hasMyASN := n["myASN"]
-		g.Expect(hasMyASN).To(BeFalse())
-		_, hasNodeSelector := n["nodeSelector"]
-		g.Expect(hasNodeSelector).To(BeFalse())
-	})
-
-	t.Run("ThreePeersWithNodeSelectors", func(t *testing.T) {
-		g := NewWithT(t)
-
-		lbCfg := types.LoadBalancer{
-			BGPMode:     ptr.To(true),
-			BGPLocalASN: ptr.To(64512),
-			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
-		}
-		neighbors := []bgpNeighbor{
-			{
-				peerAddress:  "10.0.0.1",
-				peerASN:      64513,
-				peerPort:     179,
-				nodeSelector: map[string]string{"zone": "a"},
-			},
-			{
-				peerAddress:  "10.0.0.2",
-				peerASN:      64514,
-				peerPort:     179,
-				nodeSelector: map[string]string{"zone": "b"},
-			},
-			{
-				peerAddress:  "10.0.0.3",
-				peerASN:      64515,
-				peerPort:     1790,
-				nodeSelector: map[string]string{"zone": "c", "rack": "1"},
-			},
-		}
-
-		values := buildLoadBalancerValues(lbCfg, neighbors, false)
-
-		bgp := values["bgp"].(map[string]any)
-		neighborMaps := bgp["neighbors"].([]map[string]any)
-		g.Expect(neighborMaps).To(HaveLen(3))
-
-		g.Expect(neighborMaps[0]["peerAddress"]).To(Equal("10.0.0.1"))
-		g.Expect(neighborMaps[0]["peerASN"]).To(Equal(64513))
-		g.Expect(neighborMaps[0]["nodeSelector"]).To(Equal(map[string]string{"zone": "a"}))
-
-		g.Expect(neighborMaps[1]["peerAddress"]).To(Equal("10.0.0.2"))
-		g.Expect(neighborMaps[1]["peerASN"]).To(Equal(64514))
-		g.Expect(neighborMaps[1]["nodeSelector"]).To(Equal(map[string]string{"zone": "b"}))
-
-		g.Expect(neighborMaps[2]["peerAddress"]).To(Equal("10.0.0.3"))
-		g.Expect(neighborMaps[2]["peerASN"]).To(Equal(64515))
-		g.Expect(neighborMaps[2]["peerPort"]).To(Equal(1790))
-		g.Expect(neighborMaps[2]["nodeSelector"]).To(Equal(map[string]string{"zone": "c", "rack": "1"}))
-	})
-
-	t.Run("MyASNOverride", func(t *testing.T) {
-		g := NewWithT(t)
-
-		lbCfg := types.LoadBalancer{
-			BGPMode:     ptr.To(true),
-			BGPLocalASN: ptr.To(64512),
-			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
-		}
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    179,
-			myASN:       65099,
-		}}
-
-		values := buildLoadBalancerValues(lbCfg, neighbors, false)
-
-		bgp := values["bgp"].(map[string]any)
-		neighborMaps := bgp["neighbors"].([]map[string]any)
-		g.Expect(neighborMaps).To(HaveLen(1))
-		g.Expect(neighborMaps[0]["myASN"]).To(Equal(65099))
-	})
-
-	t.Run("AdvertiseAllPoolsTrue", func(t *testing.T) {
-		g := NewWithT(t)
-
-		lbCfg := types.LoadBalancer{
-			BGPMode:     ptr.To(true),
-			BGPLocalASN: ptr.To(64512),
-			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
-		}
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    179,
-		}}
-
-		values := buildLoadBalancerValues(lbCfg, neighbors, true)
-
-		bgp := values["bgp"].(map[string]any)
-		g.Expect(bgp["advertiseAllPools"]).To(Equal(true))
-	})
-
-}
-
-func TestValidateBGPNeighbors(t *testing.T) {
-	t.Run("ValidSingleNeighbor", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    179,
-		}}
-
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).ToNot(HaveOccurred())
-	})
-
-	t.Run("PeerASNZero", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     0,
-			peerPort:    179,
-		}}
-
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("peerASN 0 out of range"))
-	})
-
-	t.Run("PeerASNTooLarge", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     4294967296,
-			peerPort:    179,
-		}}
-
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("peerASN 4294967296 out of range"))
-	})
-
-	t.Run("MyASNZeroAllowed", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    179,
-			myASN:       0,
-		}}
-
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).ToNot(HaveOccurred())
-	})
-
-	t.Run("MyASNNegative", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    179,
-			myASN:       -1,
-		}}
-
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("myASN -1 out of range"))
-	})
-
-	t.Run("PeerPortZeroAllowed", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    0,
-		}}
-
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).ToNot(HaveOccurred())
-	})
-
-	t.Run("PeerPortTooLarge", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    65536,
-		}}
-
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("peerPort 65536 out of range"))
-	})
-
-	t.Run("InvalidPeerAddress", func(t *testing.T) {
-		g := NewWithT(t)
-
-		for _, addr := range []string{"not-an-ip", "256.0.0.1", "example.com"} {
-			neighbors := []bgpNeighbor{{peerAddress: addr, peerASN: 64513, peerPort: 179}}
-			err := validateBGPNeighbors(neighbors)
-			g.Expect(err).To(HaveOccurred(), "expected error for %q", addr)
-			g.Expect(err.Error()).To(ContainSubstring("invalid peerAddress"))
-		}
-	})
-
-	t.Run("IPv6PeerAddressValid", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{{peerAddress: "2001:db8::1", peerASN: 64513}}
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).ToNot(HaveOccurred())
-	})
-
-	t.Run("NodeSelectorEmptyKey", func(t *testing.T) {
+	t.Run("SinglePeer", func(t *testing.T) {
 		g := NewWithT(t)
 
 		neighbors := []bgpNeighbor{{
 			peerAddress:  "10.0.0.1",
 			peerASN:      64513,
 			peerPort:     179,
-			nodeSelector: map[string]string{"": "value"},
+			myASN:        65099,
+			nodeSelector: map[string]string{"zone": "a"},
 		}}
 
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("nodeSelector has empty key"))
+		values := buildLoadBalancerValues(baseLB, neighbors, true)
+
+		bgp := values["bgp"].(map[string]any)
+		g.Expect(bgp["enabled"]).To(Equal(true))
+		g.Expect(bgp["localASN"]).To(Equal(64512))
+		g.Expect(bgp["advertiseAllPools"]).To(Equal(true))
+
+		ns := bgp["neighbors"].([]map[string]any)
+		g.Expect(ns).To(HaveLen(1))
+		g.Expect(ns[0]["peerAddress"]).To(Equal("10.0.0.1"))
+		g.Expect(ns[0]["peerASN"]).To(Equal(64513))
+		g.Expect(ns[0]["peerPort"]).To(Equal(179))
+		g.Expect(ns[0]["myASN"]).To(Equal(65099))
+		g.Expect(ns[0]["nodeSelector"]).To(Equal(map[string]string{"zone": "a"}))
+	})
+
+	t.Run("OptionalFieldsOmitted", func(t *testing.T) {
+		g := NewWithT(t)
+
+		// myASN=0 and empty nodeSelector must not appear in the output map.
+		neighbors := []bgpNeighbor{{peerAddress: "10.0.0.1", peerASN: 64513}}
+		values := buildLoadBalancerValues(baseLB, neighbors, false)
+
+		bgp := values["bgp"].(map[string]any)
+		ns := bgp["neighbors"].([]map[string]any)
+		g.Expect(ns).To(HaveLen(1))
+		_, hasMyASN := ns[0]["myASN"]
+		g.Expect(hasMyASN).To(BeFalse())
+		_, hasNodeSelector := ns[0]["nodeSelector"]
+		g.Expect(hasNodeSelector).To(BeFalse())
+		g.Expect(bgp["advertiseAllPools"]).To(Equal(false))
+	})
+}
+
+func TestValidateBGPNeighbors(t *testing.T) {
+	valid := bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513}
+
+	t.Run("Valid", func(t *testing.T) {
+		g := NewWithT(t)
+		cases := []bgpNeighbor{
+			valid,
+			{peerAddress: "2001:db8::1", peerASN: 64513},           // IPv6
+			{peerAddress: "10.0.0.1", peerASN: 64513, myASN: 0},    // myASN=0 allowed (inherit)
+			{peerAddress: "10.0.0.1", peerASN: 64513, peerPort: 0}, // peerPort=0 allowed (inherit)
+			{peerAddress: "10.0.0.1", peerASN: 64513, peerPort: 179, myASN: 65000, nodeSelector: map[string]string{"zone": "a"}},
+		}
+		for _, n := range cases {
+			g.Expect(validateBGPNeighbors([]bgpNeighbor{n})).To(Succeed())
+		}
+	})
+
+	t.Run("Invalid", func(t *testing.T) {
+		g := NewWithT(t)
+		cases := []struct {
+			neighbor bgpNeighbor
+			wantErr  string
+		}{
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 0}, "peerASN 0 out of range"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 4294967296}, "peerASN 4294967296 out of range"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, myASN: -1}, "myASN -1 out of range"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, peerPort: 65536}, "peerPort 65536 out of range"},
+			{bgpNeighbor{peerAddress: "not-an-ip", peerASN: 64513}, "invalid peerAddress"},
+			{bgpNeighbor{peerAddress: "256.0.0.1", peerASN: 64513}, "invalid peerAddress"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, nodeSelector: map[string]string{"": "v"}}, "nodeSelector has empty key"},
+		}
+		for _, tc := range cases {
+			err := validateBGPNeighbors([]bgpNeighbor{tc.neighbor})
+			g.Expect(err).To(HaveOccurred(), "expected error for %+v", tc.neighbor)
+			g.Expect(err.Error()).To(ContainSubstring(tc.wantErr))
+		}
 	})
 }
 
