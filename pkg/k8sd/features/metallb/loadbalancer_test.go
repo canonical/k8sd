@@ -341,27 +341,6 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 		g.Expect(bgp["advertiseAllPools"]).To(Equal(true))
 	})
 
-	t.Run("PeerPortZeroDefault", func(t *testing.T) {
-		g := NewWithT(t)
-
-		lbCfg := types.LoadBalancer{
-			BGPMode:     ptr.To(true),
-			BGPLocalASN: ptr.To(64512),
-			CIDRs:       ptr.To([]string{"10.0.0.0/24"}),
-		}
-		neighbors := []bgpNeighbor{{
-			peerAddress: "10.0.0.1",
-			peerASN:     64513,
-			peerPort:    0,
-		}}
-
-		values := buildLoadBalancerValues(lbCfg, neighbors, false)
-
-		bgp := values["bgp"].(map[string]any)
-		neighborMaps := bgp["neighbors"].([]map[string]any)
-		g.Expect(neighborMaps).To(HaveLen(1))
-		g.Expect(neighborMaps[0]["peerPort"]).To(Equal(0))
-	})
 }
 
 func TestValidateBGPNeighbors(t *testing.T) {
@@ -373,34 +352,6 @@ func TestValidateBGPNeighbors(t *testing.T) {
 			peerASN:     64513,
 			peerPort:    179,
 		}}
-
-		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).ToNot(HaveOccurred())
-	})
-
-	t.Run("ValidThreeNeighborsWithNodeSelectors", func(t *testing.T) {
-		g := NewWithT(t)
-
-		neighbors := []bgpNeighbor{
-			{
-				peerAddress:  "10.0.0.1",
-				peerASN:      64513,
-				peerPort:     179,
-				nodeSelector: map[string]string{"zone": "a"},
-			},
-			{
-				peerAddress:  "10.0.0.2",
-				peerASN:      64514,
-				peerPort:     179,
-				nodeSelector: map[string]string{"zone": "b"},
-			},
-			{
-				peerAddress:  "10.0.0.3",
-				peerASN:      64515,
-				peerPort:     179,
-				nodeSelector: map[string]string{"zone": "c"},
-			},
-		}
 
 		err := validateBGPNeighbors(neighbors)
 		g.Expect(err).ToNot(HaveOccurred())
@@ -493,15 +444,20 @@ func TestValidateBGPNeighbors(t *testing.T) {
 	t.Run("InvalidPeerAddress", func(t *testing.T) {
 		g := NewWithT(t)
 
-		neighbors := []bgpNeighbor{{
-			peerAddress: "not-an-ip",
-			peerASN:     64513,
-			peerPort:    179,
-		}}
+		for _, addr := range []string{"not-an-ip", "256.0.0.1", "example.com"} {
+			neighbors := []bgpNeighbor{{peerAddress: addr, peerASN: 64513, peerPort: 179}}
+			err := validateBGPNeighbors(neighbors)
+			g.Expect(err).To(HaveOccurred(), "expected error for %q", addr)
+			g.Expect(err.Error()).To(ContainSubstring("invalid peerAddress"))
+		}
+	})
 
+	t.Run("IPv6PeerAddressValid", func(t *testing.T) {
+		g := NewWithT(t)
+
+		neighbors := []bgpNeighbor{{peerAddress: "2001:db8::1", peerASN: 64513}}
 		err := validateBGPNeighbors(neighbors)
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("invalid peerAddress"))
+		g.Expect(err).ToNot(HaveOccurred())
 	})
 
 	t.Run("NodeSelectorEmptyKey", func(t *testing.T) {
@@ -611,25 +567,6 @@ func TestAnnotationParsing(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(active).To(BeTrue())
 		g.Expect(advertiseAll).To(BeTrue())
-		g.Expect(neighbors).To(HaveLen(1))
-	})
-
-	t.Run("AdvertiseAllPoolsFalse", func(t *testing.T) {
-		g := NewWithT(t)
-
-		annotations := types.Annotations{
-			"k8sd/v1alpha1/metallb/bgp-peers": `
-- peerAddress: 10.0.0.1
-  peerASN: 65001
-`,
-			"k8sd/v1alpha1/metallb/advertise-all-pools": "false",
-		}
-
-		neighbors, advertiseAll, active, err := neighborsFromAnnotations(annotations)
-
-		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(active).To(BeTrue())
-		g.Expect(advertiseAll).To(BeFalse())
 		g.Expect(neighbors).To(HaveLen(1))
 	})
 

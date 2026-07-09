@@ -42,8 +42,8 @@ func validateBGPNeighbors(neighbors []bgpNeighbor) error {
 		if n.peerPort != 0 && (n.peerPort < 1 || n.peerPort > 65535) {
 			return fmt.Errorf("neighbor[%d]: peerPort %d out of range [1, 65535]", i, n.peerPort)
 		}
-		if _, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:179", n.peerAddress)); err != nil {
-			return fmt.Errorf("neighbor[%d]: invalid peerAddress %q: %w", i, n.peerAddress, err)
+		if net.ParseIP(n.peerAddress) == nil {
+			return fmt.Errorf("neighbor[%d]: invalid peerAddress %q", i, n.peerAddress)
 		}
 		for k := range n.nodeSelector {
 			if k == "" {
@@ -128,8 +128,8 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		}, err
 	}
 
-	// Determine if annotation path is active
-	annotationActive := annotations[metallbAnnotations.AnnotationBGPPeers] != ""
+	// Determine if annotation path is active (key present, regardless of value).
+	_, annotationActive := annotations[metallbAnnotations.AnnotationBGPPeers]
 	bothConfigsSet := annotationActive && loadbalancer.GetBGPPeerAddress() != ""
 
 	switch {
