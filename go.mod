@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	dario.cat/mergo v1.0.2
-	github.com/canonical/k8s-snap-api/v2 v2.1.0
+	github.com/canonical/k8s-snap-api/v2 v2.1.1-0.20260708132048-f41e404a09f0
 	github.com/canonical/lxd v0.0.0-20260316125027-e2e75cdbfd23
 	github.com/canonical/microcluster/v3 v3.0.2
 	github.com/go-logr/logr v1.4.3
@@ -170,4 +170,3 @@ require (
 
 // CVE-2026-34986: prevent transitive resolution of the vulnerable go-jose release.
 exclude github.com/go-jose/go-jose/v4 v4.1.3
-
