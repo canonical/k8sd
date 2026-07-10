@@ -150,7 +150,7 @@ func TestEnabled(t *testing.T) {
 			L2Interfaces:   ptr.To([]string{"eth0", "eth1"}),
 			BGPMode:        ptr.To(true),
 			BGPLocalASN:    ptr.To(64512),
-			BGPPeerAddress: ptr.To("10.0.0.1/32"),
+			BGPPeerAddress: ptr.To("10.0.0.1"),
 			BGPPeerASN:     ptr.To(64513),
 			BGPPeerPort:    ptr.To(179),
 			CIDRs:          ptr.To([]string{"192.0.2.0/24"}),
@@ -235,9 +235,9 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 		values := buildLoadBalancerValues(baseLB, neighbors, true)
 
 		bgp := values["bgp"].(map[string]any)
-		g.Expect(bgp["enabled"]).To(Equal(true))
+		g.Expect(bgp["enabled"]).To(BeTrue())
 		g.Expect(bgp["localASN"]).To(Equal(64512))
-		g.Expect(bgp["advertiseAllPools"]).To(Equal(true))
+		g.Expect(bgp["advertiseAllPools"]).To(BeTrue())
 
 		ns := bgp["neighbors"].([]map[string]any)
 		g.Expect(ns).To(HaveLen(1))
@@ -262,7 +262,7 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 		g.Expect(hasMyASN).To(BeFalse())
 		_, hasNodeSelector := ns[0]["nodeSelector"]
 		g.Expect(hasNodeSelector).To(BeFalse())
-		g.Expect(bgp["advertiseAllPools"]).To(Equal(false))
+		g.Expect(bgp["advertiseAllPools"]).To(BeFalse())
 	})
 }
 
@@ -441,7 +441,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 		bgp := helmM.ApplyCalledWith[1].Values["bgp"].(map[string]any)
 		g.Expect(bgp["neighbors"].([]map[string]any)).To(HaveLen(3))
-		g.Expect(bgp["advertiseAllPools"]).To(Equal(false))
+		g.Expect(bgp["advertiseAllPools"]).To(BeFalse())
 	})
 
 	t.Run("AnnotationReplacesTypedKeys", func(t *testing.T) {
@@ -549,6 +549,6 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 		lbValues := helmM.ApplyCalledWith[1].Values
 		bgp := lbValues["bgp"].(map[string]any)
-		g.Expect(bgp["advertiseAllPools"]).To(Equal(true))
+		g.Expect(bgp["advertiseAllPools"]).To(BeTrue())
 	})
 }

@@ -57,7 +57,7 @@ func validateBGPNeighbors(neighbors []bgpNeighbor) error {
 // neighborsFromAnnotations parses multi-peer BGP configuration from annotations.
 // It returns the neighbor slice, advertiseAllPools flag, a boolean indicating whether
 // the annotation path was active, and any parse error.
-// If the bgp-peers annotation is absent, returns (nil, false, false, nil).
+// If the bgp-peers annotation is absent, returns (nil, false, inactive, nil).
 func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, bool, bool, error) {
 	peersYAML, hasPeers := annotations[metallbAnnotations.AnnotationBGPPeers]
 	if !hasPeers {
