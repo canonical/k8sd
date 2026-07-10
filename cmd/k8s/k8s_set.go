@@ -7,6 +7,7 @@ import (
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
+	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/utils"
@@ -77,30 +78,32 @@ func newSetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 var knownSetKeys = map[string]struct{}{
 	"annotations":    {},
 	"cloud-provider": {},
-	fmt.Sprintf("%s.cluster-domain", features.DNS):            {},
-	fmt.Sprintf("%s.enabled", features.DNS):                   {},
-	fmt.Sprintf("%s.service-ip", features.DNS):                {},
-	fmt.Sprintf("%s.upstream-nameservers", features.DNS):      {},
-	fmt.Sprintf("%s.enabled", features.Gateway):               {},
-	fmt.Sprintf("%s.default-tls-secret", features.Ingress):    {},
-	fmt.Sprintf("%s.enable-proxy-protocol", features.Ingress): {},
-	fmt.Sprintf("%s.enabled", features.Ingress):               {},
-	fmt.Sprintf("%s.bgp-local-asn", features.LoadBalancer):    {},
-	fmt.Sprintf("%s.bgp-mode", features.LoadBalancer):         {},
-	fmt.Sprintf("%s.bgp-peer-address", features.LoadBalancer): {},
-	fmt.Sprintf("%s.bgp-peer-asn", features.LoadBalancer):     {},
-	fmt.Sprintf("%s.bgp-peer-port", features.LoadBalancer):    {},
-	fmt.Sprintf("%s.cidrs", features.LoadBalancer):            {},
-	fmt.Sprintf("%s.enabled", features.LoadBalancer):          {},
-	fmt.Sprintf("%s.l2-interfaces", features.LoadBalancer):    {},
-	fmt.Sprintf("%s.l2-mode", features.LoadBalancer):          {},
-	fmt.Sprintf("%s.default", features.LocalStorage):          {},
-	fmt.Sprintf("%s.enabled", features.LocalStorage):          {},
-	fmt.Sprintf("%s.local-path", features.LocalStorage):       {},
-	fmt.Sprintf("%s.reclaim-policy", features.LocalStorage):   {},
-	fmt.Sprintf("%s.enabled", features.MetricsServer):         {},
-	fmt.Sprintf("%s.enabled", features.Network):               {},
-	fmt.Sprintf("%s.kube-proxy-enabled", features.Network):    {},
+	fmt.Sprintf("%s.cluster-domain", features.DNS):                                {},
+	fmt.Sprintf("%s.enabled", features.DNS):                                       {},
+	fmt.Sprintf("%s.service-ip", features.DNS):                                    {},
+	fmt.Sprintf("%s.upstream-nameservers", features.DNS):                          {},
+	fmt.Sprintf("%s.enabled", features.Gateway):                                   {},
+	fmt.Sprintf("%s.default-tls-secret", features.Ingress):                        {},
+	fmt.Sprintf("%s.enable-proxy-protocol", features.Ingress):                     {},
+	fmt.Sprintf("%s.enabled", features.Ingress):                                   {},
+	fmt.Sprintf("%s.bgp-local-asn", features.LoadBalancer):                        {},
+	fmt.Sprintf("%s.bgp-mode", features.LoadBalancer):                             {},
+	fmt.Sprintf("%s.bgp-peer-address", features.LoadBalancer):                     {},
+	fmt.Sprintf("%s.bgp-peer-asn", features.LoadBalancer):                         {},
+	fmt.Sprintf("%s.bgp-peer-port", features.LoadBalancer):                        {},
+	fmt.Sprintf("%s.cidrs", features.LoadBalancer):                                {},
+	fmt.Sprintf("%s.enabled", features.LoadBalancer):                              {},
+	fmt.Sprintf("%s.l2-interfaces", features.LoadBalancer):                        {},
+	fmt.Sprintf("%s.l2-mode", features.LoadBalancer):                              {},
+	fmt.Sprintf("annotations.%s", metallbAnnotations.AnnotationBGPPeers):          {},
+	fmt.Sprintf("annotations.%s", metallbAnnotations.AnnotationAdvertiseAllPools): {},
+	fmt.Sprintf("%s.default", features.LocalStorage):                              {},
+	fmt.Sprintf("%s.enabled", features.LocalStorage):                              {},
+	fmt.Sprintf("%s.local-path", features.LocalStorage):                           {},
+	fmt.Sprintf("%s.reclaim-policy", features.LocalStorage):                       {},
+	fmt.Sprintf("%s.enabled", features.MetricsServer):                             {},
+	fmt.Sprintf("%s.enabled", features.Network):                                   {},
+	fmt.Sprintf("%s.kube-proxy-enabled", features.Network):                        {},
 }
 
 func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string) error {
@@ -128,10 +131,7 @@ func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string)
 	value := parts[1]
 
 	if _, ok := knownSetKeys[key]; !ok {
-		// annotations.*  keys are open-ended — any sub-key is valid.
-		if !strings.HasPrefix(key, "annotations.") {
-			return fmt.Errorf("unknown option key %q", key)
-		}
+		return fmt.Errorf("unknown option key %q", key)
 	}
 
 	if err := decoder.Decode(toRecursiveMap(key, value)); err != nil {
