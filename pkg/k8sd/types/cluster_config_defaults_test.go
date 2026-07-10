@@ -51,7 +51,7 @@ func TestSetDefaults(t *testing.T) {
 			BGPLocalASN:    utils.Pointer(0),
 			BGPPeerAddress: utils.Pointer(""),
 			BGPPeerASN:     utils.Pointer(0),
-			BGPPeerPort:    utils.Pointer(0),
+			BGPPeerPort:    utils.Pointer(179),
 		},
 		MetricsServer: types.MetricsServer{
 			Enabled: utils.Pointer(true),
