@@ -128,7 +128,10 @@ func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string)
 	value := parts[1]
 
 	if _, ok := knownSetKeys[key]; !ok {
-		return fmt.Errorf("unknown option key %q", key)
+		// annotations.*  keys are open-ended — any sub-key is valid.
+		if !strings.HasPrefix(key, "annotations.") {
+			return fmt.Errorf("unknown option key %q", key)
+		}
 	}
 
 	if err := decoder.Decode(toRecursiveMap(key, value)); err != nil {

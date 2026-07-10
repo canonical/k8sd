@@ -141,18 +141,11 @@ func (c *ClusterConfig) Validate() error {
 	}
 
 	// check: load-balancer BGP mode configuration
+	// Only bgp-local-asn is required; bgp-peer-* may be omitted when peers
+	// are supplied via the k8sd/v1alpha1/metallb/bgp-peers annotation.
 	if c.LoadBalancer.GetBGPMode() {
 		if c.LoadBalancer.GetBGPLocalASN() == 0 {
 			return fmt.Errorf("load-balancer.bgp-local-asn must be set when load-balancer.bgp-mode is enabled")
-		}
-		if c.LoadBalancer.GetBGPPeerAddress() == "" {
-			return fmt.Errorf("load-balancer.bgp-peer-address must be set when load-balancer.bgp-mode is enabled")
-		}
-		if c.LoadBalancer.GetBGPPeerPort() == 0 {
-			return fmt.Errorf("load-balancer.bgp-peer-port must be set when load-balancer.bgp-mode is enabled")
-		}
-		if c.LoadBalancer.GetBGPPeerASN() == 0 {
-			return fmt.Errorf("load-balancer.bgp-peer-asn must be set when load-balancer.bgp-mode is enabled")
 		}
 	}
 
