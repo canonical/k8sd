@@ -86,7 +86,7 @@ func (c *ClusterConfig) SetDefaults() {
 		c.LoadBalancer.BGPPeerASN = utils.Pointer(0)
 	}
 	if c.LoadBalancer.BGPPeerPort == nil {
-		c.LoadBalancer.BGPPeerPort = utils.Pointer(0)
+		c.LoadBalancer.BGPPeerPort = utils.Pointer(179)
 	}
 	// ingress
 	if c.Ingress.Enabled == nil {
