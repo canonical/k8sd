@@ -281,7 +281,14 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 			peerASN:     loadbalancer.GetBGPPeerASN(),
 			peerPort:    loadbalancer.GetBGPPeerPort(),
 		}}
-		advertiseAll = false
+		// advertise-all-pools annotation applies to the typed-key path too.
+		if v, ok := annotations[metallbAnnotations.AnnotationAdvertiseAllPools]; ok {
+			var parseErr error
+			advertiseAll, parseErr = strconv.ParseBool(v)
+			if parseErr != nil {
+				return fmt.Errorf("failed to parse advertise-all-pools annotation %q: %w", v, parseErr)
+			}
+		}
 	}
 
 	// Validate BGP neighbors at reconcile time (fail-late).
