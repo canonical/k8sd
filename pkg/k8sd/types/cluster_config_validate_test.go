@@ -273,6 +273,10 @@ func TestValidateBGPMode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
 			config := types.ClusterConfig{
+				Network: types.Network{
+					PodCIDR:     utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR: utils.Pointer("10.2.0.0/16"),
+				},
 				LoadBalancer: tc.lb,
 				Annotations:  tc.annotations,
 			}
