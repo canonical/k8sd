@@ -142,7 +142,6 @@ func (c *ClusterConfig) Validate() error {
 	}
 
 	// check: load-balancer BGP mode configuration
-	// check: load-balancer BGP mode configuration
 	// When the bgp-peers annotation is present it supplies peers at reconcile
 	// time, so the typed single-peer fields are optional. Without it they are
 	// required — restoring the strict pre-multi-peer UX for the common case.
