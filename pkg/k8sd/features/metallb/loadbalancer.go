@@ -58,6 +58,18 @@ func validateBGPNeighbors(neighbors []bgpNeighbor) error {
 // It returns the neighbor slice, advertiseAllPools flag, a boolean indicating whether
 // the annotation path was active, and any parse error.
 // If the bgp-peers annotation is absent, returns (nil, false, inactive, nil).
+//
+// The annotations are typically supplied via the `annotations` key using YAML block literal syntax:
+//
+//	k8s set annotations="$(cat my-annotations.yaml)"
+//
+// where my-annotations.yaml contains:
+//
+//	k8sd/v1alpha1/metallb/bgp-peers: |
+//	  - peerAddress: 10.0.0.1
+//	    peerASN: 65001
+//	    myASN: 65000
+//	k8sd/v1alpha1/metallb/advertise-all-pools: "true"
 func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, bool, bool, error) {
 	peersYAML, hasPeers := annotations[metallbAnnotations.AnnotationBGPPeers]
 	if !hasPeers {

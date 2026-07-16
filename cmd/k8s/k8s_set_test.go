@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
+	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
@@ -199,4 +200,41 @@ func Test_updateConfigMapstructure(t *testing.T) {
 			})
 		}
 	}
+}
+
+// Test_updateConfigMapstructure_annotationsYAMLBlockLiteral verifies that BGP peer
+// annotations can be passed via the annotations= key using YAML block literal syntax,
+// as produced by: k8s set annotations="$(cat my-annotations.yaml)"
+//
+// where my-annotations.yaml contains:
+//
+//	k8sd/v1alpha1/metallb/bgp-peers: |
+//	  - peerAddress: 10.0.0.1
+//	    peerASN: 65001
+//	    myASN: 65000
+//	k8sd/v1alpha1/metallb/advertise-all-pools: "true"
+func Test_updateConfigMapstructure_annotationsYAMLBlockLiteral(t *testing.T) {
+	g := NewWithT(t)
+
+	// Simulate the value of annotations="$(cat my-annotations.yaml)".
+	// The YAML block literal (|) preserves the peer list as a raw YAML string value,
+	// which is then unmarshalled by neighborsFromAnnotations on the server side.
+	yamlInput := `annotations=` + metallbAnnotations.AnnotationBGPPeers + `: |
+  - peerAddress: 10.0.0.1
+    peerASN: 65001
+    myASN: 65000
+` + metallbAnnotations.AnnotationAdvertiseAllPools + `: "true"
+`
+
+	var cfg apiv2.UserFacingClusterConfig
+	g.Expect(updateConfigMapstructure(&cfg, yamlInput)).To(Succeed())
+
+	// YAMLToStringMapHookFunc must have decoded the YAML into Annotations.
+	g.Expect(cfg.Annotations).To(HaveKey(metallbAnnotations.AnnotationBGPPeers))
+	g.Expect(cfg.Annotations).To(HaveKeyWithValue(metallbAnnotations.AnnotationAdvertiseAllPools, "true"))
+
+	// The bgp-peers value must itself be a YAML list string, parseable downstream.
+	peersYAML := cfg.Annotations[metallbAnnotations.AnnotationBGPPeers]
+	g.Expect(peersYAML).To(ContainSubstring("peerAddress: 10.0.0.1"))
+	g.Expect(peersYAML).To(ContainSubstring("peerASN: 65001"))
 }
