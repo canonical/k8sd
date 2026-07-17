@@ -3,6 +3,7 @@ package types_test
 import (
 	"testing"
 
+	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
@@ -199,6 +200,90 @@ func TestValidateKubeProxyEnabled(t *testing.T) {
 				g.Expect(err).To(HaveOccurred())
 			} else {
 				g.Expect(err).ToNot(HaveOccurred())
+			}
+		})
+	}
+}
+
+func TestValidateBGPMode(t *testing.T) {
+	bgpLB := func(mode bool, localASN int, peerAddr string, peerASN int) types.LoadBalancer {
+		return types.LoadBalancer{
+			BGPMode:        utils.Pointer(mode),
+			BGPLocalASN:    utils.Pointer(localASN),
+			BGPPeerAddress: utils.Pointer(peerAddr),
+			BGPPeerASN:     utils.Pointer(peerASN),
+		}
+	}
+
+	for _, tc := range []struct {
+		name        string
+		lb          types.LoadBalancer
+		annotations types.Annotations
+		expectErr   bool
+	}{
+		{
+			name:      "BGPDisabled/NoFieldsRequired",
+			lb:        types.LoadBalancer{BGPMode: utils.Pointer(false)},
+			expectErr: false,
+		},
+		{
+			name:      "BGPEnabled/MissingLocalASN",
+			lb:        bgpLB(true, 0, "10.0.0.1", 65001),
+			expectErr: true,
+		},
+		{
+			name:      "BGPEnabled/MissingPeerAddress",
+			lb:        bgpLB(true, 65000, "", 65001),
+			expectErr: true,
+		},
+		{
+			name:      "BGPEnabled/MissingPeerASN",
+			lb:        bgpLB(true, 65000, "10.0.0.1", 0),
+			expectErr: true,
+		},
+		{
+			name:      "BGPEnabled/AllTypedFieldsSet",
+			lb:        bgpLB(true, 65000, "10.0.0.1", 65001),
+			expectErr: false,
+		},
+		{
+			// bgp-peers annotation present: typed peer fields are optional.
+			name: "BGPEnabled/AnnotationPeers/TypedPeerFieldsOmitted",
+			lb: types.LoadBalancer{
+				BGPMode:     utils.Pointer(true),
+				BGPLocalASN: utils.Pointer(65000),
+			},
+			annotations: types.Annotations{
+				metallbAnnotations.AnnotationBGPPeers: "- peerAddress: 10.0.0.1\n  peerASN: 65001\n",
+			},
+			expectErr: false,
+		},
+		{
+			// bgp-local-asn is always required even when annotation is present.
+			name: "BGPEnabled/AnnotationPeers/MissingLocalASN",
+			lb: types.LoadBalancer{
+				BGPMode: utils.Pointer(true),
+			},
+			annotations: types.Annotations{
+				metallbAnnotations.AnnotationBGPPeers: "- peerAddress: 10.0.0.1\n  peerASN: 65001\n",
+			},
+			expectErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			config := types.ClusterConfig{
+				Network: types.Network{
+					PodCIDR:     utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR: utils.Pointer("10.2.0.0/16"),
+				},
+				LoadBalancer: tc.lb,
+				Annotations:  tc.annotations,
+			}
+			if tc.expectErr {
+				g.Expect(config.Validate()).To(HaveOccurred())
+			} else {
+				g.Expect(config.Validate()).ToNot(HaveOccurred())
 			}
 		})
 	}

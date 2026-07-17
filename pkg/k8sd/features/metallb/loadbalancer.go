@@ -3,11 +3,15 @@ package metallb
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 
+	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils/control"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -17,11 +21,100 @@ const (
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
 )
 
+// bgpNeighbor is an internal representation of a single MetalLB BGPPeer.
+type bgpNeighbor struct {
+	peerAddress  string
+	peerASN      int
+	peerPort     int
+	myASN        int
+	nodeSelector map[string]string
+}
+
+// validateBGPNeighbors returns an error if any neighbor in the slice is invalid.
+func validateBGPNeighbors(neighbors []bgpNeighbor) error {
+	for i, n := range neighbors {
+		if n.peerASN < 1 || n.peerASN > 4294967295 {
+			return fmt.Errorf("neighbor[%d]: peerASN %d out of range [1, 4294967295]", i, n.peerASN)
+		}
+		if n.myASN != 0 && (n.myASN < 1 || n.myASN > 4294967295) {
+			return fmt.Errorf("neighbor[%d]: myASN %d out of range [1, 4294967295]", i, n.myASN)
+		}
+		if n.peerPort != 0 && (n.peerPort < 1 || n.peerPort > 65535) {
+			return fmt.Errorf("neighbor[%d]: peerPort %d out of range [1, 65535]", i, n.peerPort)
+		}
+		if net.ParseIP(n.peerAddress) == nil {
+			return fmt.Errorf("neighbor[%d]: invalid peerAddress %q", i, n.peerAddress)
+		}
+		for k := range n.nodeSelector {
+			if k == "" {
+				return fmt.Errorf("neighbor[%d]: nodeSelector has empty key", i)
+			}
+		}
+	}
+	return nil
+}
+
+// neighborsFromAnnotations parses multi-peer BGP configuration from annotations.
+// It returns the neighbor slice, advertiseAllPools flag, a boolean indicating whether
+// the annotation path was active, and any parse error.
+// If the bgp-peers annotation is absent, returns (nil, false, inactive, nil).
+//
+// The annotations are typically supplied via the `annotations` key using YAML block literal syntax:
+//
+//	k8s set annotations="$(cat my-annotations.yaml)"
+//
+// where my-annotations.yaml contains:
+//
+//	k8sd/v1alpha1/metallb/bgp-peers: |
+//	  - peerAddress: 10.0.0.1
+//	    peerASN: 65001
+//	    myASN: 65000
+//	k8sd/v1alpha1/metallb/advertise-all-pools: "true"
+func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, bool, bool, error) {
+	peersYAML, hasPeers := annotations[metallbAnnotations.AnnotationBGPPeers]
+	if !hasPeers {
+		return nil, false, false, nil
+	}
+
+	type peerYAML struct {
+		PeerAddress  string            `yaml:"peerAddress"`
+		PeerASN      int               `yaml:"peerASN"`
+		PeerPort     int               `yaml:"peerPort"`
+		MyASN        int               `yaml:"myASN"`
+		NodeSelector map[string]string `yaml:"nodeSelector"`
+	}
+	var peers []peerYAML
+	if err := yaml.Unmarshal([]byte(peersYAML), &peers); err != nil {
+		return nil, false, true, fmt.Errorf("failed to parse bgp-peers annotation: %w", err)
+	}
+	neighbors := make([]bgpNeighbor, len(peers))
+	for i, p := range peers {
+		neighbors[i] = bgpNeighbor{
+			peerAddress:  p.PeerAddress,
+			peerASN:      p.PeerASN,
+			peerPort:     p.PeerPort,
+			myASN:        p.MyASN,
+			nodeSelector: p.NodeSelector,
+		}
+	}
+
+	advertiseAll := false
+	if v, ok := annotations[metallbAnnotations.AnnotationAdvertiseAllPools]; ok {
+		var err error
+		advertiseAll, err = strconv.ParseBool(v)
+		if err != nil {
+			return nil, false, true, fmt.Errorf("failed to parse advertise-all-pools annotation %q: %w", v, err)
+		}
+	}
+
+	return neighbors, advertiseAll, true, nil
+}
+
 // ApplyLoadBalancer will always return a FeatureStatus indicating the current status of the
 // deployment.
 // ApplyLoadBalancer returns an error if anything fails. The error is also wrapped in the .Message field of the
 // returned FeatureStatus.
-func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, _ types.Annotations) (types.FeatureStatus, error) {
+func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) (types.FeatureStatus, error) {
 	if !loadbalancer.GetEnabled() {
 		if err := disableLoadBalancer(ctx, snap, network); err != nil {
 			err = fmt.Errorf("failed to disable LoadBalancer: %w", err)
@@ -38,7 +131,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		}, nil
 	}
 
-	if err := enableLoadBalancer(ctx, snap, loadbalancer, network); err != nil {
+	if err := enableLoadBalancer(ctx, snap, loadbalancer, network, annotations); err != nil {
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
 			Enabled: false,
@@ -47,12 +140,23 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		}, err
 	}
 
+	// Determine if annotation path is active (key present, regardless of value).
+	_, annotationActive := annotations[metallbAnnotations.AnnotationBGPPeers]
+	bothConfigsSet := annotationActive && loadbalancer.GetBGPPeerAddress() != ""
+
 	switch {
 	case loadbalancer.GetBGPMode():
+		msg := fmt.Sprintf(enabledMsgTmpl, "BGP")
+		if annotationActive {
+			msg = "enabled, BGP mode (alpha)"
+			if bothConfigsSet {
+				msg = "enabled, BGP mode (alpha) - warning: single-peer typed keys are ignored"
+			}
+		}
 		return types.FeatureStatus{
 			Enabled: true,
 			Version: ControllerImageTag,
-			Message: fmt.Sprintf(enabledMsgTmpl, "BGP"),
+			Message: msg,
 		}, nil
 	case loadbalancer.GetL2Mode():
 		return types.FeatureStatus{
@@ -82,7 +186,53 @@ func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Netw
 	return nil
 }
 
-func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network) error {
+// buildLoadBalancerValues constructs the Helm values map for the ck-loadbalancer chart.
+// neighbors is the list of BGP peers to render; advertiseAllPools controls the
+// BGPAdvertisement spec (empty spec when true, named pool when false).
+func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, advertiseAllPools bool) map[string]any {
+	cidrs := []map[string]any{}
+	for _, cidr := range lb.GetCIDRs() {
+		cidrs = append(cidrs, map[string]any{"cidr": cidr})
+	}
+	for _, ipRange := range lb.GetIPRanges() {
+		cidrs = append(cidrs, map[string]any{"start": ipRange.Start, "stop": ipRange.Stop})
+	}
+
+	neighborMaps := make([]map[string]any, 0, len(neighbors))
+	for _, n := range neighbors {
+		nm := map[string]any{
+			"peerAddress": n.peerAddress,
+			"peerASN":     n.peerASN,
+			"peerPort":    n.peerPort,
+		}
+		if n.myASN != 0 {
+			nm["myASN"] = n.myASN
+		}
+		if len(n.nodeSelector) > 0 {
+			nm["nodeSelector"] = n.nodeSelector
+		}
+		neighborMaps = append(neighborMaps, nm)
+	}
+
+	return map[string]any{
+		"driver": "metallb",
+		"l2": map[string]any{
+			"enabled":    lb.GetL2Mode(),
+			"interfaces": lb.GetL2Interfaces(),
+		},
+		"ipPool": map[string]any{
+			"cidrs": cidrs,
+		},
+		"bgp": map[string]any{
+			"enabled":           lb.GetBGPMode(),
+			"localASN":          lb.GetBGPLocalASN(),
+			"neighbors":         neighborMaps,
+			"advertiseAllPools": advertiseAllPools,
+		},
+	}
+}
+
+func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) error {
 	m := snap.HelmClient()
 
 	metalLBValues := map[string]any{
@@ -118,35 +268,48 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		return fmt.Errorf("failed to wait for required MetalLB CRDs: %w", err)
 	}
 
-	cidrs := []map[string]any{}
-	for _, cidr := range loadbalancer.GetCIDRs() {
-		cidrs = append(cidrs, map[string]any{"cidr": cidr})
-	}
-	for _, ipRange := range loadbalancer.GetIPRanges() {
-		cidrs = append(cidrs, map[string]any{"start": ipRange.Start, "stop": ipRange.Stop})
+	var (
+		neighbors    []bgpNeighbor
+		advertiseAll bool
+	)
+
+	annNeighbors, annAdvertiseAll, annActive, err := neighborsFromAnnotations(annotations)
+	if err != nil {
+		// Invalid annotation — do NOT apply broken config. Return error so ApplyLoadBalancer
+		// returns a degraded FeatureStatus. The error message will be shown in k8s status.
+		return fmt.Errorf("invalid BGP peer annotation: %w", err)
 	}
 
-	values := map[string]any{
-		"driver": "metallb",
-		"l2": map[string]any{
-			"enabled":    loadbalancer.GetL2Mode(),
-			"interfaces": loadbalancer.GetL2Interfaces(),
-		},
-		"ipPool": map[string]any{
-			"cidrs": cidrs,
-		},
-		"bgp": map[string]any{
-			"enabled":  loadbalancer.GetBGPMode(),
-			"localASN": loadbalancer.GetBGPLocalASN(),
-			"neighbors": []map[string]any{
-				{
-					"peerAddress": loadbalancer.GetBGPPeerAddress(),
-					"peerASN":     loadbalancer.GetBGPPeerASN(),
-					"peerPort":    loadbalancer.GetBGPPeerPort(),
-				},
-			},
-		},
+	if annActive {
+		// Annotation path: REPLACES single-peer typed keys entirely.
+		neighbors = annNeighbors
+		advertiseAll = annAdvertiseAll
+	} else if loadbalancer.GetBGPMode() {
+		// Fallback: single-peer typed keys (existing behaviour, unchanged).
+		// Only populated in BGP mode — L2 mode leaves neighbors empty and
+		// skips BGP validation entirely.
+		neighbors = []bgpNeighbor{{
+			peerAddress: loadbalancer.GetBGPPeerAddress(),
+			peerASN:     loadbalancer.GetBGPPeerASN(),
+			peerPort:    loadbalancer.GetBGPPeerPort(),
+		}}
+		// advertise-all-pools annotation applies to the typed-key path too.
+		if v, ok := annotations[metallbAnnotations.AnnotationAdvertiseAllPools]; ok {
+			var parseErr error
+			advertiseAll, parseErr = strconv.ParseBool(v)
+			if parseErr != nil {
+				return fmt.Errorf("failed to parse advertise-all-pools annotation %q: %w", v, parseErr)
+			}
+		}
 	}
+
+	// Validate BGP neighbors at reconcile time (fail-late).
+	// Skipped for L2 mode where neighbors is nil.
+	if err := validateBGPNeighbors(neighbors); err != nil {
+		return fmt.Errorf("invalid BGP peers: %w", err)
+	}
+
+	values := buildLoadBalancerValues(loadbalancer, neighbors, advertiseAll)
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StatePresent, values); err != nil {
 		return fmt.Errorf("failed to apply MetalLB LoadBalancer configuration: %w", err)
@@ -155,6 +318,11 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 	return nil
 }
 
+// waitForRequiredLoadBalancerCRDs blocks until the MetalLB CRDs required for
+// the current configuration are registered. The check is presence-only
+// (count-based), independent of how many BGPPeer CRs will be created — so
+// multi-peer configurations (including those driven by the bgp-peers annotation)
+// require no changes here.
 func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMode bool) error {
 	client, err := snap.KubernetesClient("")
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/utils"
 )
 
@@ -141,18 +142,21 @@ func (c *ClusterConfig) Validate() error {
 	}
 
 	// check: load-balancer BGP mode configuration
+	// When the bgp-peers annotation is present it supplies peers at reconcile
+	// time, so the typed single-peer fields are optional. Without it they are
+	// required — restoring the strict pre-multi-peer UX for the common case.
 	if c.LoadBalancer.GetBGPMode() {
 		if c.LoadBalancer.GetBGPLocalASN() == 0 {
 			return fmt.Errorf("load-balancer.bgp-local-asn must be set when load-balancer.bgp-mode is enabled")
 		}
-		if c.LoadBalancer.GetBGPPeerAddress() == "" {
-			return fmt.Errorf("load-balancer.bgp-peer-address must be set when load-balancer.bgp-mode is enabled")
-		}
-		if c.LoadBalancer.GetBGPPeerPort() == 0 {
-			return fmt.Errorf("load-balancer.bgp-peer-port must be set when load-balancer.bgp-mode is enabled")
-		}
-		if c.LoadBalancer.GetBGPPeerASN() == 0 {
-			return fmt.Errorf("load-balancer.bgp-peer-asn must be set when load-balancer.bgp-mode is enabled")
+		_, hasBGPPeersAnnotation := c.Annotations[metallbAnnotations.AnnotationBGPPeers]
+		if !hasBGPPeersAnnotation {
+			if c.LoadBalancer.GetBGPPeerAddress() == "" {
+				return fmt.Errorf("load-balancer.bgp-peer-address must be set when load-balancer.bgp-mode is enabled (or supply peers via the %s annotation)", metallbAnnotations.AnnotationBGPPeers)
+			}
+			if c.LoadBalancer.GetBGPPeerASN() == 0 {
+				return fmt.Errorf("load-balancer.bgp-peer-asn must be set when load-balancer.bgp-mode is enabled (or supply peers via the %s annotation)", metallbAnnotations.AnnotationBGPPeers)
+			}
 		}
 	}
 
