@@ -1,6 +1,6 @@
 module github.com/canonical/k8sd
 
-go 1.25.8
+go 1.26.5
 
 require (
 	dario.cat/mergo v1.0.2
