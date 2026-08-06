@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/spf13/cobra"
@@ -60,10 +59,6 @@ func newGetCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			if config.Network.KubeProxyEnabled == nil {
 				config.Network.KubeProxyEnabled = ptr.To(true)
 			}
-
-			config.MetricsServer = apiv2.MetricsServerConfig{}
-			config.CloudProvider = nil
-			config.Annotations = nil
 
 			var key string
 			if len(args) == 1 {
