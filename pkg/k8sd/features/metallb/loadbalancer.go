@@ -249,15 +249,15 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 				"tag":        speakerImageTag,
 			},
 			"command": "/speaker",
-			// TODO(neoaggelos): make frr enable/disable configurable through an annotation
-			// We keep it disabled by default
 			"frr": map[string]any{
 				"enabled": false,
-				"image": map[string]any{
-					"repository": frrImageRepo,
-					"tag":        frrImageTag,
-				},
 			},
+		},
+		// frrk8s is a top-level value of the MetalLB chart and defaults to
+		// enabled since chart 0.16.0. Keep it disabled, we only support L2 and
+		// the native BGP backend.
+		"frrk8s": map[string]any{
+			"enabled": false,
 		},
 	}
 	if _, err := m.Apply(ctx, ChartMetalLB, helm.StatePresent, metalLBValues); err != nil {
