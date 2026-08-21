@@ -35,16 +35,21 @@ func (e *Endpoints) postClusterJoinTokens(s mctypes.State, r *http.Request) mcty
 		return mctypes.BadRequest(fmt.Errorf("invalid hostname %q: %w", req.Name, err))
 	}
 
-	// Verify that the node name is not already in use by an existing node
 	k8sClient, err := e.provider.Snap().KubernetesClient("")
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
-	if err = checkNodeNameAvailable(r.Context(), k8sClient, hostname); err != nil {
-		if errors.Is(err, errFailedToCheckNodeName) {
-			return mctypes.BadRequest(err)
+
+	// Only verify node name uniqueness if a name was provided.
+	// Some deployments like CAPI may not provide a name; in these cases it is up to the
+	// provider to ensure that the node name is unique.
+	if hostname != "" {
+		if err = checkNodeNameAvailable(r.Context(), k8sClient, hostname); err != nil {
+			if errors.Is(err, errFailedToCheckNodeName) {
+				return mctypes.BadRequest(err)
+			}
+			return mctypes.InternalError(err)
 		}
-		return mctypes.InternalError(err)
 	}
 
 	var token string
