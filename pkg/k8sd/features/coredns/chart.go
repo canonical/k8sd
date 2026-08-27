@@ -11,12 +11,13 @@ var (
 	Chart = helm.InstallableChart{
 		Name:         "ck-dns",
 		Namespace:    "kube-system",
-		ManifestPath: filepath.Join("charts", "coredns-1.39.2.tgz"),
+		ManifestPath: filepath.Join("charts", "coredns-1.47.0.tgz"),
 	}
 
 	// imageRepo is the image to use for CoreDNS.
 	imageRepo = "ghcr.io/canonical/coredns"
 
 	// ImageTag is the tag to use for the CoreDNS image.
-	ImageTag = "1.14.6-ck0"
+	// TODO(Hue): need to add the 1.14.7 to the coredns-rocks repo
+	ImageTag = "1.14.7-ck0"
 )
