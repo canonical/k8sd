@@ -24,14 +24,6 @@ import (
 
 // Config defines configuration for the k8sd app.
 type Config struct {
-	// Debug increases log message verbosity.
-	//
-	// Deprecated: No longer affects the underlying Microcluster.
-	Debug bool
-	// Verbose increases log message verbosity.
-	//
-	// Deprecated: No longer affects the underlying Microcluster.
-	Verbose bool
 	// StateDir is the local directory to store the state of the node.
 	StateDir string
 	// Snap is the snap instance to use.
