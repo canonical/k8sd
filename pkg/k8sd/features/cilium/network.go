@@ -206,6 +206,17 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		"tunnelPort": config.tunnelPort,
 	}
 
+	if config.clusterID != 0 || config.clusterName != "" {
+		clusterValues := map[string]any{
+			"id":   config.clusterID,
+			"name": config.clusterName,
+		}
+		if clusterValues["name"] == "" {
+			clusterValues["name"] = ciliumDefaultClusterName
+		}
+		values["cluster"] = clusterValues
+	}
+
 	// Revert these values to default in case they were changed in previous versions
 	if ipv4CIDR == "" && ipv6CIDR != "" {
 		values["routingMode"] = "tunnel"
