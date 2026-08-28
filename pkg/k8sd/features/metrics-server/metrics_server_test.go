@@ -115,4 +115,29 @@ func TestApplyMetricsServer(t *testing.T) {
 		)))))
 		g.Expect(status.Message).To(Equal("enabled"))
 	})
+
+	t.Run("ControlPlaneToleration", func(t *testing.T) {
+		g := NewWithT(t)
+		h := &helmmock.Mock{}
+		s := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient: h,
+			},
+		}
+
+		cfg := types.MetricsServer{
+			Enabled: utils.Pointer(true),
+		}
+
+		_, err := metrics_server.ApplyMetricsServer(context.Background(), s, cfg, nil)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		g.Expect(h.ApplyCalledWith).To(ConsistOf(HaveField("Values", HaveKeyWithValue(
+			"tolerations", ConsistOf(SatisfyAll(
+				HaveKeyWithValue("key", "node-role.kubernetes.io/control-plane"),
+				HaveKeyWithValue("operator", "Exists"),
+				HaveKeyWithValue("effect", "NoSchedule"),
+			)),
+		))))
+	})
 }
