@@ -36,6 +36,13 @@ func ApplyMetricsServer(ctx context.Context, snap snap.Snap, cfg types.MetricsSe
 			// ROCKs with Pebble as the entrypoint do not work with this option.
 			"readOnlyRootFilesystem": false,
 		},
+		"tolerations": []map[string]any{
+			{
+				"key":      "node-role.kubernetes.io/control-plane",
+				"operator": "Exists",
+				"effect":   "NoSchedule",
+			},
+		},
 	}
 
 	_, err := m.Apply(ctx, chart, helm.StatePresentOrDeleted(cfg.GetEnabled()), values)
