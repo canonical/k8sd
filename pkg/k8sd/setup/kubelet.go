@@ -52,7 +52,6 @@ func kubelet(snap snap.Snap, hostname string, nodeIPs []net.IP, clusterDNS strin
 		"--anonymous-auth":               "false",
 		"--authentication-token-webhook": "true",
 		"--client-ca-file":               filepath.Join(snap.KubernetesPKIDir(), "client-ca.crt"),
-		"--containerd":                   snap.ContainerdSocketPath(),
 		"--container-runtime-endpoint":   snap.ContainerdSocketPath(),
 		"--cgroup-driver":                "systemd",
 		"--eviction-hard":                "memory.available<100Mi,nodefs.available<1Gi,imagefs.available<1Gi",
