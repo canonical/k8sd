@@ -33,8 +33,8 @@ func (a *App) postRefreshHook(ctx context.Context, s mctypes.State) error {
 		return fmt.Errorf("failed to update node IP addresses: %w", err)
 	}
 
-	if err := a.removeDeprecatedKubeletFlags(ctx); err != nil {
-		return fmt.Errorf("failed to remove deprecated kubelet flags: %w", err)
+	if err := a.reconcileContainerdKubeletFlag(ctx); err != nil {
+		return fmt.Errorf("failed to reconcile containerd kubelet flag: %w", err)
 	}
 
 	isWorker, err := snaputil.IsWorker(a.snap)
@@ -182,25 +182,42 @@ func (a *App) updateNodeIPAddresses(ctx context.Context, s mctypes.State) error 
 	return nil
 }
 
-// removeDeprecatedKubeletFlags removes kubelet flags that were deprecated and removed in newer
-// Kubernetes versions from the persisted args file. This handles nodes that are upgrading from
-// an older snap release where these flags were still written on bootstrap.
+// reconcileContainerdKubeletFlag ensures the --containerd kubelet flag matches what the
+// node's currently running Kubernetes version expects.
 //
-// --containerd: removed in Kubernetes 1.37. Nodes upgrading from 1.36 will have this flag in
-// their args file, causing kubelet to fail to start with the 1.37 binary.
-func (a *App) removeDeprecatedKubeletFlags(ctx context.Context) error {
+// The flag was removed in Kubernetes 1.37: the 1.37 kubelet rejects it outright, while the
+// 1.36 (and earlier) kubelet requires it to locate the containerd socket at the snap-specific
+// path. This hook runs on every refresh regardless of direction (upgrade to 1.37 or downgrade
+// back to 1.36), so we reconcile the flag based on the node's own version rather than assuming
+// a single direction.
+func (a *App) reconcileContainerdKubeletFlag(ctx context.Context) error {
 	snap := a.Snap()
 
-	mustRestartKubelet, err := snaputil.UpdateServiceArguments(snap, "kubelet", nil, []string{"--containerd"})
+	nodeVersion, err := snap.NodeKubernetesVersion(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to remove deprecated --containerd flag from kubelet args: %w", err)
+		return fmt.Errorf("failed to get node Kubernetes version: %w", err)
+	}
+
+	var mustRestartKubelet bool
+	if nodeVersion.Minor() >= 37 {
+		// --containerd removed in Kubernetes 1.37; the 1.37 kubelet rejects it.
+		mustRestartKubelet, err = snaputil.UpdateServiceArguments(snap, "kubelet", nil, []string{"--containerd"})
+		if err != nil {
+			return fmt.Errorf("failed to remove deprecated --containerd flag from kubelet args: %w", err)
+		}
+	} else {
+		// 1.36 (and earlier) kubelet still requires --containerd to locate the socket.
+		mustRestartKubelet, err = snaputil.UpdateServiceArguments(snap, "kubelet", map[string]string{"--containerd": snap.ContainerdSocketPath()}, nil)
+		if err != nil {
+			return fmt.Errorf("failed to restore --containerd flag in kubelet args: %w", err)
+		}
 	}
 
 	if mustRestartKubelet {
 		// This may fail if other controllers try to restart the services at the same time, hence the retry.
 		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
 			if err := snap.RestartServices(ctx, []string{"kubelet"}); err != nil {
-				return fmt.Errorf("failed to restart kubelet after removing deprecated flags: %w", err)
+				return fmt.Errorf("failed to restart kubelet after reconciling containerd flag: %w", err)
 			}
 			return nil
 		}); err != nil {
