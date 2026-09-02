@@ -11,7 +11,7 @@ var (
 	chart = helm.InstallableChart{
 		Name:         "metrics-server",
 		Namespace:    "kube-system",
-		ManifestPath: filepath.Join("charts", "metrics-server-3.12.2.tgz"),
+		ManifestPath: filepath.Join("charts", "metrics-server-3.14.0.tgz"),
 	}
 
 	// imageRepo is the image to use for metrics-server.
