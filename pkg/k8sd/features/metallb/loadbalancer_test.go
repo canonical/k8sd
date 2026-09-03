@@ -185,6 +185,51 @@ func TestEnabled(t *testing.T) {
 		}
 		validateLoadBalancerValues(g, secondCallArgs.Values, lbCfg, expectedNeighbors)
 	})
+	t.Run("ControlPlaneToleration", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		clientset := fake.NewSimpleClientset()
+		fd, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		g.Expect(ok).To(BeTrue())
+		fd.Resources = []*metav1.APIResourceList{
+			{
+				GroupVersion: "metallb.io/v1beta1",
+				APIResources: []metav1.APIResource{
+					{Name: "ipaddresspools"},
+					{Name: "l2advertisements"},
+				},
+			},
+			{GroupVersion: "metallb.io/v1beta2"},
+		}
+		snapM := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient: helmM,
+				KubernetesClient: &kubernetes.Client{
+					Interface: clientset,
+				},
+			},
+		}
+		lbCfg := types.LoadBalancer{
+			Enabled:      ptr.To(true),
+			L2Mode:       ptr.To(true),
+			L2Interfaces: ptr.To([]string{"eth0"}),
+			CIDRs:        ptr.To([]string{"192.0.2.0/24"}),
+		}
+
+		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		// Unlike the speaker DaemonSet, the controller Deployment carries no
+		// toleration in the upstream chart, so it never schedules on a cluster
+		// whose only ready nodes are tainted control-plane nodes.
+		controller := helmM.ApplyCalledWith[0].Values["controller"].(map[string]any)
+		g.Expect(controller["tolerations"]).To(ConsistOf(SatisfyAll(
+			HaveKeyWithValue("key", "node-role.kubernetes.io/control-plane"),
+			HaveKeyWithValue("operator", "Exists"),
+			HaveKeyWithValue("effect", "NoSchedule"),
+		)))
+	})
 }
 
 func validateLoadBalancerValues(g Gomega, values map[string]interface{}, lbCfg types.LoadBalancer, expectedNeighbors []map[string]any) {
