@@ -242,6 +242,18 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 				"tag":        ControllerImageTag,
 			},
 			"command": "/controller",
+			// The speaker DaemonSet tolerates the control-plane taint through the
+			// chart's own defaults, the controller Deployment does not. Without this
+			// it stays Pending on a cluster whose control-plane nodes are tainted and
+			// no untainted node has joined yet, leaving the validating webhook for
+			// IPAddressPool unreachable.
+			"tolerations": []map[string]any{
+				{
+					"key":      "node-role.kubernetes.io/control-plane",
+					"operator": "Exists",
+					"effect":   "NoSchedule",
+				},
+			},
 		},
 		"speaker": map[string]any{
 			"image": map[string]any{
