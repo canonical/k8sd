@@ -33,6 +33,10 @@ func (a *App) postRefreshHook(ctx context.Context, s mctypes.State) error {
 		return fmt.Errorf("failed to update node IP addresses: %w", err)
 	}
 
+	if err := a.removeDeprecatedKubeletFlags(ctx); err != nil {
+		return fmt.Errorf("failed to remove deprecated kubelet flags: %w", err)
+	}
+
 	isWorker, err := snaputil.IsWorker(a.snap)
 	if err != nil {
 		return fmt.Errorf("failed to check if node is a worker: %w", err)
@@ -172,6 +176,35 @@ func (a *App) updateNodeIPAddresses(ctx context.Context, s mctypes.State) error 
 			}); err != nil {
 				return fmt.Errorf("failed after retry: %w", err)
 			}
+		}
+	}
+
+	return nil
+}
+
+// removeDeprecatedKubeletFlags removes kubelet flags that were deprecated and removed in newer
+// Kubernetes versions from the persisted args file. This handles nodes that are upgrading from
+// an older snap release where these flags were still written on bootstrap.
+//
+// --containerd: removed in Kubernetes 1.37. Nodes upgrading from 1.36 will have this flag in
+// their args file, causing kubelet to fail to start with the 1.37 binary.
+func (a *App) removeDeprecatedKubeletFlags(ctx context.Context) error {
+	snap := a.Snap()
+
+	mustRestartKubelet, err := snaputil.UpdateServiceArguments(snap, "kubelet", nil, []string{"--containerd"})
+	if err != nil {
+		return fmt.Errorf("failed to remove deprecated --containerd flag from kubelet args: %w", err)
+	}
+
+	if mustRestartKubelet {
+		// This may fail if other controllers try to restart the services at the same time, hence the retry.
+		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+			if err := snap.RestartServices(ctx, []string{"kubelet"}); err != nil {
+				return fmt.Errorf("failed to restart kubelet after removing deprecated flags: %w", err)
+			}
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed after retry: %w", err)
 		}
 	}
 
