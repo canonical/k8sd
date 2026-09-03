@@ -33,6 +33,10 @@ func (a *App) postRefreshHook(ctx context.Context, s mctypes.State) error {
 		return fmt.Errorf("failed to update node IP addresses: %w", err)
 	}
 
+	if err := a.restoreContainerdKubeletFlag(ctx); err != nil {
+		return fmt.Errorf("failed to restore containerd kubelet flag: %w", err)
+	}
+
 	isWorker, err := snaputil.IsWorker(a.snap)
 	if err != nil {
 		return fmt.Errorf("failed to check if node is a worker: %w", err)
@@ -172,6 +176,32 @@ func (a *App) updateNodeIPAddresses(ctx context.Context, s mctypes.State) error 
 			}); err != nil {
 				return fmt.Errorf("failed after retry: %w", err)
 			}
+		}
+	}
+
+	return nil
+}
+
+// restoreContainerdKubeletFlag ensures --containerd is present in the persisted kubelet args.
+// Nodes downgrading from 1.37 will have had this flag removed; the 1.36 kubelet requires it
+// to locate the containerd socket.
+func (a *App) restoreContainerdKubeletFlag(ctx context.Context) error {
+	snap := a.Snap()
+
+	mustRestartKubelet, err := snaputil.UpdateServiceArguments(snap, "kubelet", map[string]string{"--containerd": snap.ContainerdSocketPath()}, nil)
+	if err != nil {
+		return fmt.Errorf("failed to restore --containerd flag in kubelet args: %w", err)
+	}
+
+	if mustRestartKubelet {
+		// This may fail if other controllers try to restart the services at the same time, hence the retry.
+		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+			if err := snap.RestartServices(ctx, []string{"kubelet"}); err != nil {
+				return fmt.Errorf("failed to restart kubelet: %w", err)
+			}
+			return nil
+		}); err != nil {
+			return fmt.Errorf("failed after retry: %w", err)
 		}
 	}
 
