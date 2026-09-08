@@ -103,6 +103,12 @@ var knownSetKeys = map[string]struct{}{
 	fmt.Sprintf("%s.kube-proxy-enabled", features.Network):    {},
 }
 
+// annotationKeyPrefix marks a single-annotation argument, e.g.
+// `annotations.k8sd/v1alpha1/cilium/devices=bond0,bond1`. Annotation values commonly
+// contain commas, which the map decode hooks treat as entry separators, so these are
+// assigned directly instead of going through mapstructure.
+const annotationKeyPrefix = "annotations."
+
 func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string) error {
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		TagName:          "json",
@@ -126,6 +132,17 @@ func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string)
 	}
 	key := parts[0]
 	value := parts[1]
+
+	if name, ok := strings.CutPrefix(key, annotationKeyPrefix); ok {
+		if name == "" {
+			return fmt.Errorf("missing annotation name after %q", annotationKeyPrefix)
+		}
+		if config.Annotations == nil {
+			config.Annotations = map[string]string{}
+		}
+		config.Annotations[name] = value
+		return nil
+	}
 
 	if _, ok := knownSetKeys[key]; !ok {
 		return fmt.Errorf("unknown option key %q", key)

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
+	ciliumAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
 	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
@@ -237,4 +238,35 @@ func Test_updateConfigMapstructure_annotationsYAMLBlockLiteral(t *testing.T) {
 	peersYAML := cfg.Annotations[metallbAnnotations.AnnotationBGPPeers]
 	g.Expect(peersYAML).To(ContainSubstring("peerAddress: 10.0.0.1"))
 	g.Expect(peersYAML).To(ContainSubstring("peerASN: 65001"))
+}
+
+// Test_updateConfigMapstructure_singleAnnotation verifies the
+// `annotations.<key>=<value>` form, which must keep commas in the value intact:
+//
+//	k8s set annotations.k8sd/v1alpha1/cilium/devices="bond0,bond1.100"
+func Test_updateConfigMapstructure_singleAnnotation(t *testing.T) {
+	t.Run("KeepsCommasInValue", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var cfg apiv2.UserFacingClusterConfig
+		g.Expect(updateConfigMapstructure(&cfg, "annotations."+ciliumAnnotations.AnnotationDevices+"=bond0,bond1.100")).To(Succeed())
+		g.Expect(cfg.Annotations).To(HaveKeyWithValue(ciliumAnnotations.AnnotationDevices, "bond0,bond1.100"))
+	})
+
+	t.Run("MergesWithOtherAnnotations", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var cfg apiv2.UserFacingClusterConfig
+		g.Expect(updateConfigMapstructure(&cfg, "annotations."+ciliumAnnotations.AnnotationDevices+"=bond+")).To(Succeed())
+		g.Expect(updateConfigMapstructure(&cfg, "annotations."+ciliumAnnotations.AnnotationDirectRoutingDevice+"=bond0")).To(Succeed())
+		g.Expect(cfg.Annotations).To(HaveKeyWithValue(ciliumAnnotations.AnnotationDevices, "bond+"))
+		g.Expect(cfg.Annotations).To(HaveKeyWithValue(ciliumAnnotations.AnnotationDirectRoutingDevice, "bond0"))
+	})
+
+	t.Run("RejectsMissingAnnotationName", func(t *testing.T) {
+		g := NewWithT(t)
+
+		var cfg apiv2.UserFacingClusterConfig
+		g.Expect(updateConfigMapstructure(&cfg, "annotations.=value")).ToNot(Succeed())
+	})
 }
