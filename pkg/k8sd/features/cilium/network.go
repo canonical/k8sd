@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 
+	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
@@ -18,12 +19,21 @@ import (
 const (
 	NetworkDeleteFailedMsgTmpl = "Failed to delete Cilium Network, the error was: %v"
 	NetworkDeployFailedMsgTmpl = "Failed to deploy Cilium Network, the error was: %v"
+	// NetworkDevicesWarningMsgTmpl is reported when the configured Cilium devices do
+	// not cover the device that carries the node's default route. Cilium reverse-NATs
+	// the reply of a LoadBalancer/NodePort connection that is served by a pod on the
+	// ingress node in its egress program. The kernel routes that reply with the pod IP
+	// as source, so with source based policy routing it can leave through the default
+	// route device. If Cilium does not manage that device, the reply escapes the node
+	// untranslated and the client never sees it.
+	NetworkDevicesWarningMsgTmpl = "enabled. Warning: the %q annotation (%q) does not match the default route device %q. Reply traffic of LoadBalancer/NodePort connections served by a pod on this node may leave %q without reverse NAT. Add it to the annotation."
 )
 
 // required for unittests.
 var (
 	GetMountPath            = utils.GetMountPath
 	GetMountPropagationType = utils.GetMountPropagationType
+	GetDefaultRouteDevice   = utils.GetDefaultRouteDevice
 )
 
 // Cilium uses vxlan encapsulation protocol by default. Since we are using the default
@@ -89,6 +99,11 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 			Message: fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
 		}, err
 	}
+
+	// Cilium only reverse-NATs and re-routes the reply of a LoadBalancer/NodePort
+	// connection on devices it manages, so the device carrying the default route must
+	// be part of the filter (that is where the kernel sends those replies).
+	devicesWarning := checkDevicesCoverDefaultRoute(ctx, config.devices)
 
 	localhostAddress, err := utils.GetLocalhostAddress()
 	if err != nil {
@@ -303,11 +318,44 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}, err
 	}
 
+	message := EnabledMsg
+	if devicesWarning != "" {
+		message = devicesWarning
+	}
+
 	return types.FeatureStatus{
 		Enabled: true,
 		Version: CiliumAgentImageTag,
-		Message: EnabledMsg,
+		Message: message,
 	}, nil
+}
+
+// checkDevicesCoverDefaultRoute returns a warning message if the given Cilium
+// `devices` filter is set but does not select the device that carries the node's
+// default route. It returns an empty string when the filter is unset (Cilium then
+// detects the devices itself and always includes the default route device), when the
+// filter covers that device, or when the device cannot be determined.
+func checkDevicesCoverDefaultRoute(ctx context.Context, devices string) string {
+	if devices == "" {
+		return ""
+	}
+
+	logger := log.FromContext(ctx)
+
+	defaultRouteDevice, err := GetDefaultRouteDevice()
+	if err != nil {
+		logger.Error(err, "Failed to determine the default route device, skipping Cilium devices check")
+		return ""
+	}
+
+	if matchesDeviceFilter(devices, defaultRouteDevice) {
+		return ""
+	}
+
+	message := fmt.Sprintf(NetworkDevicesWarningMsgTmpl, apiv1_annotations.AnnotationDevices, devices, defaultRouteDevice, defaultRouteDevice)
+	logger.Info(message, "devices", devices, "defaultRouteDevice", defaultRouteDevice)
+
+	return message
 }
 
 func rolloutRestartCilium(ctx context.Context, snap snap.Snap, attempts int) error {

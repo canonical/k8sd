@@ -199,3 +199,27 @@ func TestInternalConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestMatchesDeviceFilter(t *testing.T) {
+	for _, tc := range []struct {
+		devices string
+		device  string
+		expect  bool
+	}{
+		{devices: "eth0", device: "eth0", expect: true},
+		{devices: "eth0", device: "eth1", expect: false},
+		{devices: "eth1,eth2", device: "eth0", expect: false},
+		{devices: "bond0,bond1.100", device: "bond1.100", expect: true},
+		{devices: "eth+ lxdbr+", device: "eth0", expect: true},
+		{devices: "eth+ lxdbr+", device: "bond0", expect: false},
+		{devices: "bond+", device: "bond1.100", expect: true},
+		// A prefix match must not be confused with a partial name.
+		{devices: "eth0", device: "eth0.100", expect: false},
+		{devices: "", device: "eth0", expect: false},
+	} {
+		t.Run(tc.devices+"/"+tc.device, func(t *testing.T) {
+			g := NewWithT(t)
+			g.Expect(matchesDeviceFilter(tc.devices, tc.device)).To(Equal(tc.expect))
+		})
+	}
+}

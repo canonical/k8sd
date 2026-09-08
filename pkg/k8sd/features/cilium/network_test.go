@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
@@ -31,6 +32,13 @@ import (
 var annotations = types.Annotations{
 	apiv1_annotations.AnnotationDevices:             "eth+ lxdbr+",
 	apiv1_annotations.AnnotationDirectRoutingDevice: "eth0",
+}
+
+// TestMain pins the default route device so that the devices check in ApplyNetwork
+// does not depend on the network configuration of the machine running the tests.
+func TestMain(m *testing.M) {
+	cilium.GetDefaultRouteDevice = func() (string, error) { return "eth0", nil }
+	os.Exit(m.Run())
 }
 
 func TestNetworkDisabled(t *testing.T) {
@@ -312,6 +320,51 @@ func TestNetworkEnabled(t *testing.T) {
 
 			sctpValues := callArgs.Values["sctp"].(map[string]interface{})
 			g.Expect(sctpValues["enabled"]).To(BeTrue())
+		})
+
+		t.Run("DevicesWithoutDefaultRouteDevice", func(t *testing.T) {
+			g := NewWithT(t)
+
+			helmM := &helmmock.Mock{}
+			clientset := fake.NewSimpleClientset(
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium-operator",
+						Namespace: "kube-system",
+					},
+				},
+				&appsv1.DaemonSet{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium",
+						Namespace: "kube-system",
+					},
+				},
+			)
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			// TestMain pins the default route device to eth0, which this list excludes.
+			testAnnotations := types.Annotations{
+				apiv1_annotations.AnnotationDevices: "eth1,eth2",
+			}
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, testAnnotations)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(Equal(fmt.Sprintf(cilium.NetworkDevicesWarningMsgTmpl, apiv1_annotations.AnnotationDevices, "eth1,eth2", "eth0", "eth0")))
+			g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+			g.Expect(helmM.ApplyCalledWith[0].Values["devices"]).To(Equal("eth1,eth2"))
 		})
 	})
 }

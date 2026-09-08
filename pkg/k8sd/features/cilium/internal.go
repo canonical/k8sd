@@ -38,6 +38,22 @@ func validatePort(portStr string) (int, error) {
 	return port, nil
 }
 
+// matchesDeviceFilter reports whether device is selected by the Cilium `devices`
+// filter list. The list may be comma or whitespace separated and an entry ending
+// with `+` is a prefix match, mirroring Cilium's own DeviceFilter semantics.
+func matchesDeviceFilter(devices string, device string) bool {
+	for _, entry := range strings.FieldsFunc(devices, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }) {
+		if prefix, wildcard := strings.CutSuffix(entry, "+"); wildcard {
+			if strings.HasPrefix(device, prefix) {
+				return true
+			}
+		} else if device == entry {
+			return true
+		}
+	}
+	return false
+}
+
 func validateVLANBPFBypass(vlanList string) ([]int, error) {
 	vlanList = strings.TrimSpace(vlanList)
 	// Maintain compatibility with the Cilium chart definition
