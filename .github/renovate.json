@@ -1,5 +1,5 @@
 {
     "extends": [
-      "config:go"
+      "config:recommended"
     ]
 }
