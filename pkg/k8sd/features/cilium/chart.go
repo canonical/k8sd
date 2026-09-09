@@ -50,4 +50,8 @@ var (
 	ciliumDefaultVXLANPort = 8472
 
 	ciliumVXLANDeviceName = "cilium_vxlan"
+
+	// ciliumDefaultClusterName is the default Cilium cluster name, as
+	// defined by the Cilium chart.
+	ciliumDefaultClusterName = "default"
 )

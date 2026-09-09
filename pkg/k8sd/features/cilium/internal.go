@@ -16,6 +16,10 @@ const (
 	minVLANIDValue = 0
 	// maxVLANIDValue is the maximum valid 802.1Q VLAN ID value.
 	maxVLANIDValue = 4094
+	// minClusterIDValue is the minimum valid Cilium cluster ID value.
+	minClusterIDValue = 0
+	// maxClusterIDValue is the maximum valid Cilium cluster ID value.
+	maxClusterIDValue = 255
 )
 
 type config struct {
@@ -25,6 +29,8 @@ type config struct {
 	cniExclusive        bool
 	sctpEnabled         bool
 	tunnelPort          int
+	clusterID           int
+	clusterName         string
 }
 
 func validatePort(portStr string) (int, error) {
@@ -36,6 +42,40 @@ func validatePort(portStr string) (int, error) {
 		return 0, errors.New("invalid port: out of range")
 	}
 	return port, nil
+}
+
+func validateClusterID(clusterIDStr string) (int, error) {
+	clusterID, err := strconv.Atoi(clusterIDStr)
+	if err != nil {
+		return 0, errors.New("invalid cluster ID: not a number")
+	}
+	if clusterID < minClusterIDValue || clusterID > maxClusterIDValue {
+		return 0, fmt.Errorf("invalid cluster ID: must be between %d and %d", minClusterIDValue, maxClusterIDValue)
+	}
+	return clusterID, nil
+}
+
+// validateClusterName checks the cluster name against the constraints defined
+// by the Cilium chart: it must contain at most 32 characters, begin and end
+// with a lower case alphanumeric character and may only contain lower case
+// alphanumeric characters and dashes between.
+func validateClusterName(clusterName string) error {
+	if clusterName == "" {
+		return errors.New("invalid cluster name: must not be empty")
+	}
+	if len(clusterName) > 32 {
+		return errors.New("invalid cluster name: must contain at most 32 characters")
+	}
+	for i, r := range clusterName {
+		isLowerAlnum := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if !isLowerAlnum && r != '-' {
+			return fmt.Errorf("invalid cluster name: character %q is not a lower case alphanumeric character or a dash", r)
+		}
+		if r == '-' && (i == 0 || i == len(clusterName)-1) {
+			return errors.New("invalid cluster name: must begin and end with a lower case alphanumeric character")
+		}
+	}
+	return nil
 }
 
 func validateVLANBPFBypass(vlanList string) ([]int, error) {
@@ -103,6 +143,29 @@ func internalConfig(annotations types.Annotations) (config, error) {
 		c.tunnelPort = tunnelPort
 	} else {
 		c.tunnelPort = ciliumDefaultVXLANPort
+	}
+
+	if v, ok := annotations.Get(apiv1_annotations.AnnotationClusterID); ok {
+		clusterID, err := validateClusterID(v)
+		if err != nil {
+			return config{}, fmt.Errorf("failed to parse cluster ID: %w", err)
+		}
+
+		c.clusterID = clusterID
+	}
+
+	if v, ok := annotations.Get(apiv1_annotations.AnnotationClusterName); ok {
+		if err := validateClusterName(v); err != nil {
+			return config{}, fmt.Errorf("failed to parse cluster name: %w", err)
+		}
+
+		c.clusterName = v
+	}
+
+	// The Cilium chart does not allow the name "default" with a non-zero
+	// cluster ID.
+	if c.clusterID != 0 && (c.clusterName == "" || c.clusterName == ciliumDefaultClusterName) {
+		return config{}, fmt.Errorf("cluster name %q cannot be used with a non-zero cluster ID: set the %q annotation", ciliumDefaultClusterName, apiv1_annotations.AnnotationClusterName)
 	}
 
 	return c, nil
