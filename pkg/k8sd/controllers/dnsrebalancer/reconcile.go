@@ -168,7 +168,6 @@ func countReadyNodes(nodeList *corev1.NodeList) int {
 	return readyCount
 }
 
-
 func countSchedulableNodes(nodeList *corev1.NodeList) int {
 	count := 0
 	for i := range nodeList.Items {
