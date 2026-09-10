@@ -3,12 +3,16 @@ package dnsrebalancer
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/canonical/k8sd/pkg/k8sd/types"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -293,4 +297,73 @@ func TestCoreDNSNeedsRebalancing_NoPods(t *testing.T) {
 
 	g.Expect(err.Error()).To(Equal("no CoreDNS pods found"))
 	g.Expect(needsRebalancing).To(BeFalse())
+}
+
+func TestReconcile_DeletesOneCoLocatedPod(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+	enabled := true
+	_ = appsv1.AddToScheme(scheme.Scheme)
+
+	nodes := []corev1.Node{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
+			Status: corev1.NodeStatus{
+				Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "node-2"},
+			Status: corev1.NodeStatus{
+				Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}},
+			},
+		},
+	}
+	pods := []corev1.Pod{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:         "kube-system",
+				Name:              "coredns-1",
+				Labels:            map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
+				CreationTimestamp: metav1.NewTime(time.Now().Add(-time.Minute)),
+			},
+			Spec:   corev1.PodSpec{NodeName: "node-1"},
+			Status: corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:         "kube-system",
+				Name:              "coredns-2",
+				Labels:            map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
+				CreationTimestamp: metav1.NewTime(time.Now().Add(-time.Minute)),
+			},
+			Spec:   corev1.PodSpec{NodeName: "node-1"},
+			Status: corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
+		},
+	}
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "coredns", Namespace: "kube-system"},
+		Status:     appsv1.DeploymentStatus{Replicas: 2, ReadyReplicas: 2},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme.Scheme).
+		WithObjects(&nodes[0], &nodes[1], &pods[0], &pods[1], deployment).
+		Build()
+
+	reconciler := &controller{
+		logger: ctrl.Log.WithName("test"),
+		client: fakeClient,
+		getClusterConfig: func(context.Context) (types.ClusterConfig, error) {
+			return types.ClusterConfig{DNS: types.DNS{Enabled: &enabled}}, nil
+		},
+	}
+
+	result, err := reconciler.Reconcile(ctx, ctrl.Request{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: requeueInterval}))
+
+	remaining := &corev1.PodList{}
+	g.Expect(fakeClient.List(ctx, remaining, client.InNamespace("kube-system"))).To(Succeed())
+	g.Expect(remaining.Items).To(HaveLen(1), "exactly one co-located pod should be deleted")
 }
