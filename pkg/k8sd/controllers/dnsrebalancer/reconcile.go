@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	requeueInterval       = 30 * time.Second
 	minRebalanceInterval  = 30 * time.Second
 	restartedAtAnnotation = "kubectl.kubernetes.io/restartedAt"
 	controlPlaneTaintKey  = "node-role.kubernetes.io/control-plane"
@@ -54,12 +53,6 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if schedulableCount < 2 {
 		log.V(1).Info("Less than 2 nodes are schedulable for CoreDNS, skipping rebalancing",
 			"readyCount", readyCount, "schedulableCount", schedulableCount)
-		// Two Ready nodes can still be unschedulable (e.g. Cilium
-		// node.cilium.io/agent-not-ready). Requeue so we retry when the taint
-		// is cleared even if that Node update is missed.
-		if readyCount >= 2 {
-			return ctrl.Result{RequeueAfter: requeueInterval}, nil
-		}
 		return ctrl.Result{}, nil
 	}
 
@@ -68,7 +61,7 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// Check if rebalancing is needed
 	needsRebalancing, err := r.coreDNSNeedsRebalancing(ctx)
 	if err != nil {
-		return ctrl.Result{RequeueAfter: requeueInterval}, fmt.Errorf("failed to check CoreDNS pods distribution: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to check CoreDNS pods distribution: %w", err)
 	}
 
 	if !needsRebalancing {
@@ -78,30 +71,30 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	deployment := &appsv1.Deployment{}
 	if err := r.client.Get(ctx, client.ObjectKey{Namespace: corednsNamespace, Name: corednsDeployment}, deployment); err != nil {
 		if apierrors.IsNotFound(err) {
-			return ctrl.Result{RequeueAfter: requeueInterval}, nil
+			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get CoreDNS deployment: %w", err)
 	}
 	if deployment.Status.UnavailableReplicas > 0 || deployment.Status.ReadyReplicas != deployment.Status.Replicas {
 		log.V(1).Info("CoreDNS deployment rollout already in progress, skipping rebalance")
-		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+		return ctrl.Result{}, nil
 	}
 	if restartedRecently(deployment) {
 		log.V(1).Info("CoreDNS deployment was recently restarted, skipping rebalance")
-		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+		return ctrl.Result{}, nil
 	}
 
 	scheduled, err := r.scheduledCoreDNSPods(ctx)
 	if err != nil {
-		return ctrl.Result{RequeueAfter: requeueInterval}, err
+		return ctrl.Result{}, err
 	}
 	for _, pod := range scheduled {
 		if pod.DeletionTimestamp != nil {
-			return ctrl.Result{RequeueAfter: requeueInterval}, nil
+			return ctrl.Result{}, nil
 		}
 		if !podReady(&pod) || (!pod.CreationTimestamp.IsZero() && time.Since(pod.CreationTimestamp.Time) < minRebalanceInterval) {
 			log.V(1).Info("CoreDNS pods are not yet settled, skipping rebalance")
-			return ctrl.Result{RequeueAfter: requeueInterval}, nil
+			return ctrl.Result{}, nil
 		}
 	}
 
@@ -117,7 +110,7 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	log.Info("Successfully triggered CoreDNS deployment restart")
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	return ctrl.Result{}, nil
 }
 
 func (r *controller) scheduledCoreDNSPods(ctx context.Context) ([]corev1.Pod, error) {

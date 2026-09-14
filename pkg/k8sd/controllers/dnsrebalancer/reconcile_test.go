@@ -365,7 +365,7 @@ func TestReconcile_RestartsDeploymentForCoLocatedPods(t *testing.T) {
 
 	result, err := reconciler.Reconcile(ctx, ctrl.Request{})
 	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: requeueInterval}))
+	g.Expect(result).To(Equal(ctrl.Result{}))
 
 	restartedDeployment, err := k8sClient.AppsV1().Deployments("kube-system").Get(ctx, "coredns", metav1.GetOptions{})
 	g.Expect(err).ToNot(HaveOccurred())
