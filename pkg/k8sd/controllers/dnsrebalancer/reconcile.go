@@ -14,11 +14,12 @@ import (
 )
 
 const (
-	requeueInterval      = 30 * time.Second
-	minPodAge            = 30 * time.Second
-	controlPlaneTaintKey = "node-role.kubernetes.io/control-plane"
-	corednsNamespace     = "kube-system"
-	corednsDeployment    = "coredns"
+	requeueInterval       = 30 * time.Second
+	minRebalanceInterval  = 30 * time.Second
+	restartedAtAnnotation = "kubectl.kubernetes.io/restartedAt"
+	controlPlaneTaintKey  = "node-role.kubernetes.io/control-plane"
+	corednsNamespace      = "kube-system"
+	corednsDeployment     = "coredns"
 )
 
 // Reconcile implements the reconciliation loop.
@@ -85,6 +86,10 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		log.V(1).Info("CoreDNS deployment rollout already in progress, skipping rebalance")
 		return ctrl.Result{RequeueAfter: requeueInterval}, nil
 	}
+	if restartedRecently(deployment) {
+		log.V(1).Info("CoreDNS deployment was recently restarted, skipping rebalance")
+		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	}
 
 	scheduled, err := r.scheduledCoreDNSPods(ctx)
 	if err != nil {
@@ -94,23 +99,24 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if pod.DeletionTimestamp != nil {
 			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
-		if !podReady(&pod) || (!pod.CreationTimestamp.IsZero() && time.Since(pod.CreationTimestamp.Time) < minPodAge) {
+		if !podReady(&pod) || (!pod.CreationTimestamp.IsZero() && time.Since(pod.CreationTimestamp.Time) < minRebalanceInterval) {
 			log.V(1).Info("CoreDNS pods are not yet settled, skipping rebalance")
 			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
 	}
 
-	// Delete a single co-located pod so the ReplicaSet recreates it while the
-	// remaining replica is still visible to the scheduler. A full Deployment
-	// restart creates both new pods at once and re-triggers the same-hash
-	// concurrent-bind race.
-	pod := scheduled[len(scheduled)-1]
-	log.Info("CoreDNS pods need rebalancing, deleting one co-located pod", "pod", pod.Name, "node", pod.Spec.NodeName)
-	if err := r.client.Delete(ctx, &pod); err != nil && !apierrors.IsNotFound(err) {
-		return ctrl.Result{}, fmt.Errorf("failed to delete CoreDNS pod %s: %w", pod.Name, err)
+	log.Info("CoreDNS pods need rebalancing, triggering deployment rollout restart")
+
+	k8sClient, err := r.snap.KubernetesClient("")
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	log.Info("Successfully deleted co-located CoreDNS pod", "pod", pod.Name)
+	if err := k8sClient.RestartDeployment(ctx, corednsDeployment, corednsNamespace); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to restart CoreDNS deployment: %w", err)
+	}
+
+	log.Info("Successfully triggered CoreDNS deployment restart")
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
 
@@ -192,6 +198,21 @@ func nodeSchedulableForCoreDNS(node *corev1.Node) bool {
 		return false
 	}
 	return true
+}
+
+func restartedRecently(deployment *appsv1.Deployment) bool {
+	if deployment.Spec.Template.Annotations == nil {
+		return false
+	}
+	restartedAt := deployment.Spec.Template.Annotations[restartedAtAnnotation]
+	if restartedAt == "" {
+		return false
+	}
+	restartedAtTime, err := time.Parse(time.RFC3339, restartedAt)
+	if err != nil {
+		return false
+	}
+	return time.Since(restartedAtTime) < minRebalanceInterval
 }
 
 func podReady(pod *corev1.Pod) bool {

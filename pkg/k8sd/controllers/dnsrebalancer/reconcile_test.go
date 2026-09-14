@@ -5,14 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
+	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -299,7 +301,7 @@ func TestCoreDNSNeedsRebalancing_NoPods(t *testing.T) {
 	g.Expect(needsRebalancing).To(BeFalse())
 }
 
-func TestReconcile_DeletesOneCoLocatedPod(t *testing.T) {
+func TestReconcile_RestartsDeploymentForCoLocatedPods(t *testing.T) {
 	g := NewWithT(t)
 	ctx := context.Background()
 	enabled := true
@@ -345,6 +347,7 @@ func TestReconcile_DeletesOneCoLocatedPod(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "coredns", Namespace: "kube-system"},
 		Status:     appsv1.DeploymentStatus{Replicas: 2, ReadyReplicas: 2},
 	}
+	k8sClient := k8sfake.NewSimpleClientset(deployment.DeepCopy())
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme.Scheme).
@@ -357,13 +360,14 @@ func TestReconcile_DeletesOneCoLocatedPod(t *testing.T) {
 		getClusterConfig: func(context.Context) (types.ClusterConfig, error) {
 			return types.ClusterConfig{DNS: types.DNS{Enabled: &enabled}}, nil
 		},
+		snap: &snapmock.Snap{Mock: snapmock.Mock{KubernetesClient: &kubernetes.Client{Interface: k8sClient}}},
 	}
 
 	result, err := reconciler.Reconcile(ctx, ctrl.Request{})
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: requeueInterval}))
 
-	remaining := &corev1.PodList{}
-	g.Expect(fakeClient.List(ctx, remaining, client.InNamespace("kube-system"))).To(Succeed())
-	g.Expect(remaining.Items).To(HaveLen(1), "exactly one co-located pod should be deleted")
+	restartedDeployment, err := k8sClient.AppsV1().Deployments("kube-system").Get(ctx, "coredns", metav1.GetOptions{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(restartedDeployment.Spec.Template.Annotations).To(HaveKey(restartedAtAnnotation))
 }
