@@ -68,6 +68,10 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		"deployment": map[string]any{
 			"name": "coredns",
 		},
+		"rollingUpdate": map[string]any{
+			"maxSurge":       1,
+			"maxUnavailable": 0,
+		},
 		"servers": []map[string]any{
 			{
 				"zones": []map[string]any{
@@ -106,7 +110,8 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 									"k8s-app":                    "coredns",
 								},
 							},
-							"topologyKey": "kubernetes.io/hostname",
+							"topologyKey":    "kubernetes.io/hostname",
+							"matchLabelKeys": []string{"pod-template-hash"},
 						},
 					},
 				},
