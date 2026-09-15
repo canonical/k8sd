@@ -195,6 +195,10 @@ func validateValues(g Gomega, values map[string]any, dns types.DNS, kubelet type
 	g.Expect(service["clusterIP"]).To(Equal(kubelet.GetClusterDNS()))
 
 	servers := values["servers"].([]map[string]any)
+	g.Expect(servers).To(HaveLen(1))
+	g.Expect(servers[0]["zones"]).To(Equal([]map[string]any{
+		{"zone": ".", "use_tcp": true},
+	}))
 	plugins := servers[0]["plugins"].([]map[string]any)
 	g.Expect(plugins[3]["parameters"]).To(ContainSubstring(kubelet.GetClusterDomain()))
 	g.Expect(plugins[5]["parameters"]).To(ContainSubstring(strings.Join(dns.GetUpstreamNameservers(), " ")))

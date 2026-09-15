@@ -75,7 +75,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		"servers": []map[string]any{
 			{
 				"zones": []map[string]any{
-					{"zone": "."},
+					{"zone": ".", "use_tcp": true},
 				},
 				"port": 53,
 				"plugins": []map[string]any{
