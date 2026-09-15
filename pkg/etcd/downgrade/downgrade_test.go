@@ -60,6 +60,7 @@ func TestPrepareDowngrade(t *testing.T) {
 			downgradeErrs: map[clientv3.DowngradeAction]error{
 				clientv3.DowngradeValidate: rpctypes.ErrDowngradeInProcess,
 				clientv3.DowngradeEnable:   rpctypes.ErrDowngradeInProcess,
+				clientv3.DowngradeCancel:   nil,
 			},
 			storageVersions: []string{"3.6.0"},
 		}
@@ -72,6 +73,8 @@ func TestPrepareDowngrade(t *testing.T) {
 		c := &fakeClient{
 			downgradeErrs: map[clientv3.DowngradeAction]error{
 				clientv3.DowngradeValidate: errors.New("cluster unhealthy"),
+				clientv3.DowngradeEnable:   nil,
+				clientv3.DowngradeCancel:   nil,
 			},
 		}
 		if err := PrepareDowngrade(context.Background(), logr.Discard(), c, target, time.Minute); err == nil {
@@ -103,7 +106,9 @@ func TestPrepareDowngrade(t *testing.T) {
 func TestCancelDowngrade(t *testing.T) {
 	t.Run("no inflight downgrade is a no-op", func(t *testing.T) {
 		c := &fakeClient{downgradeErrs: map[clientv3.DowngradeAction]error{
-			clientv3.DowngradeCancel: rpctypes.ErrNoInflightDowngrade,
+			clientv3.DowngradeValidate: nil,
+			clientv3.DowngradeEnable:   nil,
+			clientv3.DowngradeCancel:   rpctypes.ErrNoInflightDowngrade,
 		}}
 		if err := CancelDowngrade(context.Background(), logr.Discard(), c); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -112,7 +117,9 @@ func TestCancelDowngrade(t *testing.T) {
 
 	t.Run("cancel failure surfaces", func(t *testing.T) {
 		c := &fakeClient{downgradeErrs: map[clientv3.DowngradeAction]error{
-			clientv3.DowngradeCancel: errors.New("boom"),
+			clientv3.DowngradeValidate: nil,
+			clientv3.DowngradeEnable:   nil,
+			clientv3.DowngradeCancel:   errors.New("boom"),
 		}}
 		if err := CancelDowngrade(context.Background(), logr.Discard(), c); err == nil {
 			t.Fatal("expected error")
