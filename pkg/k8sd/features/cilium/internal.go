@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
+	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 )
 
@@ -106,4 +107,32 @@ func internalConfig(annotations types.Annotations) (config, error) {
 	}
 
 	return c, nil
+}
+
+// toHelmPatches converts a list of types.Patch (the internal ClusterConfig
+// representation) into the []helm.Patch expected by helm.Client.Apply.
+func toHelmPatches(patches []types.Patch) []helm.Patch {
+	if len(patches) == 0 {
+		return nil
+	}
+	out := make([]helm.Patch, 0, len(patches))
+	for _, p := range patches {
+		var strategicMerge, json6902 string
+		if p.StrategicMerge != nil {
+			strategicMerge = *p.StrategicMerge
+		}
+		if p.JSON6902 != nil {
+			json6902 = *p.JSON6902
+		}
+		out = append(out, helm.Patch{
+			Target: helm.PatchTarget{
+				Kind:      p.Target.Kind,
+				Name:      p.Target.Name,
+				Namespace: p.Target.Namespace,
+			},
+			StrategicMerge: strategicMerge,
+			JSON6902:       json6902,
+		})
+	}
+	return out
 }

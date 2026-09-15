@@ -3,6 +3,8 @@ package helm
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,8 +62,13 @@ func (h *client) newActionConfiguration(ctx context.Context, namespace string) (
 }
 
 // Apply implements the Client interface.
-func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, values map[string]any) (bool, error) {
+func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, values map[string]any, patches ...Patch) (bool, error) {
 	log := log.FromContext(ctx).WithName("helm").WithValues("chart", c.Name, "desired", desired)
+
+	postRenderer, err := NewKustomizePostRenderer(patches, c.Namespace)
+	if err != nil {
+		return false, fmt.Errorf("invalid patches for %s: %w", c.Name, err)
+	}
 
 	cfg, err := h.newActionConfiguration(ctx, c.Namespace)
 	if err != nil {
@@ -105,6 +112,19 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		return false, fmt.Errorf("failed to convert values: %w", err)
 	}
 
+	// NOTE: patches are applied out-of-band by postRenderer and are never part of the
+	// chart's `values`, so a patch-only change would otherwise be invisible to the
+	// sameValues diff below (and the upgrade would be skipped as a no-op). We fold a
+	// digest of the patches into the stored values (under a reserved key) purely so
+	// that patch changes participate in the existing values-diffing logic.
+	if len(patches) > 0 {
+		digest, err := patchesDigest(patches)
+		if err != nil {
+			return false, fmt.Errorf("failed to compute digest of patches for %s: %w", c.Name, err)
+		}
+		sanitizedValues[patchesDigestValuesKey] = digest
+	}
+
 	switch {
 	case !isInstalled && desired == StateDeleted:
 		// no-op
@@ -119,6 +139,7 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		install.ReleaseName = c.Name
 		install.Namespace = c.Namespace
 		install.CreateNamespace = true
+		install.PostRenderer = postRenderer
 
 		chart, err := loader.Load(filepath.Join(h.manifestsBaseDir, c.ManifestPath))
 		if err != nil {
@@ -172,6 +193,7 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		// NOTE(Hue): We need to set the upgrade.MaxHistory here since it overwrites the
 		// cfg.Releases.MaxHistory value.
 		upgrade.MaxHistory = h.maxHistory
+		upgrade.PostRenderer = postRenderer
 
 		if _, err := upgrade.RunWithContext(ctx, c.Name, chart, sanitizedValues); err != nil {
 			return false, fmt.Errorf("failed to upgrade %s: %w", c.Name, err)
@@ -197,6 +219,21 @@ func jsonEqual(v1 any, v2 any) bool {
 	b1, err1 := json.Marshal(v1)
 	b2, err2 := json.Marshal(v2)
 	return err1 == nil && err2 == nil && bytes.Equal(b1, b2)
+}
+
+// patchesDigestValuesKey is a reserved Helm values key used to fold a digest of the
+// applied Patches into a release's stored config, so that patch-only changes are
+// detected by the values-diffing logic in Apply. It is not read by any chart.
+const patchesDigestValuesKey = "k8sd-internal-patches-digest"
+
+// patchesDigest computes a stable digest over patches, suitable for change detection.
+func patchesDigest(patches []Patch) (string, error) {
+	b, err := json.Marshal(patches)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal patches: %w", err)
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // cloneMap creates a deep copy of a map[string]any by marshaling and unmarshaling it.

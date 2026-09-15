@@ -84,6 +84,11 @@ func ClusterConfigFromUserFacing(u apiv2.UserFacingClusterConfig) (ClusterConfig
 		return ClusterConfig{}, fmt.Errorf("invalid load-balancer.cidrs: %w", err)
 	}
 
+	networkPatches, err := patchesFromAPI(u.Network.Patches)
+	if err != nil {
+		return ClusterConfig{}, fmt.Errorf("invalid network.patches: %w", err)
+	}
+
 	return ClusterConfig{
 		Annotations: Annotations(u.Annotations),
 		Kubelet: Kubelet{
@@ -94,6 +99,7 @@ func ClusterConfigFromUserFacing(u apiv2.UserFacingClusterConfig) (ClusterConfig
 		Network: Network{
 			Enabled:          u.Network.Enabled,
 			KubeProxyEnabled: u.Network.KubeProxyEnabled,
+			Patches:          networkPatches,
 		},
 		DNS: DNS{
 			Enabled:             u.DNS.Enabled,
@@ -137,6 +143,7 @@ func (c ClusterConfig) ToUserFacing() apiv2.UserFacingClusterConfig {
 		Network: apiv2.NetworkConfig{
 			Enabled:          c.Network.Enabled,
 			KubeProxyEnabled: c.Network.KubeProxyEnabled,
+			Patches:          patchesToAPI(c.Network.Patches),
 		},
 		DNS: apiv2.DNSConfig{
 			Enabled:             c.DNS.Enabled,

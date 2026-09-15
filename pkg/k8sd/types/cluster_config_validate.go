@@ -83,6 +83,26 @@ func validateIPv6CIDRSize(serviceCIDR string) error {
 	return nil
 }
 
+// validatePatches ensures that each patch has exactly one of StrategicMerge/JSON6902
+// set, and a fully specified target (kind + name).
+func validatePatches(patches []Patch) error {
+	for i, p := range patches {
+		if p.Target.Kind == "" {
+			return fmt.Errorf("patches[%d]: target.kind is required", i)
+		}
+		if p.Target.Name == "" {
+			return fmt.Errorf("patches[%d]: target.name is required", i)
+		}
+		if p.StrategicMerge == nil && p.JSON6902 == nil {
+			return fmt.Errorf("patches[%d]: exactly one of \"strategic-merge\" or \"json6902\" must be set", i)
+		}
+		if p.StrategicMerge != nil && p.JSON6902 != nil {
+			return fmt.Errorf("patches[%d]: \"strategic-merge\" and \"json6902\" are mutually exclusive", i)
+		}
+	}
+	return nil
+}
+
 // Validate that a ClusterConfig does not have conflicting or incompatible options.
 func (c *ClusterConfig) Validate() error {
 	// check: validate that PodCIDR and ServiceCIDR are configured
@@ -115,6 +135,11 @@ func (c *ClusterConfig) Validate() error {
 	// When network is enabled, kube-proxy replacement is implied and kube-proxy must be disabled
 	if c.Network.GetEnabled() && c.Network.KubeProxyEnabled != nil && c.Network.GetKubeProxyEnabled() {
 		return fmt.Errorf("kube-proxy-enabled cannot be set to true when network is enabled")
+	}
+
+	// check: network patches must be well-formed
+	if err := validatePatches(c.Network.GetPatches()); err != nil {
+		return fmt.Errorf("invalid network patches: %w", err)
 	}
 
 	// check: load-balancer CIDRs
