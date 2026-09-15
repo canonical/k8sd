@@ -101,6 +101,7 @@ var knownSetKeys = map[string]struct{}{
 	fmt.Sprintf("%s.enabled", features.MetricsServer):         {},
 	fmt.Sprintf("%s.enabled", features.Network):               {},
 	fmt.Sprintf("%s.kube-proxy-enabled", features.Network):    {},
+	fmt.Sprintf("%s.patches", features.Network):               {},
 }
 
 func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string) error {
@@ -114,6 +115,7 @@ func updateConfigMapstructure(config *apiv2.UserFacingClusterConfig, arg string)
 			utils.StringToFieldsSliceHookFunc(','),
 			utils.YAMLToStringMapHookFunc,
 			utils.StringToStringMapHookFunc,
+			utils.YAMLToMapSliceHookFunc,
 		),
 	})
 	if err != nil {

@@ -59,6 +59,97 @@ func TestValidateCIDR(t *testing.T) {
 	}
 }
 
+func TestValidateNetworkPatches(t *testing.T) {
+	strategicMerge := "spec:\n  foo: bar\n"
+	json6902 := "[{\"op\": \"add\", \"path\": \"/spec/foo\", \"value\": \"bar\"}]"
+
+	for _, tc := range []struct {
+		name      string
+		patches   []types.Patch
+		expectErr bool
+	}{
+		{
+			name:    "NoPatches",
+			patches: nil,
+		},
+		{
+			name: "ValidStrategicMerge",
+			patches: []types.Patch{
+				{
+					Target:         types.PatchTarget{Kind: "DaemonSet", Name: "cilium"},
+					StrategicMerge: utils.Pointer(strategicMerge),
+				},
+			},
+		},
+		{
+			name: "ValidJSON6902",
+			patches: []types.Patch{
+				{
+					Target:   types.PatchTarget{Kind: "DaemonSet", Name: "cilium", Namespace: "kube-system"},
+					JSON6902: utils.Pointer(json6902),
+				},
+			},
+		},
+		{
+			name: "MissingKind",
+			patches: []types.Patch{
+				{
+					Target:         types.PatchTarget{Name: "cilium"},
+					StrategicMerge: utils.Pointer(strategicMerge),
+				},
+			},
+			expectErr: true,
+		},
+		{
+			name: "MissingName",
+			patches: []types.Patch{
+				{
+					Target:         types.PatchTarget{Kind: "DaemonSet"},
+					StrategicMerge: utils.Pointer(strategicMerge),
+				},
+			},
+			expectErr: true,
+		},
+		{
+			name: "MissingBothPatchBodies",
+			patches: []types.Patch{
+				{
+					Target: types.PatchTarget{Kind: "DaemonSet", Name: "cilium"},
+				},
+			},
+			expectErr: true,
+		},
+		{
+			name: "MutuallyExclusivePatchBodies",
+			patches: []types.Patch{
+				{
+					Target:         types.PatchTarget{Kind: "DaemonSet", Name: "cilium"},
+					StrategicMerge: utils.Pointer(strategicMerge),
+					JSON6902:       utils.Pointer(json6902),
+				},
+			},
+			expectErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			config := types.ClusterConfig{
+				Network: types.Network{
+					PodCIDR:     utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR: utils.Pointer("10.2.0.0/16"),
+					Patches:     &tc.patches,
+				},
+			}
+			err := config.Validate()
+			if tc.expectErr {
+				g.Expect(err).To(HaveOccurred())
+			} else {
+				g.Expect(err).To(Not(HaveOccurred()))
+			}
+		})
+	}
+}
+
 func TestValidateExternalServers(t *testing.T) {
 	for _, tc := range []struct {
 		name          string

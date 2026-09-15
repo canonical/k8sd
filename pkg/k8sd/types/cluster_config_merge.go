@@ -91,6 +91,11 @@ func MergeClusterConfig(existing ClusterConfig, new ClusterConfig) (ClusterConfi
 		return ClusterConfig{}, fmt.Errorf("prevented update of load balancer IP ranges: %w", err)
 	}
 
+	// update network patches
+	if config.Network.Patches, err = mergeSliceField(existing.Network.Patches, new.Network.Patches, true); err != nil {
+		return ClusterConfig{}, fmt.Errorf("prevented update of network patches: %w", err)
+	}
+
 	// update int fields
 	for _, i := range []struct {
 		name        string

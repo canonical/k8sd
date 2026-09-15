@@ -11,6 +11,7 @@ type MockApplyArguments struct {
 	Chart   helm.InstallableChart
 	State   helm.State
 	Values  map[string]any
+	Patches []helm.Patch
 }
 
 // Mock is a mock implementation of helm.Client.
@@ -21,8 +22,8 @@ type Mock struct {
 }
 
 // Apply implements helm.Client.
-func (m *Mock) Apply(ctx context.Context, c helm.InstallableChart, desired helm.State, values map[string]any) (bool, error) {
-	m.ApplyCalledWith = append(m.ApplyCalledWith, MockApplyArguments{Context: ctx, Chart: c, State: desired, Values: values})
+func (m *Mock) Apply(ctx context.Context, c helm.InstallableChart, desired helm.State, values map[string]any, patches ...helm.Patch) (bool, error) {
+	m.ApplyCalledWith = append(m.ApplyCalledWith, MockApplyArguments{Context: ctx, Chart: c, State: desired, Values: values, Patches: patches})
 	return m.ApplyChanged, m.ApplyErr
 }
 

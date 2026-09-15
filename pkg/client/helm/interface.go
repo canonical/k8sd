@@ -9,5 +9,9 @@ type Client interface {
 	// When state is StateUpgradeOnly, Apply will upgrade the chart using the specified values as configuration. Apply returns true if the chart was not installed, or any values were changed. An error is returned if the chart is not already installed.
 	// When state is StateDeleted, Apply will ensure that the chart is removed. If the chart is not installed, this is a no-op. Apply returns true if the chart was previously installed.
 	// Apply returns an error in case of failure.
-	Apply(ctx context.Context, f InstallableChart, desired State, values map[string]any) (bool, error)
+	//
+	// patches is an optional list of Kustomize-style patches applied, in-process,
+	// to the rendered manifest before it is installed/upgraded. Passing no
+	// patches (the common case) leaves the rendered manifest untouched.
+	Apply(ctx context.Context, f InstallableChart, desired State, values map[string]any, patches ...Patch) (bool, error)
 }

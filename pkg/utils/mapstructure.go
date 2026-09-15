@@ -32,6 +32,32 @@ func YAMLToStringSliceHookFunc(f reflect.Kind, t reflect.Kind, data interface{})
 	return result, nil
 }
 
+// YAMLToMapSliceHookFunc returns a mapstructure.DecodeHookFunc that converts a YAML string
+// describing a list of objects (e.g. "- target: {...}\n  strategic-merge: ...") into
+// []map[string]any, so that mapstructure can subsequently decode it into a []struct field
+// (e.g. []types.Patch). It only fires if the string was not already consumed by an earlier
+// hook (e.g. YAMLToStringSliceHookFunc, which handles plain []string fields).
+func YAMLToMapSliceHookFunc(f reflect.Kind, t reflect.Kind, data interface{}) (interface{}, error) {
+	if f != reflect.String || t != reflect.Slice {
+		return data, nil
+	}
+
+	strData, ok := data.(string)
+	if !ok {
+		return nil, fmt.Errorf("expected string but got %T", data)
+	}
+	if strData == "" {
+		return data, nil
+	}
+
+	var result []map[string]any
+	if err := yaml.Unmarshal([]byte(strData), &result); err != nil {
+		return data, nil
+	}
+
+	return result, nil
+}
+
 // StringToFieldsSliceHookFunc is like mapstructure.StringToSliceHookFunc() but uses strings.Fields() and filters whitespace.
 func StringToFieldsSliceHookFunc(r rune) mapstructure.DecodeHookFunc {
 	return func(f reflect.Kind, t reflect.Kind, data interface{}) (interface{}, error) {
