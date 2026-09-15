@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -68,14 +69,30 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	deployment := &appsv1.Deployment{}
-	if err := r.client.Get(ctx, client.ObjectKey{Namespace: corednsNamespace, Name: corednsDeployment}, deployment); err != nil {
+	k8sClient, err := r.snap.KubernetesClient("")
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	deployment, err := k8sClient.AppsV1().Deployments(corednsNamespace).Get(ctx, corednsDeployment, metav1.GetOptions{})
+	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get CoreDNS deployment: %w", err)
 	}
-	if deployment.Status.UnavailableReplicas > 0 || deployment.Status.ReadyReplicas != deployment.Status.Replicas {
+	desiredReplicas := int32(1)
+	if deployment.Spec.Replicas != nil {
+		desiredReplicas = *deployment.Spec.Replicas
+	}
+	if desiredReplicas < 2 {
+		return ctrl.Result{}, nil
+	}
+	if deployment.Status.ObservedGeneration < deployment.Generation ||
+		deployment.Status.UpdatedReplicas != desiredReplicas ||
+		deployment.Status.Replicas != desiredReplicas ||
+		deployment.Status.ReadyReplicas != desiredReplicas ||
+		deployment.Status.AvailableReplicas != desiredReplicas ||
+		deployment.Status.UnavailableReplicas > 0 {
 		log.V(1).Info("CoreDNS deployment rollout already in progress, skipping rebalance")
 		return ctrl.Result{}, nil
 	}
@@ -99,11 +116,6 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	log.Info("CoreDNS pods need rebalancing, triggering deployment rollout restart")
-
-	k8sClient, err := r.snap.KubernetesClient("")
-	if err != nil {
-		return ctrl.Result{}, err
-	}
 
 	if err := k8sClient.RestartDeployment(ctx, corednsDeployment, corednsNamespace); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to restart CoreDNS deployment: %w", err)
