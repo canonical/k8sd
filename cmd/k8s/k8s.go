@@ -101,6 +101,7 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		newHelmCmd(env),
 		xPrintShimPidsCmd,
 		newXSnapdConfigCmd(env),
+		newXEtcdCmd(env),
 		newXWaitForCmd(env),
 		newXCAPICmd(env),
 		newListImagesCmd(env),

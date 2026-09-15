@@ -60,3 +60,15 @@ func (c *Client) RemoveNodeByName(ctx context.Context, name string) error {
 
 	return nil
 }
+
+// NewClientPlain creates an etcd client without TLS. It is intended for tests
+// and local recovery tooling only; production code should use NewClient.
+func NewClientPlain(endpoints []string) (*Client, error) {
+	client, err := clientv3.New(clientv3.Config{
+		Endpoints: endpoints,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create etcd client: %w", err)
+	}
+	return &Client{client}, nil
+}

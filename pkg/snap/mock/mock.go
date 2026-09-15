@@ -49,6 +49,7 @@ type Mock struct {
 	ServiceArgumentsDir         string
 	ServiceExtraConfigDir       string
 	LockFilesDir                string
+	SnapCommonDir               string
 	PostRefreshLockPath         string
 	NodeTokenFile               string
 	NodeKubernetesVersion       *versionutil.Version
@@ -272,6 +273,10 @@ func (s *Snap) ServiceExtraConfigDir() string {
 
 func (s *Snap) LockFilesDir() string {
 	return s.Mock.LockFilesDir
+}
+
+func (s *Snap) SnapCommonDir() string {
+	return s.Mock.SnapCommonDir
 }
 
 func (s *Snap) NodeTokenFile() string {
