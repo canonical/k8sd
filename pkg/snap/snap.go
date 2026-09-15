@@ -313,6 +313,10 @@ func (s *snap) LockFilesDir() string {
 	return filepath.Join(s.snapCommonDir, "lock")
 }
 
+func (s *snap) SnapCommonDir() string {
+	return s.snapCommonDir
+}
+
 func (s *snap) NodeTokenFile() string {
 	return filepath.Join(s.snapCommonDir, "node-token")
 }
