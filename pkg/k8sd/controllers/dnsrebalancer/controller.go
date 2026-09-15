@@ -42,32 +42,36 @@ func (r *controller) SetupWithManager(mgr ctrl.Manager) error {
 	// unschedulable flag, taints, or node deletion (downscale).
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Node{}).
-		WithEventFilter(predicate.Funcs{
-			CreateFunc: func(e event.CreateEvent) bool {
-				node, ok := e.Object.(*corev1.Node)
-				return ok && isNodeReady(node)
-			},
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldNode, ok := e.ObjectOld.(*corev1.Node)
-				if !ok {
-					return false
-				}
-				newNode, ok := e.ObjectNew.(*corev1.Node)
-				if !ok {
-					return false
-				}
-				if isNodeReady(oldNode) != isNodeReady(newNode) {
-					return true
-				}
-				if oldNode.Spec.Unschedulable != newNode.Spec.Unschedulable {
-					return true
-				}
-				return !taintsEqual(oldNode.Spec.Taints, newNode.Spec.Taints)
-			},
-			DeleteFunc:  func(event.DeleteEvent) bool { return true },
-			GenericFunc: func(event.GenericEvent) bool { return false },
-		}).
+		WithEventFilter(nodeEventPredicate()).
 		Complete(r)
+}
+
+func nodeEventPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			node, ok := e.Object.(*corev1.Node)
+			return ok && isNodeReady(node)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldNode, ok := e.ObjectOld.(*corev1.Node)
+			if !ok {
+				return false
+			}
+			newNode, ok := e.ObjectNew.(*corev1.Node)
+			if !ok {
+				return false
+			}
+			if isNodeReady(oldNode) != isNodeReady(newNode) {
+				return true
+			}
+			if oldNode.Spec.Unschedulable != newNode.Spec.Unschedulable {
+				return true
+			}
+			return !taintsEqual(oldNode.Spec.Taints, newNode.Spec.Taints)
+		},
+		DeleteFunc:  func(event.DeleteEvent) bool { return true },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
 }
 
 func isNodeReady(node *corev1.Node) bool {
