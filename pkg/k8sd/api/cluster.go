@@ -54,12 +54,12 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 		}
 	}
 
-	// A node reports Ready as soon as kubelet finds a CNI config on disk, which happens
-	// before cilium-agent is actually serving. Withhold readiness until the CNI workloads
-	// are running. See canonical/k8s-snap#1789.
-	if ready {
-		if err := features.StatusChecks.CheckClusterReady(r.Context(), e.provider.Snap(), config); err != nil {
-			log.Info("Cluster is not ready to host workloads", "reason", err.Error())
+	// If network is enabled, we also check the CNI workloads before reporting the cluster
+	// as "ready": kubelet reports NodeReady as soon as a CNI config exists on disk, which
+	// happens before cilium-agent is actually serving. See canonical/k8s-snap#1789.
+	if config.Network.GetEnabled() {
+		if err := features.StatusChecks.CheckNetwork(r.Context(), e.provider.Snap()); err != nil {
+			log.Error(err, "network pods are not ready")
 			ready = false
 		}
 	}
