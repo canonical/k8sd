@@ -78,7 +78,7 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 	})
 }
 
-// clusterIsReady reports whether the cluster is ready
+// clusterIsReady reports whether the cluster is ready.
 func (e *Endpoints) clusterIsReady(ctx context.Context, config types.ClusterConfig, client *kubernetes.Client) (bool, error) {
 	log := log.FromContext(ctx)
 
