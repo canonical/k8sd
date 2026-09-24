@@ -318,6 +318,11 @@ func TestReconcile_SafetyGuards(t *testing.T) {
 				wantResult = ctrl.Result{RequeueAfter: minRebalanceInterval}
 			}
 			g.Expect(result).To(Equal(wantResult))
+			wantAttempts := 0
+			if test.wantRequeue {
+				wantAttempts = 1
+			}
+			g.Expect(reconciler.settleAttempts).To(Equal(wantAttempts))
 			g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
 		})
 	}
@@ -353,8 +358,57 @@ func TestReconcile_BackToBackNodeEvents(t *testing.T) {
 			// The cooldown / in-flight rollout guards skip the second rebalance
 			// but requeue so it is retried once CoreDNS has settled.
 			g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: minRebalanceInterval}))
+			g.Expect(reconciler.settleAttempts).To(Equal(1))
 			g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
 		})
+	}
+}
+
+func TestReconcile_SettleBackoff(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+	reconciler, k8sClient := newReconcileTestController(t, func(_ *corev1.Node, pod *corev1.Pod, _ *appsv1.Deployment) {
+		pod.Status.Conditions[0].Status = corev1.ConditionFalse
+	})
+
+	// Consecutive skips double the requeue interval up to the cap.
+	for i, want := range []time.Duration{
+		minRebalanceInterval,
+		2 * minRebalanceInterval,
+		4 * minRebalanceInterval,
+		8 * minRebalanceInterval,
+	} {
+		result, err := reconciler.Reconcile(ctx, ctrl.Request{})
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: want}), "attempt %d", i+1)
+	}
+	g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
+
+	// A successful rebalance resets the backoff.
+	reconciler, k8sClient = newReconcileTestController(t, nil)
+	reconciler.settleAttempts = 10
+	result, err := reconciler.Reconcile(ctx, ctrl.Request{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(Equal(ctrl.Result{}))
+	g.Expect(reconciler.settleAttempts).To(BeZero())
+	g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
+}
+
+func TestSettleRequeueInterval(t *testing.T) {
+	g := NewWithT(t)
+	for _, test := range []struct {
+		attempts int
+		want     time.Duration
+	}{
+		{0, minRebalanceInterval},
+		{1, minRebalanceInterval},
+		{2, 2 * minRebalanceInterval},
+		{3, 4 * minRebalanceInterval},
+		{10, maxRebalanceInterval},
+		{100, maxRebalanceInterval},
+	} {
+		reconciler := &controller{settleAttempts: test.attempts}
+		g.Expect(reconciler.settleRequeueInterval()).To(Equal(test.want), "attempts=%d", test.attempts)
 	}
 }
 
@@ -431,6 +485,7 @@ func TestReconcile_ClusterConfig(t *testing.T) {
 
 			g.Expect(errors.Is(err, test.wantError)).To(BeTrue())
 			g.Expect(result).To(Equal(ctrl.Result{}))
+			g.Expect(reconciler.settleAttempts).To(BeZero(), "non-settle paths must not advance the backoff")
 			g.Expect(k8sClient.Actions()).To(BeEmpty())
 		})
 	}

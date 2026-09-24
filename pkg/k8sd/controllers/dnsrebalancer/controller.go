@@ -21,6 +21,12 @@ type controller struct {
 	client           client.Client
 	getClusterConfig func(context.Context) (types.ClusterConfig, error)
 	snap             snap.Snap
+
+	// settleAttempts counts consecutive reconciliations skipped because
+	// CoreDNS was not settled yet. It drives the capped exponential backoff
+	// on the requeue interval, and is reset on errors and successful
+	// rebalances so fresh triggers are evaluated promptly.
+	settleAttempts int
 }
 
 func NewController(
@@ -96,10 +102,10 @@ func coreDNSPodEventPredicate() predicate.Funcs {
 			return isCoreDNSPod(e.Object)
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if !isCoreDNSPod(e.ObjectOld) {
+			oldPod, ok := e.ObjectOld.(*corev1.Pod)
+			if !ok || !isCoreDNSPod(oldPod) {
 				return false
 			}
-			oldPod := e.ObjectOld.(*corev1.Pod)
 			newPod, ok := e.ObjectNew.(*corev1.Pod)
 			if !ok {
 				return false

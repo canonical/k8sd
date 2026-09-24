@@ -16,7 +16,10 @@ import (
 )
 
 const (
-	minRebalanceInterval  = 30 * time.Second
+	minRebalanceInterval = 30 * time.Second
+	// maxRebalanceInterval caps the exponential backoff applied to requeues
+	// when CoreDNS keeps not being settled (30s, 60s, 120s, ..., 16m).
+	maxRebalanceInterval  = 16 * time.Minute
 	restartedAtAnnotation = "kubectl.kubernetes.io/restartedAt"
 	corednsNamespace      = "kube-system"
 	corednsDeployment     = "coredns"
@@ -37,6 +40,7 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// skip reconcile if dns is disabled
 	config, err := r.getClusterConfig(ctx)
 	if err != nil {
+		r.settleAttempts = 0
 		return ctrl.Result{}, fmt.Errorf("failed to get cluster config: %w", err)
 	}
 	if !config.DNS.GetEnabled() {
@@ -87,9 +91,18 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if deployment.Spec.Replicas != nil {
 		desiredReplicas = *deployment.Spec.Replicas
 	}
+	// requeueAfterSettle requeues with a capped exponential backoff: CoreDNS
+	// not being settled usually resolves itself within seconds, but if it
+	// never does (e.g. a second replica that can never be scheduled) the
+	// fixed 30s requeue would hot-loop forever.
+	requeueAfterSettle := func() (ctrl.Result, error) {
+		r.settleAttempts++
+		return ctrl.Result{RequeueAfter: r.settleRequeueInterval()}, nil
+	}
+
 	if desiredReplicas < 2 {
 		log.V(1).Info("CoreDNS deployment has less than 2 replicas, skipping rebalance", "desiredReplicas", desiredReplicas)
-		return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
+		return requeueAfterSettle()
 	}
 	if deployment.Status.ObservedGeneration < deployment.Generation ||
 		deployment.Status.UpdatedReplicas != desiredReplicas ||
@@ -98,11 +111,11 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		deployment.Status.AvailableReplicas != desiredReplicas ||
 		deployment.Status.UnavailableReplicas > 0 {
 		log.V(1).Info("CoreDNS deployment rollout already in progress, skipping rebalance")
-		return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
+		return requeueAfterSettle()
 	}
 	if restartedRecently(deployment) {
 		log.V(1).Info("CoreDNS deployment was recently restarted, skipping rebalance")
-		return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
+		return requeueAfterSettle()
 	}
 
 	scheduled, err := r.scheduledCoreDNSPods(ctx)
@@ -112,22 +125,35 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	for _, pod := range scheduled {
 		if pod.DeletionTimestamp != nil {
 			log.V(1).Info("CoreDNS pod is being deleted, skipping rebalance", "pod", pod.Name)
-			return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
+			return requeueAfterSettle()
 		}
 		if !podReady(&pod) || (!pod.CreationTimestamp.IsZero() && time.Since(pod.CreationTimestamp.Time) < minRebalanceInterval) {
 			log.V(1).Info("CoreDNS pods are not yet settled, skipping rebalance")
-			return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
+			return requeueAfterSettle()
 		}
 	}
 
 	log.Info("CoreDNS pods need rebalancing, triggering deployment rollout restart")
 
 	if err := k8sClient.RestartDeployment(ctx, corednsDeployment, corednsNamespace); err != nil {
+		r.settleAttempts = 0
 		return ctrl.Result{}, fmt.Errorf("failed to restart CoreDNS deployment: %w", err)
 	}
 
+	r.settleAttempts = 0
 	log.Info("Successfully triggered CoreDNS deployment restart")
 	return ctrl.Result{}, nil
+}
+
+// settleRequeueInterval returns the backoff interval for the current
+// consecutive settle-skip count: minRebalanceInterval doubled per attempt,
+// capped at maxRebalanceInterval.
+func (r *controller) settleRequeueInterval() time.Duration {
+	interval := minRebalanceInterval
+	for i := 1; i < r.settleAttempts && interval < maxRebalanceInterval; i++ {
+		interval *= 2
+	}
+	return min(interval, maxRebalanceInterval)
 }
 
 func (r *controller) scheduledCoreDNSPods(ctx context.Context) ([]corev1.Pod, error) {
