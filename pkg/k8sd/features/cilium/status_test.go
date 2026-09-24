@@ -125,9 +125,6 @@ func TestCheckNetwork(t *testing.T) {
 	t.Run("ciliumAgentRunningNotReady", func(t *testing.T) {
 		g := NewWithT(t)
 
-		helmM := &helmmock.Mock{
-			ApplyChanged: true,
-		}
 		clientset := fake.NewSimpleClientset(&corev1.PodList{
 			Items: []corev1.Pod{
 				{
@@ -162,7 +159,6 @@ func TestCheckNetwork(t *testing.T) {
 		})
 		snapM := &snapmock.Snap{
 			Mock: snapmock.Mock{
-				HelmClient: helmM,
 				KubernetesClient: &kubernetes.Client{
 					Interface: clientset,
 				},

@@ -20,7 +20,7 @@ import (
 )
 
 func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.Response {
-	log := log.FromContext(r.Context()).WithValues("endpoint", "getClusterStatus")
+	ctx := log.NewContext(r.Context(), log.FromContext(r.Context()).WithValues("endpoint", "getClusterStatus"))
 
 	// fail if node is not initialized yet
 	if err := s.Database().IsOpen(r.Context()); err != nil {
@@ -41,27 +41,9 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 		return mctypes.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
 
-	ready, err := client.HasReadyNodes(r.Context())
+	ready, err := e.clusterIsReady(ctx, config, client)
 	if err != nil {
-		return mctypes.InternalError(fmt.Errorf("failed to check if cluster has ready nodes: %w", err))
-	}
-
-	// If dns is enabled, we also check for the coredns service clusterIP before reporting cluster as "ready"
-	if config.DNS.Enabled != nil && *config.DNS.Enabled {
-		if err := e.checkKubeletClusterDNS(r.Context(), client); err != nil {
-			log.Error(err, "kubelet does not have correct --cluster-dns arg")
-			ready = false
-		}
-	}
-
-	// If network is enabled, we also check the CNI workloads before reporting the cluster
-	// as "ready": kubelet reports NodeReady as soon as a CNI config exists on disk, which
-	// happens before cilium-agent is actually serving. See canonical/k8s-snap#1789.
-	if config.Network.GetEnabled() {
-		if err := features.StatusChecks.CheckNetwork(r.Context(), e.provider.Snap()); err != nil {
-			log.Error(err, "network pods are not ready")
-			ready = false
-		}
+		return mctypes.InternalError(err)
 	}
 
 	var statuses map[types.FeatureName]types.FeatureStatus
@@ -94,6 +76,32 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 			LocalStorage:  statuses[features.LocalStorage].ToAPI(),
 		},
 	})
+}
+
+// clusterIsReady reports whether the cluster is ready
+func (e *Endpoints) clusterIsReady(ctx context.Context, config types.ClusterConfig, client *kubernetes.Client) (bool, error) {
+	log := log.FromContext(ctx)
+
+	ready, err := client.HasReadyNodes(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if cluster has ready nodes: %w", err)
+	}
+
+	if config.DNS.GetEnabled() {
+		if err := e.checkKubeletClusterDNS(ctx, client); err != nil {
+			log.Error(err, "kubelet does not have correct --cluster-dns arg")
+			ready = false
+		}
+	}
+
+	if config.Network.GetEnabled() {
+		if err := features.StatusChecks.CheckNetwork(ctx, e.provider.Snap()); err != nil {
+			log.Error(err, "network pods are not ready")
+			ready = false
+		}
+	}
+
+	return ready, nil
 }
 
 // checkKubeletClusterDNS checks if --cluster-dns argument of the running kubelet service
