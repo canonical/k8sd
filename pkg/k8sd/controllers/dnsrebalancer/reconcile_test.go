@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
+	"github.com/canonical/k8sd/pkg/k8sd/features/coredns"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
@@ -249,60 +250,61 @@ func TestReconcile_RestartsDeploymentForCoLocatedPods(t *testing.T) {
 
 func TestReconcile_SafetyGuards(t *testing.T) {
 	for _, test := range []struct {
-		name   string
-		mutate func(*corev1.Node, *corev1.Pod, *appsv1.Deployment)
+		name        string
+		mutate      func(*corev1.Node, *corev1.Pod, *appsv1.Deployment)
+		wantRequeue bool
 	}{
 		{"NodeNotReady", func(node *corev1.Node, _ *corev1.Pod, _ *appsv1.Deployment) {
 			node.Status.Conditions[0].Status = corev1.ConditionFalse
-		}},
+		}, false},
 		{"NodeCordoned", func(node *corev1.Node, _ *corev1.Pod, _ *appsv1.Deployment) {
 			node.Spec.Unschedulable = true
-		}},
+		}, false},
 		{"CNIStartupTaint", func(node *corev1.Node, _ *corev1.Pod, _ *appsv1.Deployment) {
 			node.Spec.Taints = []corev1.Taint{{Key: "node.cilium.io/agent-not-ready", Effect: corev1.TaintEffectNoSchedule}}
-		}},
+		}, false},
 		{"NoExecuteTaint", func(node *corev1.Node, _ *corev1.Pod, _ *appsv1.Deployment) {
 			node.Spec.Taints = []corev1.Taint{{Key: "maintenance", Effect: corev1.TaintEffectNoExecute}}
-		}},
+		}, false},
 		{"ControlPlaneNoExecuteTaint", func(node *corev1.Node, _ *corev1.Pod, _ *appsv1.Deployment) {
-			node.Spec.Taints = []corev1.Taint{{Key: controlPlaneTaintKey, Effect: corev1.TaintEffectNoExecute}}
-		}},
+			node.Spec.Taints = []corev1.Taint{{Key: coredns.ControlPlaneTaintKey, Effect: corev1.TaintEffectNoExecute}}
+		}, false},
 		{"PodNotReady", func(_ *corev1.Node, pod *corev1.Pod, _ *appsv1.Deployment) {
 			pod.Status.Conditions[0].Status = corev1.ConditionFalse
-		}},
+		}, true},
 		{"YoungPod", func(_ *corev1.Node, pod *corev1.Pod, _ *appsv1.Deployment) {
 			pod.CreationTimestamp = metav1.Now()
-		}},
+		}, true},
 		{"RecentRestart", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			deployment.Spec.Template.Annotations = map[string]string{restartedAtAnnotation: time.Now().Format(time.RFC3339)}
-		}},
+		}, true},
 		{"UnavailableReplica", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			deployment.Status.UnavailableReplicas = 1
-		}},
+		}, true},
 		{"UnreadyReplica", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			deployment.Status.ReadyReplicas = 1
-		}},
+		}, true},
 		{"UnobservedGeneration", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			deployment.Generation++
-		}},
+		}, true},
 		{"OldReadyReplicas", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			deployment.Status.UpdatedReplicas = 1
-		}},
+		}, true},
 		{"MinReadySecondsPending", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			deployment.Status.AvailableReplicas = 1
-		}},
+		}, true},
 		{"ScaleUpPending", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			*deployment.Spec.Replicas = 3
-		}},
+		}, true},
 		{"ScaleDownPending", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			*deployment.Spec.Replicas = 1
-		}},
+		}, true},
 		{"ScaleToZeroPending", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			*deployment.Spec.Replicas = 0
-		}},
+		}, true},
 		{"DefaultReplicaCount", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			deployment.Spec.Replicas = nil
-		}},
+		}, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			g := NewWithT(t)
@@ -311,7 +313,11 @@ func TestReconcile_SafetyGuards(t *testing.T) {
 			result, err := reconciler.Reconcile(context.Background(), ctrl.Request{})
 
 			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(result).To(Equal(ctrl.Result{}))
+			wantResult := ctrl.Result{}
+			if test.wantRequeue {
+				wantResult = ctrl.Result{RequeueAfter: minRebalanceInterval}
+			}
+			g.Expect(result).To(Equal(wantResult))
 			g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
 		})
 	}
@@ -344,7 +350,9 @@ func TestReconcile_BackToBackNodeEvents(t *testing.T) {
 
 			result, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "node-2"}})
 			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(result).To(Equal(ctrl.Result{}))
+			// The cooldown / in-flight rollout guards skip the second rebalance
+			// but requeue so it is retried once CoreDNS has settled.
+			g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: minRebalanceInterval}))
 			g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
 		})
 	}
@@ -366,7 +374,7 @@ func TestReconcile_AllowedRebalances(t *testing.T) {
 		mutate func(*corev1.Node, *corev1.Pod, *appsv1.Deployment)
 	}{
 		{"ControlPlaneTaint", func(node *corev1.Node, _ *corev1.Pod, _ *appsv1.Deployment) {
-			node.Spec.Taints = []corev1.Taint{{Key: controlPlaneTaintKey, Effect: corev1.TaintEffectNoSchedule}}
+			node.Spec.Taints = []corev1.Taint{{Key: coredns.ControlPlaneTaintKey, Effect: corev1.TaintEffectNoSchedule}}
 		}},
 		{"PreferNoSchedule", func(node *corev1.Node, _ *corev1.Pod, _ *appsv1.Deployment) {
 			node.Spec.Taints = []corev1.Taint{{Key: "preference", Effect: corev1.TaintEffectPreferNoSchedule}}

@@ -7,9 +7,12 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
@@ -40,9 +43,13 @@ func (r *controller) SetupWithManager(mgr ctrl.Manager) error {
 	// node (kubelet heartbeats rewrite Node status and previously caused a
 	// restart storm). Reconcile when schedulability changes: Ready condition,
 	// unschedulable flag, taints, or node deletion (downscale).
+	//
+	// Also watch the CoreDNS pods: the skip paths in Reconcile all mean
+	// "CoreDNS is not settled yet", and the events that signal settling are a
+	// CoreDNS pod getting bound to a node, becoming Ready, or going away.
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&corev1.Node{}).
-		WithEventFilter(nodeEventPredicate()).
+		For(&corev1.Node{}, builder.WithPredicates(nodeEventPredicate())).
+		Watches(&corev1.Pod{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(coreDNSPodEventPredicate())).
 		Complete(r)
 }
 
@@ -70,6 +77,40 @@ func nodeEventPredicate() predicate.Funcs {
 			return !taintsEqual(oldNode.Spec.Taints, newNode.Spec.Taints)
 		},
 		DeleteFunc:  func(event.DeleteEvent) bool { return true },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+}
+
+// coreDNSPodEventPredicate triggers reconciliation on CoreDNS pod events that
+// change whether the deployment is settled: a pod getting bound to a node,
+// becoming (un)Ready, starting termination, or being deleted. Other pod updates
+// (status heartbeat churn) are ignored.
+func coreDNSPodEventPredicate() predicate.Funcs {
+	selector := labels.SelectorFromSet(corednsPodLabels)
+	isCoreDNSPod := func(obj client.Object) bool {
+		pod, ok := obj.(*corev1.Pod)
+		return ok && pod.Namespace == corednsNamespace && selector.Matches(labels.Set(pod.Labels))
+	}
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return isCoreDNSPod(e.Object)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !isCoreDNSPod(e.ObjectOld) {
+				return false
+			}
+			oldPod := e.ObjectOld.(*corev1.Pod)
+			newPod, ok := e.ObjectNew.(*corev1.Pod)
+			if !ok {
+				return false
+			}
+			return oldPod.Spec.NodeName != newPod.Spec.NodeName ||
+				podReady(oldPod) != podReady(newPod) ||
+				(oldPod.DeletionTimestamp == nil) != (newPod.DeletionTimestamp == nil)
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return isCoreDNSPod(e.Object)
+		},
 		GenericFunc: func(event.GenericEvent) bool { return false },
 	}
 }

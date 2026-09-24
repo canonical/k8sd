@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/canonical/k8sd/pkg/k8sd/features/coredns"
 	"github.com/canonical/k8sd/pkg/log"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,10 +18,12 @@ import (
 const (
 	minRebalanceInterval  = 30 * time.Second
 	restartedAtAnnotation = "kubectl.kubernetes.io/restartedAt"
-	controlPlaneTaintKey  = "node-role.kubernetes.io/control-plane"
 	corednsNamespace      = "kube-system"
 	corednsDeployment     = "coredns"
 )
+
+// corednsPodLabels selects the CoreDNS pods managed by the ck-dns chart.
+var corednsPodLabels = map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"}
 
 // Reconcile implements the reconciliation loop.
 func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -85,7 +88,8 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		desiredReplicas = *deployment.Spec.Replicas
 	}
 	if desiredReplicas < 2 {
-		return ctrl.Result{}, nil
+		log.V(1).Info("CoreDNS deployment has less than 2 replicas, skipping rebalance", "desiredReplicas", desiredReplicas)
+		return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
 	}
 	if deployment.Status.ObservedGeneration < deployment.Generation ||
 		deployment.Status.UpdatedReplicas != desiredReplicas ||
@@ -94,11 +98,11 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		deployment.Status.AvailableReplicas != desiredReplicas ||
 		deployment.Status.UnavailableReplicas > 0 {
 		log.V(1).Info("CoreDNS deployment rollout already in progress, skipping rebalance")
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
 	}
 	if restartedRecently(deployment) {
 		log.V(1).Info("CoreDNS deployment was recently restarted, skipping rebalance")
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
 	}
 
 	scheduled, err := r.scheduledCoreDNSPods(ctx)
@@ -107,11 +111,12 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 	for _, pod := range scheduled {
 		if pod.DeletionTimestamp != nil {
-			return ctrl.Result{}, nil
+			log.V(1).Info("CoreDNS pod is being deleted, skipping rebalance", "pod", pod.Name)
+			return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
 		}
 		if !podReady(&pod) || (!pod.CreationTimestamp.IsZero() && time.Since(pod.CreationTimestamp.Time) < minRebalanceInterval) {
 			log.V(1).Info("CoreDNS pods are not yet settled, skipping rebalance")
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: minRebalanceInterval}, nil
 		}
 	}
 
@@ -127,7 +132,7 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 func (r *controller) scheduledCoreDNSPods(ctx context.Context) ([]corev1.Pod, error) {
 	pods := &corev1.PodList{}
-	if err := r.client.List(ctx, pods, client.InNamespace(corednsNamespace), client.MatchingLabels{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"}); err != nil {
+	if err := r.client.List(ctx, pods, client.InNamespace(corednsNamespace), client.MatchingLabels(corednsPodLabels)); err != nil {
 		return nil, err
 	}
 	if len(pods.Items) == 0 {
@@ -197,7 +202,9 @@ func nodeSchedulableForCoreDNS(node *corev1.Node) bool {
 		if taint.Effect != corev1.TaintEffectNoSchedule && taint.Effect != corev1.TaintEffectNoExecute {
 			continue
 		}
-		if taint.Key == controlPlaneTaintKey && taint.Effect == corev1.TaintEffectNoSchedule {
+		// CoreDNS tolerates the control-plane NoSchedule taint, see
+		// pkg/k8sd/features/coredns/coredns.go.
+		if taint.Key == coredns.ControlPlaneTaintKey && taint.Effect == corev1.TaintEffectNoSchedule {
 			continue
 		}
 		return false

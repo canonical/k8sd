@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/canonical/k8sd/pkg/k8sd/features/coredns"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,7 +49,7 @@ func TestNodeEventPredicateUpdates(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "node-1"},
 		Spec: corev1.NodeSpec{Taints: []corev1.Taint{
 			{Key: "node.cilium.io/agent-not-ready", Effect: corev1.TaintEffectNoSchedule},
-			{Key: "node-role.kubernetes.io/control-plane", Effect: corev1.TaintEffectNoSchedule},
+			{Key: coredns.ControlPlaneTaintKey, Effect: corev1.TaintEffectNoSchedule},
 		}},
 		Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{
 			{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
@@ -157,4 +158,92 @@ func TestNodeEventPredicateLifecycle(t *testing.T) {
 			g.Expect(filter.Generic(event.GenericEvent{Object: node})).To(BeFalse())
 		})
 	}
+}
+
+func newCoreDNSPod() *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "kube-system",
+			Name:      "coredns-1",
+			Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
+		},
+		Spec:   corev1.PodSpec{NodeName: "node-1"},
+		Status: corev1.PodStatus{Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}},
+	}
+}
+
+func TestCoreDNSPodEventPredicateSelection(t *testing.T) {
+	otherPod := func() *corev1.Pod {
+		pod := newCoreDNSPod()
+		pod.Labels = map[string]string{"k8s-app": "kube-proxy"}
+		return pod
+	}
+	wrongNamespace := func() *corev1.Pod {
+		pod := newCoreDNSPod()
+		pod.Namespace = "default"
+		return pod
+	}
+	filter := coreDNSPodEventPredicate()
+	for _, test := range []struct {
+		name   string
+		object client.Object
+		want   bool
+	}{
+		{"CoreDNSPod", newCoreDNSPod(), true},
+		{"OtherLabels", otherPod(), false},
+		{"WrongNamespace", wrongNamespace(), false},
+		{"Nil", nil, false},
+		{"NonPod", &corev1.Node{}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			g := NewWithT(t)
+			g.Expect(filter.Create(event.CreateEvent{Object: test.object})).To(Equal(test.want))
+			g.Expect(filter.Delete(event.DeleteEvent{Object: test.object})).To(Equal(test.want))
+			g.Expect(filter.Generic(event.GenericEvent{Object: test.object})).To(BeFalse())
+		})
+	}
+}
+
+func TestCoreDNSPodEventPredicateUpdates(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*corev1.Pod)
+		want   bool
+	}{
+		{"Unchanged", func(*corev1.Pod) {}, false},
+		{"Scheduled", func(pod *corev1.Pod) { pod.Spec.NodeName = "node-2" }, true},
+		{"Ready", func(pod *corev1.Pod) { pod.Status.Conditions[0].Status = corev1.ConditionFalse }, true},
+		{"Terminating", func(pod *corev1.Pod) {
+			now := metav1.Now()
+			pod.DeletionTimestamp = &now
+		}, true},
+		{"ContainerStatus", func(pod *corev1.Pod) {
+			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "coredns", Ready: true}}
+		}, false},
+		{"ResourceVersion", func(pod *corev1.Pod) { pod.ResourceVersion = "2" }, false},
+		{"Annotations", func(pod *corev1.Pod) { pod.Annotations = map[string]string{"example.com/note": "value"} }, false},
+	}
+	filter := coreDNSPodEventPredicate()
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			original := newCoreDNSPod()
+			changed := original.DeepCopy()
+			test.mutate(changed)
+			NewWithT(t).Expect(filter.Update(event.UpdateEvent{ObjectOld: original, ObjectNew: changed})).To(Equal(test.want))
+		})
+	}
+	t.Run("NotCoreDNSPod", func(t *testing.T) {
+		g := NewWithT(t)
+		pod := newCoreDNSPod()
+		pod.Labels = nil
+		changed := pod.DeepCopy()
+		changed.Spec.NodeName = "node-2"
+		g.Expect(filter.Update(event.UpdateEvent{ObjectOld: pod, ObjectNew: changed})).To(BeFalse())
+	})
+	t.Run("InvalidObjects", func(t *testing.T) {
+		g := NewWithT(t)
+		pod := newCoreDNSPod()
+		g.Expect(filter.Update(event.UpdateEvent{ObjectOld: &corev1.Node{}, ObjectNew: pod})).To(BeFalse())
+		g.Expect(filter.Update(event.UpdateEvent{ObjectOld: pod, ObjectNew: &corev1.Node{}})).To(BeFalse())
+	})
 }
