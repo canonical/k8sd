@@ -186,10 +186,19 @@ func TestEnabled(t *testing.T) {
 }
 
 func validateValues(g Gomega, values map[string]any, dns types.DNS, kubelet types.Kubelet) {
+	g.Expect(values).To(HaveKeyWithValue("rollingUpdate", map[string]any{
+		"maxSurge":       1,
+		"maxUnavailable": 0,
+	}))
+
 	service := values["service"].(map[string]any)
 	g.Expect(service["clusterIP"]).To(Equal(kubelet.GetClusterDNS()))
 
 	servers := values["servers"].([]map[string]any)
+	g.Expect(servers).To(HaveLen(1))
+	g.Expect(servers[0]["zones"]).To(Equal([]map[string]any{
+		{"zone": ".", "use_tcp": true},
+	}))
 	plugins := servers[0]["plugins"].([]map[string]any)
 	g.Expect(plugins[3]["parameters"]).To(ContainSubstring(kubelet.GetClusterDomain()))
 	g.Expect(plugins[5]["parameters"]).To(ContainSubstring(strings.Join(dns.GetUpstreamNameservers(), " ")))
@@ -245,6 +254,7 @@ func validateValues(g Gomega, values map[string]any, dns types.DNS, kubelet type
 
 	podAffinityTerm := preferred[0]["podAffinityTerm"].(map[string]any)
 	g.Expect(podAffinityTerm["topologyKey"]).To(Equal("kubernetes.io/hostname"))
+	g.Expect(podAffinityTerm).To(HaveKeyWithValue("matchLabelKeys", []string{"pod-template-hash"}))
 	labelSelector := podAffinityTerm["labelSelector"].(map[string]any)
 	matchLabels := labelSelector["matchLabels"].(map[string]any)
 	g.Expect(matchLabels["app.kubernetes.io/name"]).To(Equal("coredns"))
