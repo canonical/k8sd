@@ -23,15 +23,15 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 	ctx := log.NewContext(r.Context(), log.FromContext(r.Context()).WithValues("endpoint", "getClusterStatus"))
 
 	// fail if node is not initialized yet
-	if err := s.Database().IsOpen(r.Context()); err != nil {
+	if err := s.Database().IsOpen(ctx); err != nil {
 		return mctypes.Unavailable(fmt.Errorf("daemon not yet initialized"))
 	}
 
-	members, err := impl.GetClusterMembers(r.Context(), s, e.provider.Snap())
+	members, err := impl.GetClusterMembers(ctx, s, e.provider.Snap())
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to get cluster members: %w", err))
 	}
-	config, err := databaseutil.GetClusterConfig(r.Context(), s)
+	config, err := databaseutil.GetClusterConfig(ctx, s)
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
@@ -47,7 +47,7 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 	}
 
 	var statuses map[types.FeatureName]types.FeatureStatus
-	if err := s.Database().Transaction(r.Context(), func(ctx context.Context, tx *sql.Tx) error {
+	if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
 		statuses, err = database.GetFeatureStatuses(r.Context(), tx)
 		if err != nil {
