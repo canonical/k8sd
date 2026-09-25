@@ -121,4 +121,53 @@ func TestCheckNetwork(t *testing.T) {
 		err := cilium.CheckNetwork(context.Background(), snapM)
 		g.Expect(err).NotTo(HaveOccurred())
 	})
+
+	t.Run("ciliumAgentRunningNotReady", func(t *testing.T) {
+		g := NewWithT(t)
+
+		clientset := fake.NewSimpleClientset(&corev1.PodList{
+			Items: []corev1.Pod{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "operator",
+						Namespace: "kube-system",
+						Labels:    map[string]string{"io.cilium/app": "operator"},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodRunning,
+						Conditions: []corev1.PodCondition{
+							{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium",
+						Namespace: "kube-system",
+						Labels:    map[string]string{"k8s-app": "cilium"},
+					},
+					Status: corev1.PodStatus{
+						// A crash-looping cilium-agent stays Running with Ready=False,
+						// while kubelet already reports the node as Ready.
+						Phase: corev1.PodRunning,
+						Conditions: []corev1.PodCondition{
+							{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+						},
+					},
+				},
+			},
+		})
+		snapM := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				KubernetesClient: &kubernetes.Client{
+					Interface: clientset,
+				},
+			},
+		}
+
+		err := cilium.CheckNetwork(context.Background(), snapM)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("cilium pods not yet ready"))
+	})
 }
