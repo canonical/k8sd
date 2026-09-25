@@ -22,3 +22,25 @@ func RetryFor(ctx context.Context, retryCount int, delayBetweenRetry time.Durati
 	}
 	return err
 }
+
+// RetryForIf behaves like RetryFor, but only retries when isRetryable(err)
+// returns true for the error retryFunc just returned. Any other error is
+// returned immediately, without waiting out the remaining retry budget.
+func RetryForIf(ctx context.Context, retryCount int, delayBetweenRetry time.Duration, isRetryable func(error) bool, retryFunc func() error) error {
+	var err error = nil
+	for range retryCount {
+		if err = retryFunc(); err != nil {
+			if !isRetryable(err) {
+				return err
+			}
+			select {
+			case <-ctx.Done():
+				return context.Canceled
+			case <-time.After(delayBetweenRetry):
+				continue
+			}
+		}
+		break
+	}
+	return err
+}
