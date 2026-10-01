@@ -79,15 +79,16 @@ func (c *Client) moveLeader(ctx context.Context, nodeName string, createClient f
 		return nil
 	}
 
-	// Pick a non-learner, non-target voter as the transfer target.
-	var transfereeID uint64
+	// Try each non-learner, non-target voter as the transfer target, in case a
+	// stale member entry points at a stopped or lagging voter that can't accept
+	// the transfer.
+	var transfereeIDs []uint64
 	for _, m := range memberResp.Members {
 		if m.ID != targetID && !m.IsLearner {
-			transfereeID = m.ID
-			break
+			transfereeIDs = append(transfereeIDs, m.ID)
 		}
 	}
-	if transfereeID == 0 {
+	if len(transfereeIDs) == 0 {
 		return fmt.Errorf("no eligible etcd member to transfer leadership to")
 	}
 
@@ -98,11 +99,16 @@ func (c *Client) moveLeader(ctx context.Context, nodeName string, createClient f
 	}
 	defer leaderClient.Close()
 
-	if _, err := leaderClient.MoveLeader(ctx, transfereeID); err != nil {
-		return fmt.Errorf("failed to transfer etcd leadership from %q: %w", nodeName, err)
+	var lastErr error
+	for _, transfereeID := range transfereeIDs {
+		if _, err := leaderClient.MoveLeader(ctx, transfereeID); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
 	}
 
-	return nil
+	return fmt.Errorf("failed to transfer etcd leadership from %q to any of %d eligible voters: %w", nodeName, len(transfereeIDs), lastErr)
 }
 
 func (c *Client) RemoveNodeByName(ctx context.Context, name string) error {

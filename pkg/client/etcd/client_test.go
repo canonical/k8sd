@@ -33,7 +33,9 @@ type mockMaintenance struct {
 	leaderID             uint64
 	statusErr            error
 	moveLeaderErr        error
+	moveLeaderErrFor     map[uint64]error
 	moveLeaderCalledWith uint64
+	moveLeaderCalls      []uint64
 }
 
 func (m *mockMaintenance) Status(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
@@ -46,6 +48,10 @@ func (m *mockMaintenance) Status(_ context.Context, _ string) (*clientv3.StatusR
 
 func (m *mockMaintenance) MoveLeader(_ context.Context, transfereeID uint64) (*clientv3.MoveLeaderResponse, error) {
 	m.moveLeaderCalledWith = transfereeID
+	m.moveLeaderCalls = append(m.moveLeaderCalls, transfereeID)
+	if err, ok := m.moveLeaderErrFor[transfereeID]; ok {
+		return nil, err
+	}
 	return nil, m.moveLeaderErr
 }
 
@@ -107,6 +113,30 @@ func TestMoveLeaderIfNeeded(t *testing.T) {
 		)
 		g.Expect(client.moveLeader(context.Background(), nodeA.Name, mockFactory(leaderMaint))).To(Succeed())
 		g.Expect(leaderMaint.moveLeaderCalledWith).To(Equal(nodeC.ID))
+	})
+
+	t.Run("FallsBackToNextVoterWhenFirstTransferFails", func(t *testing.T) {
+		g := NewWithT(t)
+		leaderMaint := &mockMaintenance{moveLeaderErrFor: map[uint64]error{nodeB.ID: errors.New("unavailable")}}
+		client := newTestClient(
+			&mockCluster{members: []*pb.Member{nodeA, nodeB, nodeC}},
+			&mockMaintenance{leaderID: nodeA.ID},
+		)
+		g.Expect(client.moveLeader(context.Background(), nodeA.Name, mockFactory(leaderMaint))).To(Succeed())
+		g.Expect(leaderMaint.moveLeaderCalls).To(Equal([]uint64{nodeB.ID, nodeC.ID}))
+	})
+
+	t.Run("AllEligibleVotersFailTransfer", func(t *testing.T) {
+		g := NewWithT(t)
+		leaderMaint := &mockMaintenance{moveLeaderErr: errors.New("not leader")}
+		client := newTestClient(
+			&mockCluster{members: []*pb.Member{nodeA, nodeB, nodeC}},
+			&mockMaintenance{leaderID: nodeA.ID},
+		)
+		err := client.moveLeader(context.Background(), nodeA.Name, mockFactory(leaderMaint))
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("to any of 2 eligible voters"))
+		g.Expect(leaderMaint.moveLeaderCalls).To(Equal([]uint64{nodeB.ID, nodeC.ID}))
 	})
 
 	t.Run("MemberListError", func(t *testing.T) {

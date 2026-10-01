@@ -18,6 +18,11 @@ import (
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
 
+// etcdLeaderTransferTimeout bounds the best-effort etcd leadership transfer
+// attempted before removing a node, so an unreachable node/transferee cannot
+// consume the whole removal deadline and starve the subsequent MemberRemove call.
+const etcdLeaderTransferTimeout = 10 * time.Second
+
 // postClusterRemove handles requests to remove a node from the cluster.
 // It will remove the node from etcd, microcluster and from Kubernetes.
 // If force is true, the node is removed on a best-effort basis even if it is not reachable.
@@ -138,8 +143,16 @@ func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s mctypes.State, cf
 
 	log := log.FromContext(ctx).WithValues("remove", "etcd", "name", nodeName, "clientURLs", clientURLs)
 	log.Info("Transferring etcd leadership if node is the current leader")
-	if err := client.MoveLeaderIfNeeded(ctx, nodeName); err != nil {
-		// Best-effort: log and continue. Etcd will re-elect, but this minimises the leaderless window.
+	// Best-effort: run under a short child timeout so an unreachable target/transferee
+	// cannot consume the removal deadline; MoveLeaderIfNeeded dials the node being
+	// removed and etcd's MoveLeader otherwise blocks until the transferee responds
+	// or ctx is cancelled. Cancel before removal so RemoveNodeByName keeps the
+	// remainder of the original deadline.
+	transferCtx, cancelTransfer := context.WithTimeout(ctx, etcdLeaderTransferTimeout)
+	err = client.MoveLeaderIfNeeded(transferCtx, nodeName)
+	cancelTransfer()
+	if err != nil {
+		// Etcd will re-elect on its own; this only minimises the leaderless window.
 		log.Error(err, "Failed to transfer etcd leadership before removal")
 	}
 
