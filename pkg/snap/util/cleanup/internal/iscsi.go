@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
@@ -26,7 +27,10 @@ func GetISCSISessionsToLogout(ctx context.Context, s snap.Snap, mountHelper moun
 		return sids
 	}
 
-	out, err := exec.CommandContext(ctx, "iscsiadm", "-m", "session", "-P", "3").CombinedOutput()
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+
+	defer cancel()
+	out, err := exec.CommandContext(queryCtx, "iscsiadm", "-m", "session", "-P", "3").CombinedOutput()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == iscsiadmNoObjectsFound {
@@ -63,7 +67,7 @@ func GetISCSISessionsToLogout(ctx context.Context, s snap.Snap, mountHelper moun
 
 	err = mountHelper.ForEachMount(ctx, func(ctx context.Context, device string, mountPoint string, fsType string, flags string) error {
 		for _, prefix := range prefixes {
-			if strings.HasPrefix(mountPoint, prefix) {
+			if hasMountPrefix(mountPoint, prefix) {
 				resolvedDev, err := filepath.EvalSymlinks(device)
 				if err != nil {
 					resolvedDev = device
@@ -102,7 +106,10 @@ func LogoutISCSISessions(ctx context.Context, sids []string) {
 
 	for _, sid := range sids {
 		log.Info("Logging out iSCSI session", "sid", sid)
-		out, err := exec.CommandContext(ctx, "iscsiadm", "-m", "session", "-r", sid, "-u").CombinedOutput()
+		logoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+
+		out, err := exec.CommandContext(logoutCtx, "iscsiadm", "-m", "session", "-r", sid, "-u").CombinedOutput()
+		cancel()
 		if err != nil {
 			log.Error(err, "failed to logout iSCSI session", "sid", sid, "output", string(out))
 		}
@@ -119,7 +126,10 @@ func SyncISCSIDevices(ctx context.Context) {
 		return
 	}
 
-	out, err := exec.CommandContext(ctx, "iscsiadm", "-m", "session", "-P", "3").CombinedOutput()
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+
+	defer cancel()
+	out, err := exec.CommandContext(queryCtx, "iscsiadm", "-m", "session", "-P", "3").CombinedOutput()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) || exitErr.ExitCode() != iscsiadmNoObjectsFound {
@@ -141,7 +151,10 @@ func SyncISCSIDevices(ctx context.Context) {
 		dev := "/dev/" + fields[3]
 
 		log.Info("Flushing iSCSI block device buffer", "device", dev)
-		flushOut, err := exec.CommandContext(ctx, "blockdev", "--flushbufs", dev).CombinedOutput()
+		flushCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+
+		flushOut, err := exec.CommandContext(flushCtx, "blockdev", "--flushbufs", dev).CombinedOutput()
+		cancel()
 		if err != nil {
 			log.Error(err, "Failed to flush iSCSI block device buffers", "device", dev, "output", string(flushOut))
 		}
