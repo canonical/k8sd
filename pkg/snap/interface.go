@@ -68,6 +68,8 @@ type Snap interface {
 
 	LockFilesDir() string // /var/snap/k8s/common/lock
 
+	SnapCommonDir() string // /var/snap/k8s/common
+
 	NodeTokenFile() string                                                   // /var/snap/k8s/common/node-token
 	NodeKubernetesVersion(ctx context.Context) (*versionutil.Version, error) // The Kubernetes version of the node as set in the snap. Can be queried without running k8s services.
 

@@ -19,6 +19,13 @@ import (
 )
 
 func (a *App) onStart(ctx context.Context, s mctypes.State) error {
+	// Complete an interrupted etcd downgrade (if any) before starting services:
+	// after a snap downgrade across an etcd minor version boundary, the bundled
+	// etcd binary cannot start against the newer storage version.
+	if err := a.recoverEtcdDowngradeIfNeeded(ctx, s); err != nil {
+		return fmt.Errorf("failed to recover etcd downgrade: %w", err)
+	}
+
 	if err := a.ensureRunningServices(ctx, s); err != nil {
 		return fmt.Errorf("failed to ensure running services: %w", err)
 	}
