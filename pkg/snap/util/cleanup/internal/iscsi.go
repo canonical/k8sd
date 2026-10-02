@@ -4,46 +4,115 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/log"
+	"github.com/canonical/k8sd/pkg/snap"
+	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
 	"golang.org/x/sys/unix"
 )
 
 // iscsiadmNoObjectsFound is the exit code returned by iscsiadm when no iSCSI sessions exist.
-// Defined as ISCSI_ERR_NO_OBJS_FOUND in open-iscsi.
-// https://github.com/open-iscsi/open-iscsi/blob/2.1.11/include/iscsi_err.h#L50
 const iscsiadmNoObjectsFound = 21
 
-// LogoutISCSISessions logs out all active iSCSI sessions, allowing volume unmounts to proceed
-// without blocking on the kernel's iSCSI session recovery timeout (default: 120s).
-// This is required when iSCSI-backed volumes (e.g. Longhorn) are present and the iSCSI target
-// becomes unreachable after services are stopped.
-func LogoutISCSISessions(ctx context.Context) {
+// GetISCSISessionsToLogout finds the iSCSI session IDs (SIDs) that correspond to block devices
+// currently mounted under Kubernetes-managed directories.
+func GetISCSISessionsToLogout(ctx context.Context, s snap.Snap, mountHelper mountutils.MountManager) []string {
 	log := log.FromContext(ctx)
+	var sids []string
+
+	if _, err := exec.LookPath("iscsiadm"); err != nil {
+		return sids
+	}
+
+	out, err := exec.CommandContext(ctx, "iscsiadm", "-m", "session", "-P", "3").CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == iscsiadmNoObjectsFound {
+			return sids
+		}
+		log.Error(err, "failed to get iscsi sessions", "output", string(out))
+		return sids
+	}
+
+	devToSID := make(map[string]string)
+	var currentSID string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "SID:") {
+			parts := strings.Split(line, "SID:")
+			if len(parts) > 1 {
+				currentSID = strings.TrimSpace(parts[1])
+			}
+		} else if strings.HasPrefix(line, "Attached scsi disk") && currentSID != "" {
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				dev := "/dev/" + parts[3]
+				devToSID[dev] = currentSID
+			}
+		}
+	}
+
+	if len(devToSID) == 0 {
+		return sids
+	}
+
+	prefixes := append([]string{"/var/lib/kubelet/pods", "/var/lib/kubelet/plugins"}, containerdMountPrefixes(ctx, s)...)
+	sidSet := make(map[string]bool)
+
+	err = mountHelper.ForEachMount(ctx, func(ctx context.Context, device string, mountPoint string, fsType string, flags string) error {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(mountPoint, prefix) {
+				resolvedDev, err := filepath.EvalSymlinks(device)
+				if err != nil {
+					resolvedDev = device
+				}
+				if sid, ok := devToSID[resolvedDev]; ok {
+					sidSet[sid] = true
+				}
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Error(err, "failed to iterate mounts to find iSCSI sessions")
+	}
+
+	for sid := range sidSet {
+		sids = append(sids, sid)
+	}
+	return sids
+}
+
+// LogoutISCSISessions logs out specific iSCSI sessions, allowing volume unmounts to proceed
+// without blocking on the kernel's iSCSI session recovery timeout.
+func LogoutISCSISessions(ctx context.Context, sids []string) {
+	log := log.FromContext(ctx)
+
+	if len(sids) == 0 {
+		return
+	}
 
 	if _, err := exec.LookPath("iscsiadm"); err != nil {
 		log.Info("iscsiadm not found, skipping iSCSI session logout")
 		return
 	}
 
-	out, err := exec.CommandContext(ctx, "iscsiadm", "-m", "session", "-u").CombinedOutput()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == iscsiadmNoObjectsFound {
-			return
+	for _, sid := range sids {
+		log.Info("Logging out iSCSI session", "sid", sid)
+		out, err := exec.CommandContext(ctx, "iscsiadm", "-m", "session", "-r", sid, "-u").CombinedOutput()
+		if err != nil {
+			log.Error(err, "failed to logout iSCSI session", "sid", sid, "output", string(out))
 		}
-		log.Error(err, "failed to logout iSCSI sessions", "output", string(out))
 	}
 }
 
 // SyncISCSIDevices flushes all pending I/O to iSCSI-backed block devices.
-// This must be called before unmounting volumes or logging out iSCSI sessions
-// to prevent data corruption caused by in-flight writes being lost.
 func SyncISCSIDevices(ctx context.Context) {
 	log := log.FromContext(ctx)
 
-	// Flush all dirty filesystem pages to their backing block devices.
 	unix.Sync()
 
 	if _, err := exec.LookPath("iscsiadm"); err != nil {
@@ -52,6 +121,10 @@ func SyncISCSIDevices(ctx context.Context) {
 
 	out, err := exec.CommandContext(ctx, "iscsiadm", "-m", "session", "-P", "3").CombinedOutput()
 	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != iscsiadmNoObjectsFound {
+			log.Error(err, "failed to query iscsi sessions for sync", "output", string(out))
+		}
 		return
 	}
 

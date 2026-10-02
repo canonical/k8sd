@@ -78,6 +78,9 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 				log.Error(err, "failed to cleanup control plane certificates")
 			}
 
+			log.Info("Syncing iSCSI devices before stopping services")
+			cleanup.SyncISCSIDevices(ctx)
+
 			log.Info("Stopping all services except k8sd")
 			if err := snaputil.StopK8sServices(ctx, snap, "--no-wait"); err != nil {
 				log.Error(err, "failed to stop k8s services")
