@@ -41,7 +41,7 @@ func RemoveVolumeMountsGracefully(ctx context.Context, s snap.Snap, mountHelper 
 
 	err := mountHelper.ForEachMount(ctx, func(ctx context.Context, device string, mountPoint string, fsType string, flags string) error {
 		for _, prefix := range prefixes {
-			if strings.HasPrefix(mountPoint, prefix) && !strings.Contains(fsType, "nfs") {
+			if hasMountPrefix(mountPoint, prefix) && !strings.Contains(fsType, "nfs") {
 				// unmount Pod NFS volumes only forcefully, as unmounting them normally may hang otherwise.
 				// unmount remaining Pod volumes gracefully.
 				return mountHelper.Unmount(ctx, mountPoint, unix.MNT_DETACH)
@@ -65,9 +65,11 @@ func RemoveVolumeMountsForce(ctx context.Context, s snap.Snap, mountHelper mount
 
 	err := mountHelper.ForEachMount(ctx, func(ctx context.Context, device string, mountPoint string, fsType string, flags string) error {
 		for _, prefix := range prefixes {
-			if strings.HasPrefix(mountPoint, prefix) {
+			if hasMountPrefix(mountPoint, prefix) {
 				// unmount lingering Pod volumes by force, to prevent potential volume leaks.
-				return mountHelper.Unmount(ctx, mountPoint, unix.MNT_FORCE)
+				// MNT_DETACH prevents blocking on network-backed storage (e.g.: iSCSI)
+				// if the session logout in LogoutISCSISessions did not complete.
+				return mountHelper.Unmount(ctx, mountPoint, unix.MNT_FORCE|unix.MNT_DETACH)
 			}
 		}
 
@@ -76,4 +78,17 @@ func RemoveVolumeMountsForce(ctx context.Context, s snap.Snap, mountHelper mount
 	if err != nil {
 		log.Error(err, "failed to iterate mounts for forcefully removing volume mounts")
 	}
+}
+
+func hasMountPrefix(mountPoint, prefix string) bool {
+	if !strings.HasPrefix(mountPoint, prefix) {
+		return false
+	}
+	if len(mountPoint) == len(prefix) {
+		return true
+	}
+	if prefix[len(prefix)-1] == '.' || prefix[len(prefix)-1] == '/' {
+		return true
+	}
+	return mountPoint[len(prefix)] == '/'
 }

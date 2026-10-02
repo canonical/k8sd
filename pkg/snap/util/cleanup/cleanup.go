@@ -9,6 +9,11 @@ import (
 	netnsutils "github.com/canonical/k8sd/pkg/utils/netns"
 )
 
+// SyncISCSIDevices flushes all pending I/O to iSCSI-backed block devices.
+func SyncISCSIDevices(ctx context.Context) {
+	internal.SyncISCSIDevices(ctx)
+}
+
 // [DANGER] Cleanup containers and runtime state. Note that the order of operations below is crucial.
 // Cleanup is done on a best-effort basis, and errors are logged but not returned.
 func TryCleanupContainers(ctx context.Context, s snap.Snap) {
@@ -17,8 +22,14 @@ func TryCleanupContainers(ctx context.Context, s snap.Snap) {
 
 	internal.RemoveContainers(ctx)
 	internal.RemoveNetworkNamespaces(ctx, netnsHelper)
+
+	sidsToLogout := internal.GetISCSISessionsToLogout(ctx, s, mountHelper)
+
 	internal.RemoveVolumeMountsGracefully(ctx, s, mountHelper)
 	internal.RemoveVolumeMountsForce(ctx, s, mountHelper)
+
+	internal.LogoutISCSISessions(ctx, sidsToLogout)
+
 	internal.RemovePluginSockets(ctx)
 	internal.RemoveLoopDevices(ctx, mountHelper)
 }
