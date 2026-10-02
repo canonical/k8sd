@@ -15,6 +15,10 @@ const (
 	disabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete DNS, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy DNS, the error was: %v"
+
+	// ControlPlaneTaintKey is the well-known taint key of control-plane nodes.
+	// CoreDNS tolerates it so that it can be scheduled on control-plane nodes.
+	ControlPlaneTaintKey = "node-role.kubernetes.io/control-plane"
 )
 
 // ApplyDNS manages the deployment of CoreDNS, with customization options from dns and kubelet, which are retrieved from the cluster configuration.
@@ -60,7 +64,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		"priorityClassName": "system-node-critical",
 		"tolerations": []map[string]any{
 			{
-				"key":      "node-role.kubernetes.io/control-plane",
+				"key":      ControlPlaneTaintKey,
 				"operator": "Exists",
 				"effect":   "NoSchedule",
 			},
@@ -68,10 +72,14 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		"deployment": map[string]any{
 			"name": "coredns",
 		},
+		"rollingUpdate": map[string]any{
+			"maxSurge":       1,
+			"maxUnavailable": 0,
+		},
 		"servers": []map[string]any{
 			{
 				"zones": []map[string]any{
-					{"zone": "."},
+					{"zone": ".", "use_tcp": true},
 				},
 				"port": 53,
 				"plugins": []map[string]any{
@@ -106,7 +114,8 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 									"k8s-app":                    "coredns",
 								},
 							},
-							"topologyKey": "kubernetes.io/hostname",
+							"topologyKey":    "kubernetes.io/hostname",
+							"matchLabelKeys": []string{"pod-template-hash"},
 						},
 					},
 				},
