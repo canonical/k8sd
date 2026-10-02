@@ -10,7 +10,7 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/onsi/gomega v1.39.0
+	github.com/onsi/gomega v1.44.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/etcd/api/v3 v3.6.7
@@ -141,7 +141,7 @@ require (
 	go.etcd.io/etcd/client/pkg/v3 v3.6.7 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
