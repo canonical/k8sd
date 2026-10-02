@@ -186,6 +186,104 @@ func TestInternalConfig(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			name: "Valid cluster ID and name",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterID:   "1",
+				apiv1_annotations.AnnotationClusterName: "my-cluster",
+			},
+			expectedConfig: config{
+				tunnelPort:  ciliumDefaultVXLANPort,
+				clusterID:   1,
+				clusterName: "my-cluster",
+			},
+			expectError: false,
+		},
+		{
+			name: "Cluster name only",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterName: "my-cluster",
+			},
+			expectedConfig: config{
+				tunnelPort:  ciliumDefaultVXLANPort,
+				clusterName: "my-cluster",
+			},
+			expectError: false,
+		},
+		{
+			name: "Cluster ID not a number",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterID: "abc",
+			},
+			expectError: true,
+		},
+		{
+			name: "Cluster ID out of range",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterID: "256",
+			},
+			expectError: true,
+		},
+		{
+			name: "Cluster ID negative",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterID: "-1",
+			},
+			expectError: true,
+		},
+		{
+			name: "Cluster ID zero",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterID: "0",
+			},
+			expectedConfig: config{
+				tunnelPort: ciliumDefaultVXLANPort,
+			},
+			expectError: false,
+		},
+		{
+			name: "Cluster name too long",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterName: "this-cluster-name-is-definitely-too-long",
+			},
+			expectError: true,
+		},
+		{
+			name: "Cluster name with invalid characters",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterName: "My_Cluster",
+			},
+			expectError: true,
+		},
+		{
+			name: "Cluster name with leading dash",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterName: "-my-cluster",
+			},
+			expectError: true,
+		},
+		{
+			name: "Cluster name with trailing dash",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterName: "my-cluster-",
+			},
+			expectError: true,
+		},
+		{
+			name: "Non-zero cluster ID without cluster name",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterID: "1",
+			},
+			expectError: true,
+		},
+		{
+			name: "Non-zero cluster ID with default cluster name",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationClusterID:   "1",
+				apiv1_annotations.AnnotationClusterName: "default",
+			},
+			expectError: true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
