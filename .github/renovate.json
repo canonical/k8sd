@@ -1,5 +1,17 @@
 {
-    "extends": [
-      "config:recommended"
-    ]
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": [
+        "go.etcd.io/etcd/**"
+      ],
+      "groupName": "etcd monorepo"
+    }
+  ]
 }
