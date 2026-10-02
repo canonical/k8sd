@@ -6,6 +6,9 @@ on:
   pull_request:
   schedule:
     - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions: {}
 
@@ -20,14 +23,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
       - name: Run zizmor
-        uses: zizmorcore/zizmor-action@71321a20a9ded102f6e9ce5718a2fcec2c4f70d8 # v0.5.2
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
         with:
-          zizmor-args: --pedantic
+          persona: pedantic
           advanced-security: "true"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
