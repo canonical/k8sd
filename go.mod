@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	dario.cat/mergo v1.0.2
-	github.com/canonical/k8s-snap-api/v2 v2.1.1
+	github.com/canonical/k8s-snap-api/v2 v2.1.2-0.20260915101537-62f212e75b0f
 	github.com/canonical/lxd v0.0.0-20260817092508-554567178c38
 	github.com/canonical/microcluster/v3 v3.1.1
 	github.com/go-logr/logr v1.4.4
@@ -161,11 +161,11 @@ require (
 	k8s.io/kubectl v0.35.1 // indirect
 	oras.land/oras-go/v2 v2.6.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
-	sigs.k8s.io/kustomize/api v0.21.0 // indirect
-	sigs.k8s.io/kustomize/kyaml v0.21.0 // indirect
+	sigs.k8s.io/kustomize/api v0.21.0
+	sigs.k8s.io/kustomize/kyaml v0.21.0
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.1 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
+	sigs.k8s.io/yaml v1.6.0
 )
 
 // CVE-2026-34986: prevent transitive resolution of the vulnerable go-jose release.

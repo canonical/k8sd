@@ -284,7 +284,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}
 	}
 
-	if _, err := m.Apply(ctx, ChartCilium, helm.StatePresent, values); err != nil {
+	if _, err := m.Apply(ctx, ChartCilium, helm.StatePresent, values, toHelmPatches(network.GetPatches())...); err != nil {
 		err = fmt.Errorf("failed to enable network: %w", err)
 		return types.FeatureStatus{
 			Enabled: false,
