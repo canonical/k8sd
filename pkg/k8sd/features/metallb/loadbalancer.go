@@ -19,6 +19,13 @@ const (
 	DisabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete MetalLB, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
+
+	// bgpBackendNative is the default BGP implementation (built-in GoBGP). Does not
+	// support BFD.
+	bgpBackendNative = "native"
+	// bgpBackendFRRK8s is the FRR-based BGP backend (github.com/metallb/frr-k8s).
+	// Required for peers that set a bfdProfile.
+	bgpBackendFRRK8s = "frr-k8s"
 )
 
 // bgpNeighbor is an internal representation of a single MetalLB BGPPeer.
@@ -28,10 +35,13 @@ type bgpNeighbor struct {
 	peerPort     int
 	myASN        int
 	nodeSelector map[string]string
+	bfdProfile   string
 }
 
 // validateBGPNeighbors returns an error if any neighbor in the slice is invalid.
-func validateBGPNeighbors(neighbors []bgpNeighbor) error {
+// frrk8sEnabled indicates whether the frr-k8s backend is active; neighbors that set
+// bfdProfile are only valid when it is true, since BFD requires an FRR-based backend.
+func validateBGPNeighbors(neighbors []bgpNeighbor, frrk8sEnabled bool) error {
 	for i, n := range neighbors {
 		if n.peerASN < 1 || n.peerASN > 4294967295 {
 			return fmt.Errorf("neighbor[%d]: peerASN %d out of range [1, 4294967295]", i, n.peerASN)
@@ -49,6 +59,9 @@ func validateBGPNeighbors(neighbors []bgpNeighbor) error {
 			if k == "" {
 				return fmt.Errorf("neighbor[%d]: nodeSelector has empty key", i)
 			}
+		}
+		if n.bfdProfile != "" && !frrk8sEnabled {
+			return fmt.Errorf("neighbor[%d]: bfdProfile %q requires %s annotation set to %q", i, n.bfdProfile, metallbAnnotations.AnnotationBGPBackend, bgpBackendFRRK8s)
 		}
 	}
 	return nil
@@ -82,6 +95,7 @@ func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, boo
 		PeerPort     int               `yaml:"peerPort"`
 		MyASN        int               `yaml:"myASN"`
 		NodeSelector map[string]string `yaml:"nodeSelector"`
+		BFDProfile   string            `yaml:"bfdProfile"`
 	}
 	var peers []peerYAML
 	if err := yaml.Unmarshal([]byte(peersYAML), &peers); err != nil {
@@ -95,6 +109,7 @@ func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, boo
 			peerPort:     p.PeerPort,
 			myASN:        p.MyASN,
 			nodeSelector: p.NodeSelector,
+			bfdProfile:   p.BFDProfile,
 		}
 	}
 
@@ -108,6 +123,24 @@ func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, boo
 	}
 
 	return neighbors, advertiseAll, true, nil
+}
+
+// backendFromAnnotations parses the bgp-backend annotation and returns whether the
+// frr-k8s backend should be enabled instead of the default native (GoBGP) backend.
+// If the annotation is absent, empty, or set to "native", it returns (false, nil).
+// If set to "frr-k8s", it returns (true, nil). Any other value is an error.
+//
+// The frr-k8s backend is required for BFD; see bfdProfile on individual peers in
+// neighborsFromAnnotations.
+func backendFromAnnotations(annotations types.Annotations) (bool, error) {
+	v, ok := annotations[metallbAnnotations.AnnotationBGPBackend]
+	if !ok || v == "" || v == bgpBackendNative {
+		return false, nil
+	}
+	if v == bgpBackendFRRK8s {
+		return true, nil
+	}
+	return false, fmt.Errorf("invalid bgp-backend annotation %q: must be %q or %q", v, bgpBackendNative, bgpBackendFRRK8s)
 }
 
 // ApplyLoadBalancer will always return a FeatureStatus indicating the current status of the
@@ -143,6 +176,10 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	// Determine if annotation path is active (key present, regardless of value).
 	_, annotationActive := annotations[metallbAnnotations.AnnotationBGPPeers]
 	bothConfigsSet := annotationActive && loadbalancer.GetBGPPeerAddress() != ""
+	// Backend validity was already enforced in enableLoadBalancer; if it were invalid
+	// we would have returned above. Only the (alpha) status message cares about the
+	// raw value here.
+	frrk8sBackendActive := annotations[metallbAnnotations.AnnotationBGPBackend] == bgpBackendFRRK8s
 
 	switch {
 	case loadbalancer.GetBGPMode():
@@ -152,6 +189,9 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			if bothConfigsSet {
 				msg = "enabled, BGP mode (alpha) - warning: single-peer typed keys are ignored"
 			}
+		}
+		if frrk8sBackendActive {
+			msg += ", frr-k8s backend"
 		}
 		return types.FeatureStatus{
 			Enabled: true,
@@ -211,6 +251,9 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 		if len(n.nodeSelector) > 0 {
 			nm["nodeSelector"] = n.nodeSelector
 		}
+		if n.bfdProfile != "" {
+			nm["bfdProfile"] = n.bfdProfile
+		}
 		neighborMaps = append(neighborMaps, nm)
 	}
 
@@ -234,6 +277,11 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 
 func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) error {
 	m := snap.HelmClient()
+
+	frrk8sEnabled, err := backendFromAnnotations(annotations)
+	if err != nil {
+		return fmt.Errorf("invalid BGP backend annotation: %w", err)
+	}
 
 	metalLBValues := map[string]any{
 		"controller": map[string]any{
@@ -261,15 +309,18 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 				"tag":        speakerImageTag,
 			},
 			"command": "/speaker",
+			// speaker.frr is the legacy, deprecated embedded FRR mode (upstream marks
+			// it for removal). We never enable it; use frrk8s below instead, which is
+			// mutually exclusive with this in the upstream chart template.
 			"frr": map[string]any{
 				"enabled": false,
 			},
 		},
 		// frrk8s is a top-level value of the MetalLB chart and defaults to
-		// enabled since chart 0.16.0. Keep it disabled, we only support L2 and
-		// the native BGP backend.
+		// enabled since chart 0.16.0. Controlled by the bgp-backend annotation
+		// (see backendFromAnnotations); defaults to disabled (native backend).
 		"frrk8s": map[string]any{
-			"enabled": false,
+			"enabled": frrk8sEnabled,
 		},
 	}
 	if _, err := m.Apply(ctx, ChartMetalLB, helm.StatePresent, metalLBValues); err != nil {
@@ -317,7 +368,7 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 
 	// Validate BGP neighbors at reconcile time (fail-late).
 	// Skipped for L2 mode where neighbors is nil.
-	if err := validateBGPNeighbors(neighbors); err != nil {
+	if err := validateBGPNeighbors(neighbors, frrk8sEnabled); err != nil {
 		return fmt.Errorf("invalid BGP peers: %w", err)
 	}
 

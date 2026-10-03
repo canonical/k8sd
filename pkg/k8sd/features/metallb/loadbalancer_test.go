@@ -3,6 +3,7 @@ package metallb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
@@ -275,6 +276,7 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 			peerPort:     179,
 			myASN:        65099,
 			nodeSelector: map[string]string{"zone": "a"},
+			bfdProfile:   "fast-failover",
 		}}
 
 		values := buildLoadBalancerValues(baseLB, neighbors, true)
@@ -291,12 +293,14 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 		g.Expect(ns[0]["peerPort"]).To(Equal(179))
 		g.Expect(ns[0]["myASN"]).To(Equal(65099))
 		g.Expect(ns[0]["nodeSelector"]).To(Equal(map[string]string{"zone": "a"}))
+		g.Expect(ns[0]["bfdProfile"]).To(Equal("fast-failover"))
 	})
 
 	t.Run("OptionalFieldsOmitted", func(t *testing.T) {
 		g := NewWithT(t)
 
-		// myASN=0 and empty nodeSelector must not appear in the output map.
+		// myASN=0, empty nodeSelector, and empty bfdProfile must not appear in the
+		// output map.
 		neighbors := []bgpNeighbor{{peerAddress: "10.0.0.1", peerASN: 64513}}
 		values := buildLoadBalancerValues(baseLB, neighbors, false)
 
@@ -307,6 +311,8 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 		g.Expect(hasMyASN).To(BeFalse())
 		_, hasNodeSelector := ns[0]["nodeSelector"]
 		g.Expect(hasNodeSelector).To(BeFalse())
+		_, hasBFDProfile := ns[0]["bfdProfile"]
+		g.Expect(hasBFDProfile).To(BeFalse())
 		g.Expect(bgp["advertiseAllPools"]).To(BeFalse())
 	})
 }
@@ -322,28 +328,33 @@ func TestValidateBGPNeighbors(t *testing.T) {
 			{peerAddress: "10.0.0.1", peerASN: 64513, myASN: 0},    // myASN=0 allowed (inherit)
 			{peerAddress: "10.0.0.1", peerASN: 64513, peerPort: 0}, // peerPort=0 allowed (inherit)
 			{peerAddress: "10.0.0.1", peerASN: 64513, peerPort: 179, myASN: 65000, nodeSelector: map[string]string{"zone": "a"}},
+			{peerAddress: "10.0.0.1", peerASN: 64513, bfdProfile: "fast"}, // bfdProfile allowed when frrk8sEnabled
 		}
 		for _, n := range cases {
-			g.Expect(validateBGPNeighbors([]bgpNeighbor{n})).To(Succeed())
+			g.Expect(validateBGPNeighbors([]bgpNeighbor{n}, true)).To(Succeed())
 		}
+		// bfdProfile-less neighbors are also valid when frrk8sEnabled is false.
+		g.Expect(validateBGPNeighbors([]bgpNeighbor{valid}, false)).To(Succeed())
 	})
 
 	t.Run("Invalid", func(t *testing.T) {
 		g := NewWithT(t)
 		cases := []struct {
-			neighbor bgpNeighbor
-			wantErr  string
+			neighbor      bgpNeighbor
+			frrk8sEnabled bool
+			wantErr       string
 		}{
-			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 0}, "peerASN 0 out of range"},
-			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 4294967296}, "peerASN 4294967296 out of range"},
-			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, myASN: -1}, "myASN -1 out of range"},
-			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, peerPort: 65536}, "peerPort 65536 out of range"},
-			{bgpNeighbor{peerAddress: "not-an-ip", peerASN: 64513}, "invalid peerAddress"},
-			{bgpNeighbor{peerAddress: "256.0.0.1", peerASN: 64513}, "invalid peerAddress"},
-			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, nodeSelector: map[string]string{"": "v"}}, "nodeSelector has empty key"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 0}, true, "peerASN 0 out of range"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 4294967296}, true, "peerASN 4294967296 out of range"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, myASN: -1}, true, "myASN -1 out of range"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, peerPort: 65536}, true, "peerPort 65536 out of range"},
+			{bgpNeighbor{peerAddress: "not-an-ip", peerASN: 64513}, true, "invalid peerAddress"},
+			{bgpNeighbor{peerAddress: "256.0.0.1", peerASN: 64513}, true, "invalid peerAddress"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, nodeSelector: map[string]string{"": "v"}}, true, "nodeSelector has empty key"},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, bfdProfile: "fast"}, false, `bfdProfile "fast" requires k8sd/v1alpha1/metallb/bgp-backend annotation set to "frr-k8s"`},
 		}
 		for _, tc := range cases {
-			err := validateBGPNeighbors([]bgpNeighbor{tc.neighbor})
+			err := validateBGPNeighbors([]bgpNeighbor{tc.neighbor}, tc.frrk8sEnabled)
 			g.Expect(err).To(HaveOccurred(), "expected error for %+v", tc.neighbor)
 			g.Expect(err.Error()).To(ContainSubstring(tc.wantErr))
 		}
@@ -400,6 +411,7 @@ func TestAnnotationParsing(t *testing.T) {
   peerASN: 65001
   nodeSelector:
     topology.kubernetes.io/zone: i1
+  bfdProfile: fast-failover
 - peerAddress: 10.116.3.165
   peerASN: 65002
 - peerAddress: 10.116.3.166
@@ -412,7 +424,41 @@ func TestAnnotationParsing(t *testing.T) {
 		g.Expect(neighbors[0].peerAddress).To(Equal("10.116.3.164"))
 		g.Expect(neighbors[0].peerASN).To(Equal(65001))
 		g.Expect(neighbors[0].nodeSelector).To(Equal(map[string]string{"topology.kubernetes.io/zone": "i1"}))
+		g.Expect(neighbors[0].bfdProfile).To(Equal("fast-failover"))
+		g.Expect(neighbors[1].bfdProfile).To(Equal(""))
 	})
+}
+
+func TestBackendFromAnnotations(t *testing.T) {
+	backendKey := "k8sd/v1alpha1/metallb/bgp-backend"
+
+	cases := []struct {
+		name        string
+		annotations types.Annotations
+		wantFRRK8s  bool
+		wantErr     string
+	}{
+		{"nil", nil, false, ""},
+		{"empty-map", types.Annotations{}, false, ""},
+		{"empty-value", types.Annotations{backendKey: ""}, false, ""},
+		{"native", types.Annotations{backendKey: "native"}, false, ""},
+		{"frr-k8s", types.Annotations{backendKey: "frr-k8s"}, true, ""},
+		{"invalid", types.Annotations{backendKey: "frr"}, false, `invalid bgp-backend annotation "frr"`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			frrk8sEnabled, err := backendFromAnnotations(tc.annotations)
+			g.Expect(frrk8sEnabled).To(Equal(tc.wantFRRK8s))
+			if tc.wantErr != "" {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring(tc.wantErr))
+			} else {
+				g.Expect(err).ToNot(HaveOccurred())
+			}
+		})
+	}
 }
 
 func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
@@ -549,6 +595,16 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 				types.Annotations{"k8sd/v1alpha1/metallb/bgp-peers": "- peerAddress: 10.0.0.1\n  peerASN: 0\n"},
 				"invalid BGP peers",
 			},
+			{
+				"invalid-backend",
+				types.Annotations{"k8sd/v1alpha1/metallb/bgp-backend": "frr"},
+				"invalid BGP backend annotation",
+			},
+			{
+				"bfd-profile-without-frrk8s-backend",
+				types.Annotations{"k8sd/v1alpha1/metallb/bgp-peers": "- peerAddress: 10.0.0.1\n  peerASN: 65001\n  bfdProfile: fast\n"},
+				"invalid BGP peers",
+			},
 		}
 		for _, tc := range cases {
 			helmM := &helmmock.Mock{}
@@ -595,5 +651,98 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 		lbValues := helmM.ApplyCalledWith[1].Values
 		bgp := lbValues["bgp"].(map[string]any)
 		g.Expect(bgp["advertiseAllPools"]).To(BeTrue())
+	})
+
+	t.Run("FRRK8sBackendAnnotation", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:     ptr.To(true),
+			BGPMode:     ptr.To(true),
+			BGPLocalASN: ptr.To(64512),
+			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+		}
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-backend": "frr-k8s",
+			"k8sd/v1alpha1/metallb/bgp-peers": `
+- peerAddress: 10.0.0.1
+  peerASN: 65001
+  bfdProfile: fast-failover
+`,
+		}
+
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha), frr-k8s backend"))
+
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
+
+		// First Apply call (ChartMetalLB) must enable frrk8s and keep the legacy
+		// frr mode disabled (they are mutually exclusive upstream).
+		metalLBValues := helmM.ApplyCalledWith[0].Values
+		frrk8s := metalLBValues["frrk8s"].(map[string]any)
+		g.Expect(frrk8s["enabled"]).To(BeTrue())
+		speaker := metalLBValues["speaker"].(map[string]any)
+		frr := speaker["frr"].(map[string]any)
+		g.Expect(frr["enabled"]).To(BeFalse())
+
+		// Second Apply call (ChartMetalLBLoadBalancer) must render bfdProfile.
+		bgp := helmM.ApplyCalledWith[1].Values["bgp"].(map[string]any)
+		neighbors := bgp["neighbors"].([]map[string]any)
+		g.Expect(neighbors).To(HaveLen(1))
+		g.Expect(neighbors[0]["bfdProfile"]).To(Equal("fast-failover"))
+	})
+
+	t.Run("DefaultBackendIsNative", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:        ptr.To(true),
+			BGPMode:        ptr.To(true),
+			BGPLocalASN:    ptr.To(64512),
+			BGPPeerAddress: ptr.To("10.0.0.1"),
+			BGPPeerASN:     ptr.To(65001),
+			CIDRs:          ptr.To([]string{"192.0.2.0/24"}),
+		}
+
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(status.Message).To(Equal(fmt.Sprintf(enabledMsgTmpl, "BGP")))
+
+		metalLBValues := helmM.ApplyCalledWith[0].Values
+		frrk8s := metalLBValues["frrk8s"].(map[string]any)
+		g.Expect(frrk8s["enabled"]).To(BeFalse())
+	})
+
+	t.Run("BFDProfileRequiresFRRK8sBackend", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:     ptr.To(true),
+			BGPMode:     ptr.To(true),
+			BGPLocalASN: ptr.To(64512),
+			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+		}
+		// bgp-backend omitted (defaults to native) but a peer sets bfdProfile.
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-peers": "- peerAddress: 10.0.0.1\n  peerASN: 65001\n  bfdProfile: fast-failover\n",
+		}
+
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("bfdProfile"))
+		g.Expect(err.Error()).To(ContainSubstring("frr-k8s"))
+		g.Expect(status.Enabled).To(BeFalse())
 	})
 }
