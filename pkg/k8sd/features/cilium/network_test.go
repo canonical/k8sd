@@ -313,6 +313,87 @@ func TestNetworkEnabled(t *testing.T) {
 			sctpValues := callArgs.Values["sctp"].(map[string]interface{})
 			g.Expect(sctpValues["enabled"]).To(BeTrue())
 		})
+
+		t.Run("ClusterIDAndName", func(t *testing.T) {
+			g := NewWithT(t)
+
+			helmM := &helmmock.Mock{}
+			clientset := fake.NewSimpleClientset(
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium-operator",
+						Namespace: "kube-system",
+					},
+				},
+				&appsv1.DaemonSet{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium",
+						Namespace: "kube-system",
+					},
+				},
+			)
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			testAnnotations := types.Annotations{
+				apiv1_annotations.AnnotationClusterID:   "1",
+				apiv1_annotations.AnnotationClusterName: "my-cluster",
+			}
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, testAnnotations)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
+			g.Expect(status.Version).To(Equal(cilium.CiliumAgentImageTag))
+			g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+
+			callArgs := helmM.ApplyCalledWith[0]
+			g.Expect(callArgs.Chart).To(Equal(cilium.ChartCilium))
+			g.Expect(callArgs.State).To(Equal(helm.StatePresent))
+
+			clusterValues := callArgs.Values["cluster"].(map[string]interface{})
+			g.Expect(clusterValues["id"]).To(Equal(1))
+			g.Expect(clusterValues["name"]).To(Equal("my-cluster"))
+		})
+
+		t.Run("ClusterIDAndNameInvalid", func(t *testing.T) {
+			g := NewWithT(t)
+
+			helmM := &helmmock.Mock{}
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient: helmM,
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			testAnnotations := types.Annotations{
+				apiv1_annotations.AnnotationClusterID: "1",
+			}
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, testAnnotations)
+
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(status.Enabled).To(BeFalse())
+			g.Expect(status.Version).To(Equal(cilium.CiliumAgentImageTag))
+			g.Expect(helmM.ApplyCalledWith).To(BeEmpty())
+		})
 	})
 }
 
