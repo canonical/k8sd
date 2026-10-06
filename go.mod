@@ -1,12 +1,12 @@
 module github.com/canonical/k8sd
 
-go 1.26.5
+go 1.27.1
 
 require (
 	dario.cat/mergo v1.0.2
 	github.com/canonical/k8s-snap-api/v2 v2.1.1
-	github.com/canonical/lxd v0.0.0-20260817092508-554567178c38
-	github.com/canonical/microcluster/v3 v3.1.1
+	github.com/canonical/lxd v0.0.0-20261006075421-99e0bf764954
+	github.com/canonical/microcluster/v3 v3.1.2
 	github.com/go-logr/logr v1.4.4
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/sys/mountinfo v0.7.2
@@ -103,7 +103,7 @@ require (
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mattn/go-runewidth v0.0.27 // indirect
+	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/mattn/go-sqlite3 v1.14.52 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
