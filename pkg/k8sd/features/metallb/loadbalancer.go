@@ -384,9 +384,6 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 				"tag":        speakerImageTag,
 			},
 			"command": "/speaker",
-			// speaker.frr is the legacy, deprecated embedded FRR mode (upstream marks
-			// it for removal). We never enable it; use frrk8s below instead, which is
-			// mutually exclusive with this in the upstream chart template.
 			"frr": map[string]any{
 				"enabled": false,
 			},
