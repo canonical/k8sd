@@ -38,6 +38,13 @@ type bgpNeighbor struct {
 	bfdProfile   string
 }
 
+// bfdProfile is an internal representation of a single MetalLB BFDProfile.
+type bfdProfile struct {
+	name      string
+	namespace string
+	spec      map[string]any
+}
+
 // validateBGPNeighbors returns an error if any neighbor in the slice is invalid.
 // frrk8sEnabled indicates whether the frr-k8s backend is active; neighbors that set
 // bfdProfile are only valid when it is true, since BFD requires an FRR-based backend.
@@ -143,6 +150,50 @@ func backendFromAnnotations(annotations types.Annotations) (bool, error) {
 	return false, fmt.Errorf("invalid bgp-backend annotation %q: must be %q or %q", v, bgpBackendNative, bgpBackendFRRK8s)
 }
 
+// bfdProfilesFromAnnotations parses the bfd-profiles annotation. The spec of each
+// profile is passed through as-is; its fields are validated by the BFDProfile CRD.
+// If the annotation is absent, returns (nil, nil).
+func bfdProfilesFromAnnotations(annotations types.Annotations) ([]bfdProfile, error) {
+	profilesYAML, ok := annotations[metallbAnnotations.AnnotationBFDProfiles]
+	if !ok {
+		return nil, nil
+	}
+
+	type profileYAML struct {
+		Name      string         `yaml:"name"`
+		Namespace string         `yaml:"namespace"`
+		Spec      map[string]any `yaml:"spec"`
+	}
+	var items []profileYAML
+	if err := yaml.Unmarshal([]byte(profilesYAML), &items); err != nil {
+		return nil, fmt.Errorf("failed to parse bfd-profiles annotation: %w", err)
+	}
+
+	profiles := make([]bfdProfile, len(items))
+	for i, p := range items {
+		profiles[i] = bfdProfile{
+			name:      p.Name,
+			namespace: p.Namespace,
+			spec:      p.Spec,
+		}
+	}
+	return profiles, nil
+}
+
+// validateBFDProfiles returns an error if any profile is invalid. BFD profiles are
+// only accepted by MetalLB with an FRR-based backend.
+func validateBFDProfiles(profiles []bfdProfile, frrk8sEnabled bool) error {
+	if len(profiles) > 0 && !frrk8sEnabled {
+		return fmt.Errorf("%s requires %s annotation set to %q", metallbAnnotations.AnnotationBFDProfiles, metallbAnnotations.AnnotationBGPBackend, bgpBackendFRRK8s)
+	}
+	for i, p := range profiles {
+		if p.name == "" {
+			return fmt.Errorf("bfdProfile[%d]: name is required", i)
+		}
+	}
+	return nil
+}
+
 // ApplyLoadBalancer will always return a FeatureStatus indicating the current status of the
 // deployment.
 // ApplyLoadBalancer returns an error if anything fails. The error is also wrapped in the .Message field of the
@@ -228,8 +279,9 @@ func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Netw
 
 // buildLoadBalancerValues constructs the Helm values map for the ck-loadbalancer chart.
 // neighbors is the list of BGP peers to render; advertiseAllPools controls the
-// BGPAdvertisement spec (empty spec when true, named pool when false).
-func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, advertiseAllPools bool) map[string]any {
+// BGPAdvertisement spec (empty spec when true, named pool when false); bfdProfiles
+// is the list of BFDProfiles to render.
+func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, advertiseAllPools bool, bfdProfiles []bfdProfile) map[string]any {
 	cidrs := []map[string]any{}
 	for _, cidr := range lb.GetCIDRs() {
 		cidrs = append(cidrs, map[string]any{"cidr": cidr})
@@ -257,6 +309,20 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 		neighborMaps = append(neighborMaps, nm)
 	}
 
+	// Always set (even when empty) so Helm does not coalesce stale profiles from
+	// the previous release values.
+	profileMaps := make([]map[string]any, 0, len(bfdProfiles))
+	for _, p := range bfdProfiles {
+		pm := map[string]any{"name": p.name}
+		if p.namespace != "" {
+			pm["namespace"] = p.namespace
+		}
+		if len(p.spec) > 0 {
+			pm["spec"] = p.spec
+		}
+		profileMaps = append(profileMaps, pm)
+	}
+
 	return map[string]any{
 		"driver": "metallb",
 		"l2": map[string]any{
@@ -271,6 +337,7 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 			"localASN":          lb.GetBGPLocalASN(),
 			"neighbors":         neighborMaps,
 			"advertiseAllPools": advertiseAllPools,
+			"bfdProfiles":       profileMaps,
 		},
 	}
 }
@@ -281,6 +348,14 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 	frrk8sEnabled, err := backendFromAnnotations(annotations)
 	if err != nil {
 		return fmt.Errorf("invalid BGP backend annotation: %w", err)
+	}
+
+	bfdProfiles, err := bfdProfilesFromAnnotations(annotations)
+	if err != nil {
+		return fmt.Errorf("invalid BFD profile annotation: %w", err)
+	}
+	if err := validateBFDProfiles(bfdProfiles, frrk8sEnabled); err != nil {
+		return fmt.Errorf("invalid BFD profiles: %w", err)
 	}
 
 	metalLBValues := map[string]any{
@@ -327,7 +402,7 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		return fmt.Errorf("failed to apply MetalLB configuration: %w", err)
 	}
 
-	if err := waitForRequiredLoadBalancerCRDs(ctx, snap, loadbalancer.GetBGPMode()); err != nil {
+	if err := waitForRequiredLoadBalancerCRDs(ctx, snap, loadbalancer.GetBGPMode(), len(bfdProfiles) > 0); err != nil {
 		return fmt.Errorf("failed to wait for required MetalLB CRDs: %w", err)
 	}
 
@@ -372,7 +447,7 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		return fmt.Errorf("invalid BGP peers: %w", err)
 	}
 
-	values := buildLoadBalancerValues(loadbalancer, neighbors, advertiseAll)
+	values := buildLoadBalancerValues(loadbalancer, neighbors, advertiseAll, bfdProfiles)
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StatePresent, values); err != nil {
 		return fmt.Errorf("failed to apply MetalLB LoadBalancer configuration: %w", err)
@@ -385,8 +460,8 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 // the current configuration are registered. The check is presence-only
 // (count-based), independent of how many BGPPeer CRs will be created — so
 // multi-peer configurations (including those driven by the bgp-peers annotation)
-// require no changes here.
-func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMode bool) error {
+// require no changes here. withBFD additionally requires the BFDProfile CRD.
+func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMode bool, withBFD bool) error {
 	client, err := snap.KubernetesClient("")
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
@@ -411,6 +486,9 @@ func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMod
 		if bgpMode {
 			requiredCRDs["metallb.io/v1beta2:bgppeers"] = struct{}{}
 			requiredCRDs["metallb.io/v1beta1:bgpadvertisements"] = struct{}{}
+		}
+		if withBFD {
+			requiredCRDs["metallb.io/v1beta1:bfdprofiles"] = struct{}{}
 		}
 
 		requiredCount := len(requiredCRDs)
