@@ -1,11 +1,11 @@
 module github.com/canonical/k8sd
 
-go 1.27.1
+go 1.26.5
 
 require (
 	dario.cat/mergo v1.0.2
 	github.com/canonical/k8s-snap-api/v2 v2.1.1
-	github.com/canonical/lxd v0.0.0-20261005171426-710ce4a3f31e
+	github.com/canonical/lxd v0.0.0-20260817092508-554567178c38
 	github.com/canonical/microcluster/v3 v3.1.1
 	github.com/go-logr/logr v1.4.4
 	github.com/mitchellh/mapstructure v1.5.0
