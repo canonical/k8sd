@@ -10,7 +10,7 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/onsi/gomega v1.39.0
+	github.com/onsi/gomega v1.44.0
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/etcd/api/v3 v3.6.7
