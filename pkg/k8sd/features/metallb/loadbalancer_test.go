@@ -279,7 +279,7 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 			bfdProfile:   "fast-failover",
 		}}
 
-		values := buildLoadBalancerValues(baseLB, neighbors, true)
+		values := buildLoadBalancerValues(baseLB, neighbors, true, nil)
 
 		bgp := values["bgp"].(map[string]any)
 		g.Expect(bgp["enabled"]).To(BeTrue())
@@ -302,7 +302,7 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 		// myASN=0, empty nodeSelector, and empty bfdProfile must not appear in the
 		// output map.
 		neighbors := []bgpNeighbor{{peerAddress: "10.0.0.1", peerASN: 64513}}
-		values := buildLoadBalancerValues(baseLB, neighbors, false)
+		values := buildLoadBalancerValues(baseLB, neighbors, false, nil)
 
 		bgp := values["bgp"].(map[string]any)
 		ns := bgp["neighbors"].([]map[string]any)
@@ -314,7 +314,110 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 		_, hasBFDProfile := ns[0]["bfdProfile"]
 		g.Expect(hasBFDProfile).To(BeFalse())
 		g.Expect(bgp["advertiseAllPools"]).To(BeFalse())
+		g.Expect(bgp["bfdProfiles"]).To(BeEmpty())
+		g.Expect(bgp["bfdProfiles"]).ToNot(BeNil())
 	})
+
+	t.Run("BFDProfiles", func(t *testing.T) {
+		g := NewWithT(t)
+
+		spec := map[string]any{"receiveInterval": 150, "transmitInterval": 150, "detectMultiplier": 3}
+		profiles := []bfdProfile{
+			{name: "fast-failover", namespace: "metallb-system", spec: spec},
+			{name: "defaults"},
+		}
+
+		values := buildLoadBalancerValues(baseLB, nil, false, profiles)
+
+		bgp := values["bgp"].(map[string]any)
+		g.Expect(bgp["bfdProfiles"]).To(Equal([]map[string]any{
+			{"name": "fast-failover", "namespace": "metallb-system", "spec": spec},
+			{"name": "defaults"},
+		}))
+	})
+}
+
+func TestBFDProfilesFromAnnotations(t *testing.T) {
+	profilesKey := "k8sd/v1alpha1/metallb/bfd-profiles"
+
+	cases := []struct {
+		name        string
+		annotations types.Annotations
+		want        []bfdProfile
+		wantErr     string
+	}{
+		{"nil", nil, nil, ""},
+		{"absent", types.Annotations{}, nil, ""},
+		{"empty-list", types.Annotations{profilesKey: "[]"}, []bfdProfile{}, ""},
+		{
+			"full",
+			types.Annotations{profilesKey: `
+- name: fast-failover
+  namespace: metallb-system
+  spec:
+    receiveInterval: 150
+    transmitInterval: 150
+    detectMultiplier: 3
+    echoMode: true
+- name: defaults
+`},
+			[]bfdProfile{
+				{
+					name:      "fast-failover",
+					namespace: "metallb-system",
+					spec: map[string]any{
+						"receiveInterval":  150,
+						"transmitInterval": 150,
+						"detectMultiplier": 3,
+						"echoMode":         true,
+					},
+				},
+				{name: "defaults"},
+			},
+			"",
+		},
+		{"malformed-yaml", types.Annotations{profilesKey: "not: valid: yaml: [{"}, nil, "failed to parse bfd-profiles annotation"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			profiles, err := bfdProfilesFromAnnotations(tc.annotations)
+			if tc.wantErr != "" {
+				g.Expect(err).To(MatchError(ContainSubstring(tc.wantErr)))
+				return
+			}
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(profiles).To(Equal(tc.want))
+		})
+	}
+}
+
+func TestValidateBFDProfiles(t *testing.T) {
+	cases := []struct {
+		name          string
+		profiles      []bfdProfile
+		frrk8sEnabled bool
+		wantErr       string
+	}{
+		{"none-native", nil, false, ""},
+		{"none-frr-k8s", nil, true, ""},
+		{"valid", []bfdProfile{{name: "fast-failover"}}, true, ""},
+		{"requires-frr-k8s", []bfdProfile{{name: "fast-failover"}}, false, "frr-k8s"},
+		{"missing-name", []bfdProfile{{name: "a"}, {namespace: "metallb-system"}}, true, "bfdProfile[1]: name is required"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			err := validateBFDProfiles(tc.profiles, tc.frrk8sEnabled)
+			if tc.wantErr != "" {
+				g.Expect(err).To(MatchError(ContainSubstring(tc.wantErr)))
+				return
+			}
+			g.Expect(err).ToNot(HaveOccurred())
+		})
+	}
 }
 
 func TestValidateBGPNeighbors(t *testing.T) {
@@ -476,6 +579,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 					{Name: "ipaddresspools"},
 					{Name: "l2advertisements"},
 					{Name: "bgpadvertisements"},
+					{Name: "bfdprofiles"},
 				},
 			},
 			{
@@ -605,6 +709,19 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 				types.Annotations{"k8sd/v1alpha1/metallb/bgp-peers": "- peerAddress: 10.0.0.1\n  peerASN: 65001\n  bfdProfile: fast\n"},
 				"invalid BGP peers",
 			},
+			{
+				"invalid-bfd-profiles-yaml",
+				types.Annotations{
+					"k8sd/v1alpha1/metallb/bgp-backend":  "frr-k8s",
+					"k8sd/v1alpha1/metallb/bfd-profiles": "not: valid: yaml: [{",
+				},
+				"invalid BFD profile annotation",
+			},
+			{
+				"bfd-profiles-without-frrk8s-backend",
+				types.Annotations{"k8sd/v1alpha1/metallb/bfd-profiles": "- name: fast-failover\n"},
+				"invalid BFD profiles",
+			},
 		}
 		for _, tc := range cases {
 			helmM := &helmmock.Mock{}
@@ -695,6 +812,46 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 		neighbors := bgp["neighbors"].([]map[string]any)
 		g.Expect(neighbors).To(HaveLen(1))
 		g.Expect(neighbors[0]["bfdProfile"]).To(Equal("fast-failover"))
+	})
+
+	t.Run("BFDProfilesAnnotation", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		snapM := buildFakeSnap(helmM)
+		lbCfg := types.LoadBalancer{
+			Enabled:     ptr.To(true),
+			BGPMode:     ptr.To(true),
+			BGPLocalASN: ptr.To(64512),
+			CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
+		}
+		annotations := types.Annotations{
+			"k8sd/v1alpha1/metallb/bgp-backend": "frr-k8s",
+			"k8sd/v1alpha1/metallb/bgp-peers":   "- peerAddress: 10.0.0.1\n  peerASN: 65001\n  bfdProfile: fast-failover\n",
+			"k8sd/v1alpha1/metallb/bfd-profiles": `
+- name: fast-failover
+  namespace: metallb-system
+  spec:
+    receiveInterval: 150
+    transmitInterval: 150
+    detectMultiplier: 3
+`,
+		}
+
+		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
+		bgp := helmM.ApplyCalledWith[1].Values["bgp"].(map[string]any)
+		g.Expect(bgp["bfdProfiles"]).To(Equal([]map[string]any{{
+			"name":      "fast-failover",
+			"namespace": "metallb-system",
+			"spec": map[string]any{
+				"receiveInterval":  150,
+				"transmitInterval": 150,
+				"detectMultiplier": 3,
+			},
+		}}))
 	})
 
 	t.Run("DefaultBackendIsNative", func(t *testing.T) {
