@@ -538,7 +538,13 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 	if err := waitApiServerReady(ctx, snap); err != nil {
 		return fmt.Errorf("kube-apiserver did not become ready in time: %w", err)
 	}
-	log.Info("API server is ready - notify controllers")
+
+	// Avoid declaring bootstrap complete before the node is Ready.
+	log.Info("Waiting for the bootstrap node to become Ready")
+	if err := waitNodeReady(ctx, snap); err != nil {
+		return fmt.Errorf("bootstrap node did not become ready in time: %w", err)
+	}
+	log.Info("Bootstrap node is ready - notify controllers")
 
 	a.NotifyFeatureController(
 		cfg.Network.GetEnabled(),

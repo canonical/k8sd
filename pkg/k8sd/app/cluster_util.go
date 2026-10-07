@@ -8,6 +8,7 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
+	"github.com/canonical/k8sd/pkg/utils/control"
 )
 
 // startControlPlaneServices starts the control plane services based on the datastore type.
@@ -40,6 +41,23 @@ func waitApiServerReady(ctx context.Context, snap snap.Snap) error {
 
 	if err := client.WaitKubernetesEndpointAvailable(ctx); err != nil {
 		return fmt.Errorf("kubernetes endpoints not ready yet: %w", err)
+	}
+
+	return nil
+}
+
+// waitNodeReady waits until this node registers as Ready, so bootstrap
+// doesn't return before the cluster has at least one node.
+func waitNodeReady(ctx context.Context, snap snap.Snap) error {
+	client, err := snap.KubernetesClient("")
+	if err != nil {
+		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	if err := control.WaitUntilReady(ctx, func() (bool, error) {
+		return client.HasReadyNodes(ctx)
+	}); err != nil {
+		return fmt.Errorf("node did not become ready in time: %w", err)
 	}
 
 	return nil
