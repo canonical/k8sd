@@ -53,7 +53,7 @@ jobs:
           sudo env "PATH=$PATH" make bin/static/k8s
 
       - name: Run TICS
-        uses: tiobe/tics-github-action@016a4d79f3027fe7b4a2901619a58c745ab7cadf # v3
+        uses: tiobe/tics-github-action@06afa6781ba53ab58efbe766d41d84febad1f683 # v4
         with:
           mode: qserver
           project: ${{ github.event.repository.name }}
