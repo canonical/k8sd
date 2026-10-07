@@ -174,7 +174,21 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		upgrade.MaxHistory = h.maxHistory
 
 		if _, err := upgrade.RunWithContext(ctx, c.Name, chart, sanitizedValues); err != nil {
-			return false, fmt.Errorf("failed to upgrade %s: %w", c.Name, err)
+			// Helm's 3-way merge patch can occasionally compute an update that the API
+			// server rejects (e.g. "spec.ports: Required value" on a Service), typically
+			// because the live object and the chart-rendered manifest have diverged in a
+			// way a patch can't reconcile. Retry once with Force, which makes Helm delete
+			// and recreate the conflicting resource(s) instead of patching them.
+			log.Info("upgrade failed, retrying with force", "error", err)
+			forceUpgrade := action.NewUpgrade(cfg)
+			forceUpgrade.Namespace = c.Namespace
+			forceUpgrade.ResetThenReuseValues = true
+			forceUpgrade.Timeout = h.timeout
+			forceUpgrade.MaxHistory = h.maxHistory
+			forceUpgrade.Force = true
+			if _, forceErr := forceUpgrade.RunWithContext(ctx, c.Name, chart, sanitizedValues); forceErr != nil {
+				return false, fmt.Errorf("failed to upgrade %s (force retry also failed: %w): %w", c.Name, forceErr, err)
+			}
 		}
 
 		return true, nil
