@@ -28,6 +28,16 @@ const (
 	bgpBackendFRRK8s = "frr-k8s"
 )
 
+// BFDProfile field ranges, as enforced by the MetalLB BFDProfile CRD.
+const (
+	bfdIntervalMin   = 10
+	bfdIntervalMax   = 60000
+	bfdMultiplierMin = 2
+	bfdMultiplierMax = 255
+	bfdMinimumTTLMin = 1
+	bfdMinimumTTLMax = 254
+)
+
 // bgpNeighbor is an internal representation of a single MetalLB BGPPeer.
 type bgpNeighbor struct {
 	peerAddress  string
@@ -39,10 +49,16 @@ type bgpNeighbor struct {
 }
 
 // bfdProfile is an internal representation of a single MetalLB BFDProfile.
+// Zero-valued fields are unset and fall back to MetalLB defaults.
 type bfdProfile struct {
-	name      string
-	namespace string
-	spec      map[string]any
+	name             string
+	receiveInterval  int
+	transmitInterval int
+	detectMultiplier int
+	echoInterval     int
+	echoMode         bool
+	passiveMode      bool
+	minimumTTL       int
 }
 
 // validateBGPNeighbors returns an error if any neighbor in the slice is invalid.
@@ -150,8 +166,7 @@ func backendFromAnnotations(annotations types.Annotations) (bool, error) {
 	return false, fmt.Errorf("invalid bgp-backend annotation %q: must be %q or %q", v, bgpBackendNative, bgpBackendFRRK8s)
 }
 
-// bfdProfilesFromAnnotations parses the bfd-profiles annotation. The spec of each
-// profile is passed through as-is; its fields are validated by the BFDProfile CRD.
+// bfdProfilesFromAnnotations parses the bfd-profiles annotation.
 // If the annotation is absent, returns (nil, nil).
 func bfdProfilesFromAnnotations(annotations types.Annotations) ([]bfdProfile, error) {
 	profilesYAML, ok := annotations[metallbAnnotations.AnnotationBFDProfiles]
@@ -160,9 +175,14 @@ func bfdProfilesFromAnnotations(annotations types.Annotations) ([]bfdProfile, er
 	}
 
 	type profileYAML struct {
-		Name      string         `yaml:"name"`
-		Namespace string         `yaml:"namespace"`
-		Spec      map[string]any `yaml:"spec"`
+		Name             string `yaml:"name"`
+		ReceiveInterval  int    `yaml:"receiveInterval"`
+		TransmitInterval int    `yaml:"transmitInterval"`
+		DetectMultiplier int    `yaml:"detectMultiplier"`
+		EchoInterval     int    `yaml:"echoInterval"`
+		EchoMode         bool   `yaml:"echoMode"`
+		PassiveMode      bool   `yaml:"passiveMode"`
+		MinimumTTL       int    `yaml:"minimumTtl"`
 	}
 	var items []profileYAML
 	if err := yaml.Unmarshal([]byte(profilesYAML), &items); err != nil {
@@ -172,9 +192,14 @@ func bfdProfilesFromAnnotations(annotations types.Annotations) ([]bfdProfile, er
 	profiles := make([]bfdProfile, len(items))
 	for i, p := range items {
 		profiles[i] = bfdProfile{
-			name:      p.Name,
-			namespace: p.Namespace,
-			spec:      p.Spec,
+			name:             p.Name,
+			receiveInterval:  p.ReceiveInterval,
+			transmitInterval: p.TransmitInterval,
+			detectMultiplier: p.DetectMultiplier,
+			echoInterval:     p.EchoInterval,
+			echoMode:         p.EchoMode,
+			passiveMode:      p.PassiveMode,
+			minimumTTL:       p.MinimumTTL,
 		}
 	}
 	return profiles, nil
@@ -189,6 +214,24 @@ func validateBFDProfiles(profiles []bfdProfile, frrk8sEnabled bool) error {
 	for i, p := range profiles {
 		if p.name == "" {
 			return fmt.Errorf("bfdProfile[%d]: name is required", i)
+		}
+
+		// Zero means unset, so only non-zero values are range-checked.
+		ranges := []struct {
+			field    string
+			value    int
+			min, max int
+		}{
+			{"receiveInterval", p.receiveInterval, bfdIntervalMin, bfdIntervalMax},
+			{"transmitInterval", p.transmitInterval, bfdIntervalMin, bfdIntervalMax},
+			{"detectMultiplier", p.detectMultiplier, bfdMultiplierMin, bfdMultiplierMax},
+			{"echoInterval", p.echoInterval, bfdIntervalMin, bfdIntervalMax},
+			{"minimumTtl", p.minimumTTL, bfdMinimumTTLMin, bfdMinimumTTLMax},
+		}
+		for _, r := range ranges {
+			if r.value != 0 && (r.value < r.min || r.value > r.max) {
+				return fmt.Errorf("bfdProfile[%d]: %s %d out of range [%d, %d]", i, r.field, r.value, r.min, r.max)
+			}
 		}
 	}
 	return nil
@@ -314,11 +357,26 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 	profileMaps := make([]map[string]any, 0, len(bfdProfiles))
 	for _, p := range bfdProfiles {
 		pm := map[string]any{"name": p.name}
-		if p.namespace != "" {
-			pm["namespace"] = p.namespace
+		if p.receiveInterval != 0 {
+			pm["receiveInterval"] = p.receiveInterval
 		}
-		if len(p.spec) > 0 {
-			pm["spec"] = p.spec
+		if p.transmitInterval != 0 {
+			pm["transmitInterval"] = p.transmitInterval
+		}
+		if p.detectMultiplier != 0 {
+			pm["detectMultiplier"] = p.detectMultiplier
+		}
+		if p.echoInterval != 0 {
+			pm["echoInterval"] = p.echoInterval
+		}
+		if p.echoMode {
+			pm["echoMode"] = p.echoMode
+		}
+		if p.passiveMode {
+			pm["passiveMode"] = p.passiveMode
+		}
+		if p.minimumTTL != 0 {
+			pm["minimumTtl"] = p.minimumTTL
 		}
 		profileMaps = append(profileMaps, pm)
 	}
