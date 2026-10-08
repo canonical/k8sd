@@ -15,6 +15,7 @@ import (
 	"helm.sh/helm/v3/pkg/chartutil"
 	releasepkg "helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
 
@@ -174,12 +175,17 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		upgrade.MaxHistory = h.maxHistory
 
 		if _, err := upgrade.RunWithContext(ctx, c.Name, chart, sanitizedValues); err != nil {
-			// Helm's 3-way merge patch can occasionally compute an update that the API
-			// server rejects (e.g. "spec.ports: Required value" on a Service), typically
-			// because the live object and the chart-rendered manifest have diverged in a
-			// way a patch can't reconcile. Retry once with Force, which makes Helm delete
-			// and recreate the conflicting resource(s) instead of patching them.
-			log.Info("upgrade failed, retrying with force", "error", err)
+			// Retry with force only for a rejected patch, not any error (context
+			// cancellation, RBAC denial, etc). IsInvalid unwraps through Helm's
+			// "cannot patch %q" wrapping to the underlying API status.
+			if !apierrors.IsInvalid(err) {
+				return false, fmt.Errorf("failed to upgrade %s: %w", c.Name, err)
+			}
+
+			// Force full-replaces every resource in the release, not just the
+			// one that failed to patch; any out-of-band field on any of them
+			// is lost.
+			log.Info("upgrade failed with a rejected patch, retrying with force", "error", err)
 			forceUpgrade := action.NewUpgrade(cfg)
 			forceUpgrade.Namespace = c.Namespace
 			forceUpgrade.ResetThenReuseValues = true
