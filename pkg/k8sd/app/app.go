@@ -20,6 +20,7 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/microcluster/v3/microcluster"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Config defines configuration for the k8sd app.
@@ -276,6 +277,8 @@ func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 	}
 
 	log := log.FromContext(ctx)
+
+	ctrllog.SetLogger(log)
 
 	// start profiling server
 	if a.profilingAddress != "" {
