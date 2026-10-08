@@ -36,31 +36,36 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 	// `bootstrap` and `join-cluster`. It is possible that we get stuck in this loop forever which causes
 	// the `bootstrap` and `join-cluster` commands to hang and finally return an uninformative `context deadline exceeded` error
 	// we optimistically stop trying after a fixed number of retries.
-	maxRetries := 10
-	var retries int
-	if err := control.WaitUntilReady(ctx, func() (bool, error) {
-		var notPending bool
-		log.Info("Waiting for node to finish microcluster join before removing")
-		member, err := c.GetClusterMember(ctx, s.Name())
-		switch {
-		case errors.Is(err, k8sdclient.ErrNotFound):
-			// Node not found, no PENDING state to wait for.
-			notPending = true
-		case err != nil:
-			log.Error(err, "Failed to get member")
-			retries++
-		default:
-			notPending = member.Role != "PENDING"
-		}
+	if c == nil {
+		// Can be nil if PreRemove fires during a bootstrap/join rollback, before a real client exists.
+		log.Info("No k8sd client available, skipping PENDING wait")
+	} else {
+		maxRetries := 10
+		var retries int
+		if err := control.WaitUntilReady(ctx, func() (bool, error) {
+			var notPending bool
+			log.Info("Waiting for node to finish microcluster join before removing")
+			member, err := c.GetClusterMember(ctx, s.Name())
+			switch {
+			case errors.Is(err, k8sdclient.ErrNotFound):
+				// Node not found, no PENDING state to wait for.
+				notPending = true
+			case err != nil:
+				log.Error(err, "Failed to get member")
+				retries++
+			default:
+				notPending = member.Role != "PENDING"
+			}
 
-		if retries >= maxRetries {
-			log.Info("Reached maximum number of retries for database transactions on pre-remove hook, continuing cleanup", "max_retries", maxRetries)
-			return true, nil
-		}
+			if retries >= maxRetries {
+				log.Info("Reached maximum number of retries for database transactions on pre-remove hook, continuing cleanup", "max_retries", maxRetries)
+				return true, nil
+			}
 
-		return notPending, nil
-	}); err != nil {
-		log.Error(err, "Failed to wait for node to finish microcluster join before removing. Continuing with the cleanup...")
+			return notPending, nil
+		}); err != nil {
+			log.Error(err, "Failed to wait for node to finish microcluster join before removing. Continuing with the cleanup...")
+		}
 	}
 
 	cfg, err := databaseutil.GetClusterConfig(ctx, s)
