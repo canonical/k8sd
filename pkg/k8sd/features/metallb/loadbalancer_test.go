@@ -321,9 +321,18 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 	t.Run("BFDProfiles", func(t *testing.T) {
 		g := NewWithT(t)
 
-		spec := map[string]any{"receiveInterval": 150, "transmitInterval": 150, "detectMultiplier": 3}
+		// Unset (zero-valued) fields of "defaults" must not appear in the output map.
 		profiles := []bfdProfile{
-			{name: "fast-failover", namespace: "metallb-system", spec: spec},
+			{
+				name:             "fast-failover",
+				receiveInterval:  150,
+				transmitInterval: 200,
+				detectMultiplier: 5,
+				echoInterval:     50,
+				echoMode:         true,
+				passiveMode:      true,
+				minimumTTL:       254,
+			},
 			{name: "defaults"},
 		}
 
@@ -331,7 +340,16 @@ func TestBuildLoadBalancerValues(t *testing.T) {
 
 		bgp := values["bgp"].(map[string]any)
 		g.Expect(bgp["bfdProfiles"]).To(Equal([]map[string]any{
-			{"name": "fast-failover", "namespace": "metallb-system", "spec": spec},
+			{
+				"name":             "fast-failover",
+				"receiveInterval":  150,
+				"transmitInterval": 200,
+				"detectMultiplier": 5,
+				"echoInterval":     50,
+				"echoMode":         true,
+				"passiveMode":      true,
+				"minimumTtl":       254,
+			},
 			{"name": "defaults"},
 		}))
 	})
@@ -353,30 +371,32 @@ func TestBFDProfilesFromAnnotations(t *testing.T) {
 			"full",
 			types.Annotations{profilesKey: `
 - name: fast-failover
-  namespace: metallb-system
-  spec:
-    receiveInterval: 150
-    transmitInterval: 150
-    detectMultiplier: 3
-    echoMode: true
+  receiveInterval: 150
+  transmitInterval: 200
+  detectMultiplier: 5
+  echoInterval: 50
+  echoMode: true
+  passiveMode: true
+  minimumTtl: 254
 - name: defaults
 `},
 			[]bfdProfile{
 				{
-					name:      "fast-failover",
-					namespace: "metallb-system",
-					spec: map[string]any{
-						"receiveInterval":  150,
-						"transmitInterval": 150,
-						"detectMultiplier": 3,
-						"echoMode":         true,
-					},
+					name:             "fast-failover",
+					receiveInterval:  150,
+					transmitInterval: 200,
+					detectMultiplier: 5,
+					echoInterval:     50,
+					echoMode:         true,
+					passiveMode:      true,
+					minimumTTL:       254,
 				},
 				{name: "defaults"},
 			},
 			"",
 		},
 		{"malformed-yaml", types.Annotations{profilesKey: "not: valid: yaml: [{"}, nil, "failed to parse bfd-profiles annotation"},
+		{"wrong-type", types.Annotations{profilesKey: "- name: a\n  receiveInterval: fast\n"}, nil, "failed to parse bfd-profiles annotation"},
 	}
 
 	for _, tc := range cases {
@@ -402,9 +422,16 @@ func TestValidateBFDProfiles(t *testing.T) {
 	}{
 		{"none-native", nil, false, ""},
 		{"none-frr-k8s", nil, true, ""},
-		{"valid", []bfdProfile{{name: "fast-failover"}}, true, ""},
+		{"valid-name-only", []bfdProfile{{name: "fast-failover"}}, true, ""},
+		{"valid-bounds-min", []bfdProfile{{name: "a", receiveInterval: 10, transmitInterval: 10, detectMultiplier: 2, echoInterval: 10, minimumTTL: 1}}, true, ""},
+		{"valid-bounds-max", []bfdProfile{{name: "a", receiveInterval: 60000, transmitInterval: 60000, detectMultiplier: 255, echoInterval: 60000, minimumTTL: 254}}, true, ""},
 		{"requires-frr-k8s", []bfdProfile{{name: "fast-failover"}}, false, "frr-k8s"},
-		{"missing-name", []bfdProfile{{name: "a"}, {namespace: "metallb-system"}}, true, "bfdProfile[1]: name is required"},
+		{"missing-name", []bfdProfile{{name: "a"}, {receiveInterval: 150}}, true, "bfdProfile[1]: name is required"},
+		{"receive-interval-low", []bfdProfile{{name: "a", receiveInterval: 9}}, true, "bfdProfile[0]: receiveInterval 9 out of range [10, 60000]"},
+		{"transmit-interval-high", []bfdProfile{{name: "a", transmitInterval: 60001}}, true, "bfdProfile[0]: transmitInterval 60001 out of range [10, 60000]"},
+		{"detect-multiplier-low", []bfdProfile{{name: "a", detectMultiplier: 1}}, true, "bfdProfile[0]: detectMultiplier 1 out of range [2, 255]"},
+		{"echo-interval-negative", []bfdProfile{{name: "a", echoInterval: -1}}, true, "bfdProfile[0]: echoInterval -1 out of range [10, 60000]"},
+		{"minimum-ttl-high", []bfdProfile{{name: "a", minimumTTL: 255}}, true, "bfdProfile[0]: minimumTtl 255 out of range [1, 254]"},
 	}
 
 	for _, tc := range cases {
@@ -722,6 +749,14 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 				types.Annotations{"k8sd/v1alpha1/metallb/bfd-profiles": "- name: fast-failover\n"},
 				"invalid BFD profiles",
 			},
+			{
+				"bfd-profile-out-of-range",
+				types.Annotations{
+					"k8sd/v1alpha1/metallb/bgp-backend":  "frr-k8s",
+					"k8sd/v1alpha1/metallb/bfd-profiles": "- name: fast-failover\n  detectMultiplier: 1\n",
+				},
+				"invalid BFD profiles",
+			},
 		}
 		for _, tc := range cases {
 			helmM := &helmmock.Mock{}
@@ -830,11 +865,9 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			"k8sd/v1alpha1/metallb/bgp-peers":   "- peerAddress: 10.0.0.1\n  peerASN: 65001\n  bfdProfile: fast-failover\n",
 			"k8sd/v1alpha1/metallb/bfd-profiles": `
 - name: fast-failover
-  namespace: metallb-system
-  spec:
-    receiveInterval: 150
-    transmitInterval: 150
-    detectMultiplier: 3
+  receiveInterval: 150
+  transmitInterval: 150
+  detectMultiplier: 3
 `,
 		}
 
@@ -844,13 +877,10 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 		bgp := helmM.ApplyCalledWith[1].Values["bgp"].(map[string]any)
 		g.Expect(bgp["bfdProfiles"]).To(Equal([]map[string]any{{
-			"name":      "fast-failover",
-			"namespace": "metallb-system",
-			"spec": map[string]any{
-				"receiveInterval":  150,
-				"transmitInterval": 150,
-				"detectMultiplier": 3,
-			},
+			"name":             "fast-failover",
+			"receiveInterval":  150,
+			"transmitInterval": 150,
+			"detectMultiplier": 3,
 		}}))
 	})
 
