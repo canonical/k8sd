@@ -46,18 +46,19 @@ func waitApiServerReady(ctx context.Context, snap snap.Snap) error {
 	return nil
 }
 
-// waitNodeReady waits until this node registers as Ready, so bootstrap
-// doesn't return before the cluster has at least one node.
-func waitNodeReady(ctx context.Context, snap snap.Snap) error {
+// waitNodeRegistered waits until this node's Node object exists, not until
+// it's Ready: Ready requires a CNI, which isn't installed when managed
+// networking is disabled.
+func waitNodeRegistered(ctx context.Context, snap snap.Snap, nodeName string) error {
 	client, err := snap.KubernetesClient("")
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
 
 	if err := control.WaitUntilReady(ctx, func() (bool, error) {
-		return client.HasReadyNodes(ctx)
+		return client.NodeRegistered(ctx, nodeName)
 	}); err != nil {
-		return fmt.Errorf("node did not become ready in time: %w", err)
+		return fmt.Errorf("node did not register in time: %w", err)
 	}
 
 	return nil
