@@ -12,6 +12,7 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/gomega v1.44.0
 	github.com/pelletier/go-toml v1.9.5
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/etcd/api/v3 v3.7.2
 	go.etcd.io/etcd/client/v3 v3.7.2
