@@ -19,14 +19,9 @@ var deprecatedKubeletFlags = []string{
 }
 
 // RemoveDeprecatedKubeletFlags strips deprecated flags from the kubelet
-// arguments file, restarting kubelet if any were actually removed.
-//
-// This only touches the local filesystem and the kubelet service, with no
-// dependency on the k8sd API, database, or any other part of the daemon
-// being up. That makes it safe to invoke very early - e.g. directly from a
-// snap refresh hook, before kubelet's own systemd unit is (re)started with
-// the new binary - which closes the race where kubelet starts with a
-// deprecated flag before k8sd has had a chance to clean it up.
+// arguments file, restarting kubelet if any were actually removed. No
+// dependency on k8sd being up, so safe to call from a snap refresh hook
+// before kubelet's systemd unit restarts.
 func RemoveDeprecatedKubeletFlags(ctx context.Context, snap snap.Snap) error {
 	mustRestart, err := UpdateServiceArguments(snap, "kubelet", nil, deprecatedKubeletFlags)
 	if err != nil {

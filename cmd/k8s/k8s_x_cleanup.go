@@ -64,10 +64,8 @@ func newXCleanupCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cleanupDeprecatedKubeletFlagsCmd := &cobra.Command{
 		Use:   "deprecated-kubelet-flags",
 		Short: "Remove deprecated flags from the kubelet arguments file",
-		Long: "Remove kubelet flags that were deprecated and removed in newer Kubernetes " +
-			"versions from the persisted arguments file, restarting kubelet if any were " +
-			"present. Safe to run at any time, including before k8sd itself is up, e.g. " +
-			"from a snap refresh hook.",
+		Long: "Remove deprecated kubelet flags from the persisted arguments file, " +
+			"restarting kubelet if any were present. Safe to run before k8sd is up.",
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancel := context.WithTimeout(cmd.Context(), deprecatedKubeletFlagsTimeout)
@@ -79,7 +77,7 @@ func newXCleanupCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 		},
 	}
-	cleanupDeprecatedKubeletFlagsCmd.Flags().DurationVar(&deprecatedKubeletFlagsTimeout, "timeout", 1*time.Minute, "the max time to wait for the command to execute")
+	cleanupDeprecatedKubeletFlagsCmd.Flags().DurationVar(&deprecatedKubeletFlagsTimeout, "timeout", 2*time.Minute, "the max time to wait for the command to execute")
 
 	cmd := &cobra.Command{
 		Use:    "x-cleanup",
