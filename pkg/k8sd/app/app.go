@@ -20,6 +20,7 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/microcluster/v3/microcluster"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Config defines configuration for the k8sd app.
@@ -276,6 +277,14 @@ func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 	}
 
 	log := log.FromContext(ctx)
+
+	// Explicitly initialize controller-runtime's package-level logger before
+	// any controller-runtime client/manager is constructed (e.g. by the node
+	// label controller or the controller coordinator, both started from
+	// onStart). Without this, controller-runtime lazily detects the missing
+	// logger on first use and dumps a diagnostic stack trace to our output,
+	// which is indistinguishable from a panic to log scrapers.
+	ctrllog.SetLogger(log)
 
 	// start profiling server
 	if a.profilingAddress != "" {
