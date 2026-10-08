@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	k8sdclient "github.com/canonical/k8sd/pkg/client/k8sd"
+	k8sdmock "github.com/canonical/k8sd/pkg/client/k8sd/mock"
 	"github.com/canonical/k8sd/pkg/k8sd/app"
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
@@ -47,7 +49,8 @@ func WithState(t *testing.T, f func(context.Context, mctypes.State)) {
 	defer cancel()
 
 	snapMock := mock.Snap{
-		Mock: mock.Mock{},
+		// PreRemove runs during bootstrap/join rollback too, so it needs a working client.
+		Mock: mock.Mock{K8sdClient: &k8sdmock.Mock{GetClusterMemberErr: k8sdclient.ErrNotFound}},
 	}
 	app, err := app.New(app.Config{
 		StateDir: t.TempDir(),

@@ -33,15 +33,23 @@ func TestOnPreRemoveNodeAbsentFromCluster(t *testing.T) {
 		}
 		a := app.NewTestApp(mockSnap)
 
-		// Tight deadline: without the fix the loop spins every second until context
-		// expires. With the fix the loop exits on the first membership check.
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 
 		err := app.OnPreRemove(a, ctx, s, true)
 		g.Expect(err).ToNot(HaveOccurred())
 
-		// Context must still be valid. A spin-loop would have exhausted it.
-		g.Expect(ctx.Err()).To(Succeed(), "context expired: PENDING wait loop likely timed out")
+		g.Expect(mockK8sdClient.GetClusterMemberCalledWithNames).To(HaveLen(1))
+	})
+}
+
+// TestOnPreRemoveWithoutK8sdClient verifies that rollback cleanup tolerates a
+// snap that has not configured its k8sd client yet.
+func TestOnPreRemoveWithoutK8sdClient(t *testing.T) {
+	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
+		g := NewWithT(t)
+		a := app.NewTestApp(&snapmock.Snap{})
+
+		g.Expect(app.OnPreRemove(a, ctx, s, true)).To(Succeed())
 	})
 }
