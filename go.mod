@@ -18,7 +18,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.4
 	golang.org/x/mod v0.41.0
 	golang.org/x/net v0.59.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.48.0
 	gopkg.in/yaml.v2 v2.4.0
 	helm.sh/helm/v3 v3.22.0
