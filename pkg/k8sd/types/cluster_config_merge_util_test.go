@@ -156,6 +156,7 @@ func Test_mergeAnnotationsField(t *testing.T) {
 		{name: "update-add-fields", old: Annotations{"k1": "v1"}, new: Annotations{"k1": "v2", "k2": "v2"}, expectVal: Annotations{"k1": "v2", "k2": "v2"}},
 		{name: "delete-fields", old: Annotations{"k1": "v1", "k2": "v2"}, new: Annotations{"k1": "-"}, expectVal: Annotations{"k2": "v2"}},
 		{name: "delete-last-field", old: Annotations{"k1": "v1"}, new: Annotations{"k1": "-"}, expectVal: Annotations{}},
+		{name: "delete-fields-without-old", new: Annotations{"k1": "-", "k2": "v2"}, expectVal: Annotations{"k2": "v2"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)

@@ -127,6 +127,7 @@ func TestEnabled(t *testing.T) {
 					{Name: "ipaddresspools"},
 					{Name: "l2advertisements"},
 					{Name: "bgpadvertisements"},
+					{Name: "bfdprofiles"},
 				},
 			},
 			{
@@ -397,6 +398,8 @@ func TestBFDProfilesFromAnnotations(t *testing.T) {
 		},
 		{"malformed-yaml", types.Annotations{profilesKey: "not: valid: yaml: [{"}, nil, "failed to parse bfd-profiles annotation"},
 		{"wrong-type", types.Annotations{profilesKey: "- name: a\n  receiveInterval: fast\n"}, nil, "failed to parse bfd-profiles annotation"},
+		// minimumTTL is the Go spelling; the field is minimumTtl.
+		{"unknown-field", types.Annotations{profilesKey: "- name: a\n  minimumTTL: 5\n"}, nil, "failed to parse bfd-profiles annotation"},
 	}
 
 	for _, tc := range cases {
@@ -427,6 +430,9 @@ func TestValidateBFDProfiles(t *testing.T) {
 		{"valid-bounds-max", []bfdProfile{{name: "a", receiveInterval: 60000, transmitInterval: 60000, detectMultiplier: 255, echoInterval: 60000, minimumTTL: 254}}, true, ""},
 		{"requires-frr-k8s", []bfdProfile{{name: "fast-failover"}}, false, "frr-k8s"},
 		{"missing-name", []bfdProfile{{name: "a"}, {receiveInterval: 150}}, true, "bfdProfile[1]: name is required"},
+		{"invalid-name", []bfdProfile{{name: "Bad_Name"}}, true, `bfdProfile[0]: invalid name "Bad_Name"`},
+		{"injected-name", []bfdProfile{{name: "a\n---\nkind: ConfigMap"}}, true, "bfdProfile[0]: invalid name"},
+		{"duplicate-name", []bfdProfile{{name: "a"}, {name: "a"}}, true, `bfdProfile[1]: duplicate name "a"`},
 		{"receive-interval-low", []bfdProfile{{name: "a", receiveInterval: 9}}, true, "bfdProfile[0]: receiveInterval 9 out of range [10, 60000]"},
 		{"transmit-interval-high", []bfdProfile{{name: "a", transmitInterval: 60001}}, true, "bfdProfile[0]: transmitInterval 60001 out of range [10, 60000]"},
 		{"detect-multiplier-low", []bfdProfile{{name: "a", detectMultiplier: 1}}, true, "bfdProfile[0]: detectMultiplier 1 out of range [2, 255]"},
@@ -482,6 +488,7 @@ func TestValidateBGPNeighbors(t *testing.T) {
 			{bgpNeighbor{peerAddress: "256.0.0.1", peerASN: 64513}, true, "invalid peerAddress"},
 			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, nodeSelector: map[string]string{"": "v"}}, true, "nodeSelector has empty key"},
 			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, bfdProfile: "fast"}, false, `bfdProfile "fast" requires k8sd/v1alpha1/metallb/bgp-backend annotation set to "frr-k8s"`},
+			{bgpNeighbor{peerAddress: "10.0.0.1", peerASN: 64513, bfdProfile: "a\n---\nkind: ConfigMap"}, true, "invalid bfdProfile"},
 		}
 		for _, tc := range cases {
 			err := validateBGPNeighbors([]bgpNeighbor{tc.neighbor}, tc.frrk8sEnabled)
@@ -559,28 +566,28 @@ func TestAnnotationParsing(t *testing.T) {
 	})
 }
 
-func TestBackendFromAnnotations(t *testing.T) {
+func TestIsNativeBGPBackend(t *testing.T) {
 	backendKey := "k8sd/v1alpha1/metallb/bgp-backend"
 
 	cases := []struct {
 		name        string
 		annotations types.Annotations
-		wantFRRK8s  bool
+		wantNative  bool
 		wantErr     string
 	}{
-		{"nil", nil, false, ""},
-		{"empty-map", types.Annotations{}, false, ""},
-		{"empty-value", types.Annotations{backendKey: ""}, false, ""},
-		{"native", types.Annotations{backendKey: "native"}, false, ""},
-		{"frr-k8s", types.Annotations{backendKey: "frr-k8s"}, true, ""},
+		{"nil", nil, true, ""},
+		{"empty-map", types.Annotations{}, true, ""},
+		{"empty-value", types.Annotations{backendKey: ""}, true, ""},
+		{"native", types.Annotations{backendKey: "native"}, true, ""},
+		{"frr-k8s", types.Annotations{backendKey: "frr-k8s"}, false, ""},
 		{"invalid", types.Annotations{backendKey: "frr"}, false, `invalid bgp-backend annotation "frr"`},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
-			frrk8sEnabled, err := backendFromAnnotations(tc.annotations)
-			g.Expect(frrk8sEnabled).To(Equal(tc.wantFRRK8s))
+			native, err := isNativeBGPBackend(tc.annotations)
+			g.Expect(native).To(Equal(tc.wantNative))
 			if tc.wantErr != "" {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring(tc.wantErr))
@@ -771,6 +778,9 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			g.Expect(err).To(HaveOccurred(), tc.name)
 			g.Expect(err.Error()).To(ContainSubstring(tc.wantErr), tc.name)
 			g.Expect(status.Enabled).To(BeFalse(), tc.name)
+			// Invalid configuration must be rejected before anything is applied,
+			// so that e.g. a backend switch is not half-applied.
+			g.Expect(helmM.ApplyCalledWith).To(BeEmpty(), tc.name)
 		}
 	})
 
@@ -841,6 +851,22 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 		speaker := metalLBValues["speaker"].(map[string]any)
 		frr := speaker["frr"].(map[string]any)
 		g.Expect(frr["enabled"]).To(BeFalse())
+
+		// The frr-k8s subchart must use the Canonical rocks, not upstream images.
+		g.Expect(metalLBValues["frr-k8s"]).To(Equal(map[string]any{
+			"frrk8s": map[string]any{
+				"image": map[string]any{
+					"repository": "ghcr.io/canonical/frr-k8s",
+					"tag":        frrk8sImageTag,
+				},
+				"frr": map[string]any{
+					"image": map[string]any{
+						"repository": "ghcr.io/canonical/frr",
+						"tag":        frrImageTag,
+					},
+				},
+			},
+		}))
 
 		// Second Apply call (ChartMetalLBLoadBalancer) must render bfdProfile.
 		bgp := helmM.ApplyCalledWith[1].Values["bgp"].(map[string]any)
