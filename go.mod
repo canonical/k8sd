@@ -166,3 +166,5 @@ require (
 
 // CVE-2026-34986: prevent transitive resolution of the vulnerable go-jose release.
 exclude github.com/go-jose/go-jose/v4 v4.1.3
+
+replace github.com/canonical/k8s-snap-api/v2 => github.com/munirsidd/k8s-snap-api/v2 v2.0.0-20261013071255-69485e6197db

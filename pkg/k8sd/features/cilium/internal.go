@@ -19,12 +19,13 @@ const (
 )
 
 type config struct {
-	devices             string
-	directRoutingDevice string
-	vlanBPFBypass       []int
-	cniExclusive        bool
-	sctpEnabled         bool
-	tunnelPort          int
+	devices                   string
+	directRoutingDevice       string
+	vlanBPFBypass             []int
+	cniExclusive              bool
+	sctpEnabled               bool
+	socketLBHostNamespaceOnly bool
+	tunnelPort                int
 }
 
 func validatePort(portStr string) (int, error) {
@@ -92,6 +93,14 @@ func internalConfig(annotations types.Annotations) (config, error) {
 
 	if _, ok := annotations.Get(apiv1_annotations.AnnotationSCTPEnabled); ok {
 		c.sctpEnabled = true
+	}
+
+	if v, ok := annotations.Get(apiv1_annotations.AnnotationSocketLBHostNamespaceOnly); ok {
+		hostNamespaceOnly, err := strconv.ParseBool(v)
+		if err != nil {
+			return config{}, fmt.Errorf("failed to parse socket LB host namespace only value %q: %w", v, err)
+		}
+		c.socketLBHostNamespaceOnly = hostNamespaceOnly
 	}
 
 	if v, ok := annotations.Get(apiv1_annotations.AnnotationTunnelPort); ok {

@@ -152,7 +152,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 			"useDigest":  false,
 		},
 		"socketLB": map[string]any{
-			"enabled": true,
+			"enabled":           true,
+			"hostNamespaceOnly": config.socketLBHostNamespaceOnly,
 		},
 		"cni": map[string]any{
 			"confPath":     "/etc/cni/net.d",

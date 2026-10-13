@@ -29,21 +29,52 @@ func TestInternalConfig(t *testing.T) {
 		{
 			name: "Valid",
 			annotations: map[string]string{
-				apiv1_annotations.AnnotationDevices:             "eth+ lxdbr+",
-				apiv1_annotations.AnnotationDirectRoutingDevice: "eth0",
-				apiv1_annotations.AnnotationVLANBPFBypass:       "1,2,3",
-				apiv1_annotations.AnnotationCNIExclusive:        "true",
-				apiv1_annotations.AnnotationSCTPEnabled:         "true",
+				apiv1_annotations.AnnotationDevices:                   "eth+ lxdbr+",
+				apiv1_annotations.AnnotationDirectRoutingDevice:       "eth0",
+				apiv1_annotations.AnnotationVLANBPFBypass:             "1,2,3",
+				apiv1_annotations.AnnotationCNIExclusive:              "true",
+				apiv1_annotations.AnnotationSCTPEnabled:               "true",
+				apiv1_annotations.AnnotationSocketLBHostNamespaceOnly: "true",
 			},
 			expectedConfig: config{
-				devices:             "eth+ lxdbr+",
-				directRoutingDevice: "eth0",
-				vlanBPFBypass:       []int{1, 2, 3},
-				cniExclusive:        true,
-				sctpEnabled:         true,
-				tunnelPort:          ciliumDefaultVXLANPort,
+				devices:                   "eth+ lxdbr+",
+				directRoutingDevice:       "eth0",
+				vlanBPFBypass:             []int{1, 2, 3},
+				cniExclusive:              true,
+				sctpEnabled:               true,
+				socketLBHostNamespaceOnly: true,
+				tunnelPort:                ciliumDefaultVXLANPort,
 			},
 			expectError: false,
+		},
+		{
+			name: "Cilium socketLB host namespace only",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationSocketLBHostNamespaceOnly: "true",
+			},
+			expectedConfig: config{
+				socketLBHostNamespaceOnly: true,
+				tunnelPort:                ciliumDefaultVXLANPort,
+			},
+			expectError: false,
+		},
+		{
+			name: "Cilium socketLB host namespace only disabled",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationSocketLBHostNamespaceOnly: "false",
+			},
+			expectedConfig: config{
+				socketLBHostNamespaceOnly: false,
+				tunnelPort:                ciliumDefaultVXLANPort,
+			},
+			expectError: false,
+		},
+		{
+			name: "Cilium socketLB host namespace only invalid",
+			annotations: map[string]string{
+				apiv1_annotations.AnnotationSocketLBHostNamespaceOnly: "yes",
+			},
+			expectError: true,
 		},
 		{
 			name: "Cilum exclusive CNI",
