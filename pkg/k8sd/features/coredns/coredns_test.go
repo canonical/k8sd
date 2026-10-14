@@ -193,6 +193,9 @@ func validateValues(g Gomega, values map[string]any, dns types.DNS, kubelet type
 	plugins := servers[0]["plugins"].([]map[string]any)
 	g.Expect(plugins[3]["parameters"]).To(ContainSubstring(kubelet.GetClusterDomain()))
 	g.Expect(plugins[5]["parameters"]).To(ContainSubstring(strings.Join(dns.GetUpstreamNameservers(), " ")))
+	zones := servers[0]["zones"].([]map[string]any)
+	g.Expect(zones[0]["zone"]).To(Equal("."))
+	g.Expect(zones[0]["use_tcp"]).To(BeTrue())
 
 	// Validate PriorityClass
 	g.Expect(values["priorityClassName"]).To(Equal("system-node-critical"))
