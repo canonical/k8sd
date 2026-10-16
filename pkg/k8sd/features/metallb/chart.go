@@ -32,4 +32,16 @@ var (
 
 	// speakerImageTag is the tag to use for metallb-speaker.
 	speakerImageTag = "v0.16.1-ck0"
+
+	// frrk8sImageRepo is the image to use for frr-k8s.
+	frrk8sImageRepo = "ghcr.io/canonical/frr-k8s"
+
+	// frrk8sImageTag is the tag to use for frr-k8s.
+	frrk8sImageTag = "v0.0.25-ck0"
+
+	// frrImageRepo is the image to use for the FRR containers of frr-k8s.
+	frrImageRepo = "ghcr.io/canonical/frr"
+
+	// frrImageTag is the tag to use for the FRR containers of frr-k8s.
+	frrImageTag = "10.4.3-ck0"
 )

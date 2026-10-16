@@ -40,10 +40,6 @@ func mergeSliceField[T comparable](old *[]T, new *[]T, allowChange bool) (*[]T, 
 }
 
 func mergeAnnotationsField(old Annotations, new Annotations) Annotations {
-	// old value is not set, use new
-	if old == nil {
-		return new
-	}
 	// new value is not set, use old
 	if new == nil {
 		return old
