@@ -255,67 +255,55 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 
 		learnerID := memberAddResp.Member.ID
 		promoted := false
+		promoteAttempted := false
 		etcdStarted := false
 
 		// Register a single reverter that handles all etcd cleanup on join
 		// failure. The reverter adapts its behavior based on whether the
-		// learner has been promoted to a voting member.
+		// learner may have been promoted to a voting member.
 		//
 		// We remove by member ID rather than name, because a learner added
 		// via MemberAddAsLearner may not have its Name populated until the
 		// local etcd instance starts.
 		//
-		// Ordering matters for quorum safety:
+		// Ordering matters for quorum safety (see RevertEtcdJoin):
 		//   - Learner (not promoted): stop etcd first, then remove the
 		//     learner by ID. Learners do not count toward quorum, so
 		//     removal is always safe.
-		//   - Voting member (promoted): remove the member by ID FIRST
-		//     while local etcd is still running to preserve quorum
-		//     (critical for 2-node clusters), then stop local etcd.
+		//   - Voting member (promoted, or promotion attempted): remove the
+		//     member by ID FIRST while local etcd is still running, retrying
+		//     while etcd rejects it. Local etcd is only stopped and its data
+		//     deleted once the removal succeeded.
 		reverter.Add(func() {
-			rmCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			rmCtx, cancel := context.WithTimeout(context.Background(), etcdJoinRevertTimeout)
 			defer cancel()
-			cleanupLog := log.WithValues("step", "etcd-cleanup", "node", s.Name(), "memberID", learnerID, "promoted", promoted)
+			cleanupLog := log.WithValues("step", "etcd-cleanup", "node", s.Name(), "memberID", learnerID, "promoted", promoted, "promoteAttempted", promoteAttempted)
 
-			removeMember := func() bool {
-				if len(endpoints) == 0 {
-					cleanupLog.Info("Skipping etcd member removal: no client endpoints available")
-					return false
-				}
-				cleanupClient, err := snap.EtcdClient(endpoints)
-				if err != nil {
-					cleanupLog.Error(err, "Failed to create etcd client for member removal")
-					return false
-				}
-				defer cleanupClient.Close()
-				if _, err := cleanupClient.MemberRemove(rmCtx, learnerID); err != nil {
-					cleanupLog.Error(err, "Failed to remove etcd member")
-					return false
-				}
-				return true
+			var removeMember EtcdMemberRemover
+			if len(endpoints) > 0 {
+				removeMember = EtcdMemberRemoverFunc(func(ctx context.Context) error {
+					cleanupClient, err := snap.EtcdClient(endpoints)
+					if err != nil {
+						return fmt.Errorf("failed to create etcd client for member removal: %w", err)
+					}
+					defer cleanupClient.Close()
+					_, err = cleanupClient.MemberRemove(ctx, learnerID)
+					return err
+				})
 			}
 
-			// For a promoted (voting) member, remove it from the cluster
-			// before stopping local etcd to preserve quorum.
-			if promoted {
-				removeMember()
-			}
-
-			if etcdStarted {
-				if err := snaputil.StopEtcdServices(rmCtx, snap); err != nil {
-					cleanupLog.Error(err, "Failed to stop etcd during join revert")
-				}
-			}
-
-			// For a learner, removal is safe after stopping local etcd
-			// because learners do not affect quorum.
-			if !promoted {
-				removeMember()
-			}
-
-			if err := os.RemoveAll(snap.EtcdDir()); err != nil {
-				cleanupLog.Error(err, "Failed to cleanup etcd state directory")
-			}
+			RevertEtcdJoin(rmCtx, EtcdJoinRevert{
+				MemberID:      learnerID,
+				MayBeVoter:    promoted || promoteAttempted,
+				EtcdStarted:   etcdStarted,
+				RemoveVoter:   removeMember,
+				RemoveLearner: removeMember,
+				StopEtcd: EtcdStopperFunc(func(ctx context.Context) error {
+					return snaputil.StopEtcdServices(ctx, snap)
+				}),
+				RemoveDir: DirRemoverFunc(func() error { return os.RemoveAll(snap.EtcdDir()) }),
+				Log:       cleanupLog,
+			})
 		})
 
 		// Build initial cluster members map from etcd members
@@ -336,6 +324,10 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		// The etcd server will reject the promotion if the learner is not
 		// ready, so we retry until it succeeds or the context expires.
 		log.Info("Promoting etcd learner to voting member", "memberID", learnerID)
+		// MemberPromote can commit even when it returns an error, so from
+		// here on the joiner may be a voter and the reverter must treat it
+		// as one.
+		promoteAttempted = true
 		if err := control.RetryFor(ctx, 30, 2*time.Second, func() error {
 			if _, err := etcdClient.MemberPromote(ctx, learnerID); err != nil {
 				return fmt.Errorf("failed to promote etcd learner %s (ID: %d): %w", s.Name(), learnerID, err)
