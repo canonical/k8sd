@@ -29,7 +29,6 @@ import (
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 )
 
@@ -240,11 +239,28 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		isRetryableAddLearnerErr := func(err error) bool {
 			return errors.Is(err, rpctypes.ErrTooManyLearners) || errors.Is(err, rpctypes.ErrUnhealthy)
 		}
-		var memberAddResp *clientv3.MemberAddResponse
+
+		// MemberAddAsLearner can return an error and still add the member,
+		// even after a following linearizable MemberList (lost response,
+		// or a proposal that commits after the caller gave up). Register
+		// the cleanup before adding, and let it find the learner by peer
+		// URL, since then its ID is unknown and its name is empty.
+		learnerAdd := &etcdLearnerAdd{}
+		registerEtcdLearnerAddReverter(snap, endpoints, peerURL, learnerAdd, reverter)
+
 		err = control.RetryForIf(ctx, 15, 2*time.Second, isRetryableAddLearnerErr, func() error {
-			var addErr error
-			memberAddResp, addErr = etcdClient.MemberAddAsLearner(ctx, []string{peerURL})
-			return addErr
+			result, addErr := etcdClient.AddLearner(ctx, peerURL)
+			if addErr != nil {
+				if !etcdclient.IsMemberAddRejected(addErr) {
+					learnerAdd.ambiguous = true
+				}
+				return addErr
+			}
+			if result.Adopted {
+				log.Info("Adopting existing etcd learner left by an earlier add", "memberID", result.Member.ID, "peerURL", peerURL)
+			}
+			learnerAdd.result = result
+			return nil
 		})
 		if err != nil {
 			if isRetryableAddLearnerErr(err) {
@@ -253,7 +269,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 			return fmt.Errorf("failed to add learner member %s to etcd cluster: %w", s.Name(), err)
 		}
 
-		learnerID := memberAddResp.Member.ID
+		learnerID := learnerAdd.result.Member.ID
 		promoted := false
 		etcdStarted := false
 
@@ -319,7 +335,7 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		})
 
 		// Build initial cluster members map from etcd members
-		initialClusterMembers := buildInitialClusterMembers(memberAddResp.Members)
+		initialClusterMembers := buildInitialClusterMembers(learnerAdd.result.Members)
 
 		if err := setup.Etcd(snap, s.Name(), nodeIP, cfg.Datastore.GetEtcdPort(), cfg.Datastore.GetEtcdPeerPort(), initialClusterMembers, joinConfig.ExtraNodeEtcdArgs); err != nil {
 			return fmt.Errorf("failed to configure etcd: %w", err)
@@ -467,6 +483,60 @@ func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []str
 					}
 				}
 			}
+		}
+	})
+}
+
+// etcdLearnerAddSettle bounds how long the learner add reverter keeps looking
+// for a learner added by an attempt whose outcome was unknown.
+const etcdLearnerAddSettle = 5 * time.Second
+
+// etcdLearnerAdd records what onPostJoin knows about the etcd learner it adds.
+type etcdLearnerAdd struct {
+	// result is set once an attempt added the learner or adopted an existing one.
+	result *etcdclient.AddLearnerResult
+	// ambiguous is set when an attempt failed without a definitive rejection,
+	// so its member may exist or may still be committed.
+	ambiguous bool
+}
+
+// registerEtcdLearnerAddReverter registers the cleanup for a learner that
+// MemberAddAsLearner may have added although no attempt returned it.
+//
+// Once an attempt returned the learner and no attempt was ambiguous, the etcd
+// reverter registered after the add owns the member, and this does nothing.
+// Otherwise it removes the learner with peerURL, sweeping for
+// etcdLearnerAddSettle if an attempt was ambiguous, to catch late commits.
+// It never removes a voter; removing a learner is always quorum-safe.
+func registerEtcdLearnerAddReverter(snap snap.Snap, endpoints []string, peerURL string, add *etcdLearnerAdd, reverter *revert.Reverter) {
+	reverter.Add(func() {
+		if add.result != nil && !add.ambiguous {
+			return
+		}
+
+		// Independent context: the join ctx may be what made the add fail.
+		rmCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		log := log.FromContext(rmCtx).WithValues("step", "etcd-learner-add-cleanup", "peerURL", peerURL, "ambiguous", add.ambiguous)
+
+		if len(endpoints) == 0 {
+			log.Info("Skipping etcd learner cleanup: no client endpoints available")
+			return
+		}
+		client, err := snap.EtcdClient(endpoints)
+		if err != nil {
+			log.Error(err, "Failed to create etcd client for learner cleanup")
+			return
+		}
+		defer client.Close()
+
+		var settle time.Duration
+		if add.ambiguous {
+			settle = etcdLearnerAddSettle
+		}
+		if err := client.SweepLearnerByPeerURL(rmCtx, peerURL, settle); err != nil {
+			log.Error(err, "Failed to clean up etcd learner")
 		}
 	})
 }
