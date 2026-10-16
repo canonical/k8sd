@@ -3,6 +3,7 @@ package snaputil
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/canonical/k8sd/pkg/k8sd/types"
@@ -159,6 +160,17 @@ func TestStopK8sServices(t *testing.T) {
 		mock.StopServicesErr = fmt.Errorf("service stop failed")
 		g.Expect(StopEtcdServices(context.Background(), mock)).NotTo(Succeed())
 	})
+}
+
+func TestStopK8sServicesExceptEtcd(t *testing.T) {
+	g := NewWithT(t)
+	mock := &mock.Snap{}
+
+	g.Expect(StopK8sServicesExceptEtcd(context.Background(), mock)).To(Succeed())
+	g.Expect(mock.StopServicesCalledWith).To(HaveLen(1))
+	g.Expect(mock.StopServicesCalledWith[0]).NotTo(ContainElement("etcd"))
+	g.Expect(mock.StopServicesCalledWith[0]).To(ConsistOf(removeElement(slices.Clone(k8sServices), "etcd")))
+	g.Expect(k8sServices).To(ContainElement("etcd"), "the full service list must stay intact")
 }
 
 func TestServiceArgsFromMap(t *testing.T) {
