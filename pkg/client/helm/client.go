@@ -15,6 +15,7 @@ import (
 	"helm.sh/helm/v3/pkg/chartutil"
 	releasepkg "helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
 
@@ -174,7 +175,26 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		upgrade.MaxHistory = h.maxHistory
 
 		if _, err := upgrade.RunWithContext(ctx, c.Name, chart, sanitizedValues); err != nil {
-			return false, fmt.Errorf("failed to upgrade %s: %w", c.Name, err)
+			// Retry with force only for a rejected patch, not any error (context
+			// cancellation, RBAC denial, etc). IsInvalid unwraps through Helm's
+			// "cannot patch %q" wrapping to the underlying API status.
+			if !apierrors.IsInvalid(err) {
+				return false, fmt.Errorf("failed to upgrade %s: %w", c.Name, err)
+			}
+
+			// Force full-replaces every resource in the release, not just the
+			// one that failed to patch; any out-of-band field on any of them
+			// is lost.
+			log.Info("upgrade failed with a rejected patch, retrying with force", "error", err)
+			forceUpgrade := action.NewUpgrade(cfg)
+			forceUpgrade.Namespace = c.Namespace
+			forceUpgrade.ResetThenReuseValues = true
+			forceUpgrade.Timeout = h.timeout
+			forceUpgrade.MaxHistory = h.maxHistory
+			forceUpgrade.Force = true
+			if _, forceErr := forceUpgrade.RunWithContext(ctx, c.Name, chart, sanitizedValues); forceErr != nil {
+				return false, fmt.Errorf("failed to upgrade %s (force retry also failed: %w): %w", c.Name, forceErr, err)
+			}
 		}
 
 		return true, nil
