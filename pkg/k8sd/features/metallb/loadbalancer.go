@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 
 	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/client/helm"
@@ -12,6 +13,7 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"gopkg.in/yaml.v2"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
@@ -19,6 +21,23 @@ const (
 	DisabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete MetalLB, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
+
+	// bgpBackendNative is the default BGP implementation (MetalLB's built-in one).
+	// Does not support BFD.
+	bgpBackendNative = "native"
+	// bgpBackendFRRK8s is the FRR-based BGP backend (github.com/metallb/frr-k8s).
+	// Required for peers that set a bfdProfile.
+	bgpBackendFRRK8s = "frr-k8s"
+)
+
+// BFDProfile field ranges, as enforced by the MetalLB BFDProfile CRD.
+const (
+	bfdIntervalMin   = 10
+	bfdIntervalMax   = 60000
+	bfdMultiplierMin = 2
+	bfdMultiplierMax = 255
+	bfdMinimumTTLMin = 1
+	bfdMinimumTTLMax = 254
 )
 
 // bgpNeighbor is an internal representation of a single MetalLB BGPPeer.
@@ -28,10 +47,26 @@ type bgpNeighbor struct {
 	peerPort     int
 	myASN        int
 	nodeSelector map[string]string
+	bfdProfile   string
+}
+
+// bfdProfile is an internal representation of a single MetalLB BFDProfile.
+// Zero-valued fields are unset and fall back to MetalLB defaults.
+type bfdProfile struct {
+	name             string
+	receiveInterval  int
+	transmitInterval int
+	detectMultiplier int
+	echoInterval     int
+	echoMode         bool
+	passiveMode      bool
+	minimumTTL       int
 }
 
 // validateBGPNeighbors returns an error if any neighbor in the slice is invalid.
-func validateBGPNeighbors(neighbors []bgpNeighbor) error {
+// frrk8sEnabled indicates whether the frr-k8s backend is active; neighbors that set
+// bfdProfile are only valid when it is true, since BFD requires an FRR-based backend.
+func validateBGPNeighbors(neighbors []bgpNeighbor, frrk8sEnabled bool) error {
 	for i, n := range neighbors {
 		if n.peerASN < 1 || n.peerASN > 4294967295 {
 			return fmt.Errorf("neighbor[%d]: peerASN %d out of range [1, 4294967295]", i, n.peerASN)
@@ -49,6 +84,15 @@ func validateBGPNeighbors(neighbors []bgpNeighbor) error {
 			if k == "" {
 				return fmt.Errorf("neighbor[%d]: nodeSelector has empty key", i)
 			}
+		}
+		if n.bfdProfile == "" {
+			continue
+		}
+		if errs := validation.IsDNS1123Subdomain(n.bfdProfile); len(errs) > 0 {
+			return fmt.Errorf("neighbor[%d]: invalid bfdProfile %q: %s", i, n.bfdProfile, strings.Join(errs, "; "))
+		}
+		if !frrk8sEnabled {
+			return fmt.Errorf("neighbor[%d]: bfdProfile %q requires %s annotation set to %q", i, n.bfdProfile, metallbAnnotations.AnnotationBGPBackend, bgpBackendFRRK8s)
 		}
 	}
 	return nil
@@ -82,6 +126,7 @@ func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, boo
 		PeerPort     int               `yaml:"peerPort"`
 		MyASN        int               `yaml:"myASN"`
 		NodeSelector map[string]string `yaml:"nodeSelector"`
+		BFDProfile   string            `yaml:"bfdProfile"`
 	}
 	var peers []peerYAML
 	if err := yaml.Unmarshal([]byte(peersYAML), &peers); err != nil {
@@ -95,6 +140,7 @@ func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, boo
 			peerPort:     p.PeerPort,
 			myASN:        p.MyASN,
 			nodeSelector: p.NodeSelector,
+			bfdProfile:   p.BFDProfile,
 		}
 	}
 
@@ -108,6 +154,104 @@ func neighborsFromAnnotations(annotations types.Annotations) ([]bgpNeighbor, boo
 	}
 
 	return neighbors, advertiseAll, true, nil
+}
+
+// isNativeBGPBackend parses the bgp-backend annotation and returns whether the
+// default native backend (MetalLB's built-in BGP) should be used instead of the
+// frr-k8s backend.
+// If the annotation is absent, empty, or set to "native", it returns (true, nil).
+// If set to "frr-k8s", it returns (false, nil). Any other value is an error.
+//
+// The frr-k8s backend is required for BFD; see bfdProfile on individual peers in
+// neighborsFromAnnotations.
+func isNativeBGPBackend(annotations types.Annotations) (bool, error) {
+	v, ok := annotations[metallbAnnotations.AnnotationBGPBackend]
+	if !ok || v == "" || v == bgpBackendNative {
+		return true, nil
+	}
+	if v == bgpBackendFRRK8s {
+		return false, nil
+	}
+	return false, fmt.Errorf("invalid bgp-backend annotation %q: must be %q or %q", v, bgpBackendNative, bgpBackendFRRK8s)
+}
+
+// bfdProfilesFromAnnotations parses the bfd-profiles annotation.
+// If the annotation is absent, returns (nil, nil).
+func bfdProfilesFromAnnotations(annotations types.Annotations) ([]bfdProfile, error) {
+	profilesYAML, ok := annotations[metallbAnnotations.AnnotationBFDProfiles]
+	if !ok {
+		return nil, nil
+	}
+
+	type profileYAML struct {
+		Name             string `yaml:"name"`
+		ReceiveInterval  int    `yaml:"receiveInterval"`
+		TransmitInterval int    `yaml:"transmitInterval"`
+		DetectMultiplier int    `yaml:"detectMultiplier"`
+		EchoInterval     int    `yaml:"echoInterval"`
+		EchoMode         bool   `yaml:"echoMode"`
+		PassiveMode      bool   `yaml:"passiveMode"`
+		MinimumTTL       int    `yaml:"minimumTtl"`
+	}
+	var items []profileYAML
+	if err := yaml.UnmarshalStrict([]byte(profilesYAML), &items); err != nil {
+		return nil, fmt.Errorf("failed to parse bfd-profiles annotation: %w", err)
+	}
+
+	profiles := make([]bfdProfile, len(items))
+	for i, p := range items {
+		profiles[i] = bfdProfile{
+			name:             p.Name,
+			receiveInterval:  p.ReceiveInterval,
+			transmitInterval: p.TransmitInterval,
+			detectMultiplier: p.DetectMultiplier,
+			echoInterval:     p.EchoInterval,
+			echoMode:         p.EchoMode,
+			passiveMode:      p.PassiveMode,
+			minimumTTL:       p.MinimumTTL,
+		}
+	}
+	return profiles, nil
+}
+
+// validateBFDProfiles returns an error if any profile is invalid. BFD profiles are
+// only accepted by MetalLB with an FRR-based backend.
+func validateBFDProfiles(profiles []bfdProfile, frrk8sEnabled bool) error {
+	if len(profiles) > 0 && !frrk8sEnabled {
+		return fmt.Errorf("%s requires %s annotation set to %q", metallbAnnotations.AnnotationBFDProfiles, metallbAnnotations.AnnotationBGPBackend, bgpBackendFRRK8s)
+	}
+	names := make(map[string]struct{}, len(profiles))
+	for i, p := range profiles {
+		if p.name == "" {
+			return fmt.Errorf("bfdProfile[%d]: name is required", i)
+		}
+		if errs := validation.IsDNS1123Subdomain(p.name); len(errs) > 0 {
+			return fmt.Errorf("bfdProfile[%d]: invalid name %q: %s", i, p.name, strings.Join(errs, "; "))
+		}
+		if _, ok := names[p.name]; ok {
+			return fmt.Errorf("bfdProfile[%d]: duplicate name %q", i, p.name)
+		}
+		names[p.name] = struct{}{}
+
+		// Zero means unset, so only non-zero values are range-checked.
+		ranges := []struct {
+			field    string
+			value    int
+			min, max int
+		}{
+			{"receiveInterval", p.receiveInterval, bfdIntervalMin, bfdIntervalMax},
+			{"transmitInterval", p.transmitInterval, bfdIntervalMin, bfdIntervalMax},
+			{"detectMultiplier", p.detectMultiplier, bfdMultiplierMin, bfdMultiplierMax},
+			{"echoInterval", p.echoInterval, bfdIntervalMin, bfdIntervalMax},
+			{"minimumTtl", p.minimumTTL, bfdMinimumTTLMin, bfdMinimumTTLMax},
+		}
+		for _, r := range ranges {
+			if r.value != 0 && (r.value < r.min || r.value > r.max) {
+				return fmt.Errorf("bfdProfile[%d]: %s %d out of range [%d, %d]", i, r.field, r.value, r.min, r.max)
+			}
+		}
+	}
+	return nil
 }
 
 // ApplyLoadBalancer will always return a FeatureStatus indicating the current status of the
@@ -143,6 +287,10 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	// Determine if annotation path is active (key present, regardless of value).
 	_, annotationActive := annotations[metallbAnnotations.AnnotationBGPPeers]
 	bothConfigsSet := annotationActive && loadbalancer.GetBGPPeerAddress() != ""
+	// Backend validity was already enforced in enableLoadBalancer; if it were invalid
+	// we would have returned above. Only the (alpha) status message cares about the
+	// raw value here.
+	frrk8sBackendActive := annotations[metallbAnnotations.AnnotationBGPBackend] == bgpBackendFRRK8s
 
 	switch {
 	case loadbalancer.GetBGPMode():
@@ -152,6 +300,9 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 			if bothConfigsSet {
 				msg = "enabled, BGP mode (alpha) - warning: single-peer typed keys are ignored"
 			}
+		}
+		if frrk8sBackendActive {
+			msg += ", frr-k8s backend"
 		}
 		return types.FeatureStatus{
 			Enabled: true,
@@ -188,8 +339,9 @@ func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Netw
 
 // buildLoadBalancerValues constructs the Helm values map for the ck-loadbalancer chart.
 // neighbors is the list of BGP peers to render; advertiseAllPools controls the
-// BGPAdvertisement spec (empty spec when true, named pool when false).
-func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, advertiseAllPools bool) map[string]any {
+// BGPAdvertisement spec (empty spec when true, named pool when false); bfdProfiles
+// is the list of BFDProfiles to render.
+func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, advertiseAllPools bool, bfdProfiles []bfdProfile) map[string]any {
 	cidrs := []map[string]any{}
 	for _, cidr := range lb.GetCIDRs() {
 		cidrs = append(cidrs, map[string]any{"cidr": cidr})
@@ -211,7 +363,39 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 		if len(n.nodeSelector) > 0 {
 			nm["nodeSelector"] = n.nodeSelector
 		}
+		if n.bfdProfile != "" {
+			nm["bfdProfile"] = n.bfdProfile
+		}
 		neighborMaps = append(neighborMaps, nm)
+	}
+
+	// Always set (even when empty) so Helm does not coalesce stale profiles from
+	// the previous release values.
+	profileMaps := make([]map[string]any, 0, len(bfdProfiles))
+	for _, p := range bfdProfiles {
+		pm := map[string]any{"name": p.name}
+		if p.receiveInterval != 0 {
+			pm["receiveInterval"] = p.receiveInterval
+		}
+		if p.transmitInterval != 0 {
+			pm["transmitInterval"] = p.transmitInterval
+		}
+		if p.detectMultiplier != 0 {
+			pm["detectMultiplier"] = p.detectMultiplier
+		}
+		if p.echoInterval != 0 {
+			pm["echoInterval"] = p.echoInterval
+		}
+		if p.echoMode {
+			pm["echoMode"] = p.echoMode
+		}
+		if p.passiveMode {
+			pm["passiveMode"] = p.passiveMode
+		}
+		if p.minimumTTL != 0 {
+			pm["minimumTtl"] = p.minimumTTL
+		}
+		profileMaps = append(profileMaps, pm)
 	}
 
 	return map[string]any{
@@ -228,6 +412,7 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 			"localASN":          lb.GetBGPLocalASN(),
 			"neighbors":         neighborMaps,
 			"advertiseAllPools": advertiseAllPools,
+			"bfdProfiles":       profileMaps,
 		},
 	}
 }
@@ -235,49 +420,18 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) error {
 	m := snap.HelmClient()
 
-	metalLBValues := map[string]any{
-		"controller": map[string]any{
-			"image": map[string]any{
-				"repository": controllerImageRepo,
-				"tag":        ControllerImageTag,
-			},
-			"command": "/controller",
-			// The speaker DaemonSet tolerates the control-plane taint through the
-			// chart's own defaults, the controller Deployment does not. Without this
-			// it stays Pending on a cluster whose control-plane nodes are tainted and
-			// no untainted node has joined yet, leaving the validating webhook for
-			// IPAddressPool unreachable.
-			"tolerations": []map[string]any{
-				{
-					"key":      "node-role.kubernetes.io/control-plane",
-					"operator": "Exists",
-					"effect":   "NoSchedule",
-				},
-			},
-		},
-		"speaker": map[string]any{
-			"image": map[string]any{
-				"repository": speakerImageRepo,
-				"tag":        speakerImageTag,
-			},
-			"command": "/speaker",
-			"frr": map[string]any{
-				"enabled": false,
-			},
-		},
-		// frrk8s is a top-level value of the MetalLB chart and defaults to
-		// enabled since chart 0.16.0. Keep it disabled, we only support L2 and
-		// the native BGP backend.
-		"frrk8s": map[string]any{
-			"enabled": false,
-		},
+	nativeBackend, err := isNativeBGPBackend(annotations)
+	if err != nil {
+		return fmt.Errorf("invalid BGP backend annotation: %w", err)
 	}
-	if _, err := m.Apply(ctx, ChartMetalLB, helm.StatePresent, metalLBValues); err != nil {
-		return fmt.Errorf("failed to apply MetalLB configuration: %w", err)
-	}
+	frrk8sEnabled := !nativeBackend
 
-	if err := waitForRequiredLoadBalancerCRDs(ctx, snap, loadbalancer.GetBGPMode()); err != nil {
-		return fmt.Errorf("failed to wait for required MetalLB CRDs: %w", err)
+	bfdProfiles, err := bfdProfilesFromAnnotations(annotations)
+	if err != nil {
+		return fmt.Errorf("invalid BFD profile annotation: %w", err)
+	}
+	if err := validateBFDProfiles(bfdProfiles, frrk8sEnabled); err != nil {
+		return fmt.Errorf("invalid BFD profiles: %w", err)
 	}
 
 	var (
@@ -315,13 +469,76 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		}
 	}
 
-	// Validate BGP neighbors at reconcile time (fail-late).
+	// Validate BGP neighbors at reconcile time (fail-late), before anything is
+	// applied, so that an invalid configuration never half-applies (e.g. a
+	// backend switch while peers still reference a BFD profile).
 	// Skipped for L2 mode where neighbors is nil.
-	if err := validateBGPNeighbors(neighbors); err != nil {
+	if err := validateBGPNeighbors(neighbors, frrk8sEnabled); err != nil {
 		return fmt.Errorf("invalid BGP peers: %w", err)
 	}
 
-	values := buildLoadBalancerValues(loadbalancer, neighbors, advertiseAll)
+	metalLBValues := map[string]any{
+		"controller": map[string]any{
+			"image": map[string]any{
+				"repository": controllerImageRepo,
+				"tag":        ControllerImageTag,
+			},
+			"command": "/controller",
+			// The speaker DaemonSet tolerates the control-plane taint through the
+			// chart's own defaults, the controller Deployment does not. Without this
+			// it stays Pending on a cluster whose control-plane nodes are tainted and
+			// no untainted node has joined yet, leaving the validating webhook for
+			// IPAddressPool unreachable.
+			"tolerations": []map[string]any{
+				{
+					"key":      "node-role.kubernetes.io/control-plane",
+					"operator": "Exists",
+					"effect":   "NoSchedule",
+				},
+			},
+		},
+		"speaker": map[string]any{
+			"image": map[string]any{
+				"repository": speakerImageRepo,
+				"tag":        speakerImageTag,
+			},
+			"command": "/speaker",
+			"frr": map[string]any{
+				"enabled": false,
+			},
+		},
+		// frrk8s is a top-level value of the MetalLB chart and defaults to
+		// enabled since chart 0.16.0. Controlled by the bgp-backend annotation
+		// (see isNativeBGPBackend); defaults to disabled (native backend).
+		"frrk8s": map[string]any{
+			"enabled": frrk8sEnabled,
+		},
+		// Values of the bundled frr-k8s subchart. Its images default to the
+		// upstream ones, so they are always pinned to the Canonical rocks.
+		"frr-k8s": map[string]any{
+			"frrk8s": map[string]any{
+				"image": map[string]any{
+					"repository": frrk8sImageRepo,
+					"tag":        frrk8sImageTag,
+				},
+				"frr": map[string]any{
+					"image": map[string]any{
+						"repository": frrImageRepo,
+						"tag":        frrImageTag,
+					},
+				},
+			},
+		},
+	}
+	if _, err := m.Apply(ctx, ChartMetalLB, helm.StatePresent, metalLBValues); err != nil {
+		return fmt.Errorf("failed to apply MetalLB configuration: %w", err)
+	}
+
+	if err := waitForRequiredLoadBalancerCRDs(ctx, snap, loadbalancer.GetBGPMode()); err != nil {
+		return fmt.Errorf("failed to wait for required MetalLB CRDs: %w", err)
+	}
+
+	values := buildLoadBalancerValues(loadbalancer, neighbors, advertiseAll, bfdProfiles)
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StatePresent, values); err != nil {
 		return fmt.Errorf("failed to apply MetalLB LoadBalancer configuration: %w", err)
@@ -360,6 +577,7 @@ func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMod
 		if bgpMode {
 			requiredCRDs["metallb.io/v1beta2:bgppeers"] = struct{}{}
 			requiredCRDs["metallb.io/v1beta1:bgpadvertisements"] = struct{}{}
+			requiredCRDs["metallb.io/v1beta1:bfdprofiles"] = struct{}{}
 		}
 
 		requiredCount := len(requiredCRDs)
