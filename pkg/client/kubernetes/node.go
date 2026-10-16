@@ -16,6 +16,19 @@ func (c *Client) GetNode(ctx context.Context, nodeName string) (*v1.Node, error)
 	return c.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 }
 
+// NodeRegistered returns true if the named node's Node object exists in the
+// Kubernetes API, regardless of its Ready condition.
+func (c *Client) NodeRegistered(ctx context.Context, nodeName string) (bool, error) {
+	_, err := c.GetNode(ctx, nodeName)
+	if apierrors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to get node %q: %w", nodeName, err)
+	}
+	return true, nil
+}
+
 // DeleteNode will remove a node from the kubernetes cluster.
 // DeleteNode will retry if there is a conflict on the resource
 // DeleteNode will retry if an internal server error occured (maximum of 5 times).
