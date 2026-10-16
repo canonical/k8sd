@@ -17,7 +17,6 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
@@ -78,7 +77,6 @@ func (c *Coordinator) Run(
 		return nil
 	}
 
-	ctrllog.SetLogger(logger)
 	ctx = log.NewContext(ctx, logger)
 
 	readyCh := make(chan struct{})
