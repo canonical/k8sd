@@ -129,10 +129,13 @@ func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s mctypes.State, cf
 		return fmt.Errorf("failed to get microcluster members: %w", err)
 	}
 
+	// peerURL is the node's etcd peer URL, derived as in onPostJoin.
+	var peerURL string
 	clientURLs := make([]string, 0, len(members)-1)
 	for _, member := range members {
 		if member.Name == nodeName {
 			// skip the node we want to remove
+			peerURL = fmt.Sprintf("https://%s", utils.JoinHostPort(member.Address.Addr().String(), cfg.Datastore.GetEtcdPeerPort()))
 			continue
 		}
 		clientURLs = append(clientURLs, fmt.Sprintf("https://%s", utils.JoinHostPort(member.Address.Addr().String(), cfg.Datastore.GetEtcdPort())))
@@ -160,7 +163,14 @@ func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s mctypes.State, cf
 	}
 
 	log.Info("Deleting node from etcd cluster")
-	if err := client.RemoveNodeByName(ctx, nodeName); err != nil {
+	err = client.RemoveNodeByName(ctx, nodeName)
+	if errors.Is(err, etcdclient.ErrNotFound) && peerURL != "" {
+		// A learner whose etcd never started has no name, e.g. one left by a
+		// join that failed after MemberAddAsLearner. Find it by peer URL.
+		log.Info("No etcd member with the node's name, removing the learner with its peer URL", "peerURL", peerURL)
+		err = client.RemoveLearnerByPeerURL(ctx, peerURL)
+	}
+	if err != nil {
 		if errors.Is(err, etcdclient.ErrNotFound) {
 			log.Info("Node not found in the etcd cluster, nothing to remove", "node", nodeName)
 		} else {
