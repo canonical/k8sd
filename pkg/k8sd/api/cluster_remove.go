@@ -99,6 +99,7 @@ func removeNodeFromDatastoreAndMicrocluster(ctx context.Context, s mctypes.State
 	if err := removeNodeFromDatastore(ctx, s, snap, nodeName, cfg); err != nil {
 		if !canContinueAfterDatastoreRemovalError(force, cfg.Datastore.GetType(), confirmedWorker) {
 			// Keep the node in microcluster so that a retry (or a later recovery) still knows about it.
+			log.Error(err, "Failed to remove node from datastore, not removing it from microcluster", "datastore", cfg.Datastore.GetType(), "confirmedWorker", confirmedWorker)
 			return fmt.Errorf("failed to delete node from datastore, not removing it from microcluster: %w", err)
 		}
 		// With force=true, we want to cleanup all out-of-sync mentions of this node.
@@ -190,13 +191,21 @@ func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s mctypes.State, cf
 
 	log.Info("Deleting node from etcd cluster")
 	if err := client.RemoveNodeByName(ctx, nodeName); err != nil {
-		if errors.Is(err, etcdclient.ErrNotFound) {
+		switch {
+		case errors.Is(err, etcdclient.ErrNotFound):
 			log.Info("Node not found in the etcd cluster, nothing to remove", "node", nodeName)
-		} else {
-			return fmt.Errorf("failed to remove node %s from etcd cluster: etcd has no quorum or is unreachable and %s is still an etcd member; "+
+		case errors.Is(err, etcdclient.ErrMemberList):
+			// Without a member list, it is unknown whether the node is still an etcd member.
+			return fmt.Errorf("could not list the etcd members (etcd has no quorum or is unreachable), so %s may still be an etcd member; "+
 				"bring the unreachable etcd peer(s) back and retry, or, if a peer is permanently lost, "+
 				"recover etcd on a surviving control-plane node with --force-new-cluster (see the Canonical Kubernetes docs) and retry: %w",
-				nodeName, nodeName, err)
+				nodeName, err)
+		default:
+			// The member list was read, so etcd had quorum. etcd refused or failed the removal itself,
+			// e.g. because removing the node would leave too few started voters.
+			return fmt.Errorf("etcd did not remove %s from its members; fix the cause reported by etcd "+
+				"(for example, bring the unreachable etcd peer(s) back or remove them first) and retry: %w",
+				nodeName, err)
 		}
 	}
 

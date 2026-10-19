@@ -24,6 +24,7 @@ import (
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	. "github.com/onsi/gomega"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -77,6 +78,7 @@ type fakeEtcdCluster struct {
 	clientv3.Cluster
 	members         []*pb.Member
 	memberListErr   error
+	memberRemoveErr error
 	removedMemberID uint64
 }
 
@@ -89,6 +91,9 @@ func (f *fakeEtcdCluster) MemberList(_ context.Context, _ ...clientv3.OpOption) 
 
 func (f *fakeEtcdCluster) MemberRemove(_ context.Context, id uint64) (*clientv3.MemberRemoveResponse, error) {
 	f.removedMemberID = id
+	if f.memberRemoveErr != nil {
+		return nil, f.memberRemoveErr
+	}
 	return (*clientv3.MemberRemoveResponse)(&pb.MemberRemoveResponse{}), nil
 }
 
@@ -134,9 +139,26 @@ func TestRemoveNodeFromDatastoreAndMicrocluster(t *testing.T) {
 
 		err := api.RemoveNodeFromDatastoreAndMicrocluster(context.Background(), nil, snap, "cp2", etcdConfig, true, false)
 		g.Expect(err).To(MatchError(ContainSubstring("etcd has no quorum")))
-		g.Expect(err).To(MatchError(ContainSubstring("cp2 is still an etcd member")))
+		g.Expect(err).To(MatchError(ContainSubstring("cp2 may still be an etcd member")))
 		g.Expect(err).To(MatchError(ContainSubstring("--force-new-cluster")))
+		g.Expect(errors.Is(err, etcdclient.ErrMemberList)).To(BeTrue())
 		g.Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
+		g.Expect(k8sd.RemoveClusterMemberName).To(BeEmpty(), "node must not be removed from microcluster")
+	})
+
+	t.Run("EtcdRejectsRemovalWithForce", func(t *testing.T) {
+		g := NewWithT(t)
+		// etcd has quorum (the member list works), but refuses to remove the member,
+		// e.g. because that would leave too few started voters.
+		cluster := &fakeEtcdCluster{members: []*pb.Member{survivor, dead}, memberRemoveErr: rpctypes.ErrUnhealthy}
+		snap, k8sd := newSnap(cluster)
+
+		err := api.RemoveNodeFromDatastoreAndMicrocluster(context.Background(), nil, snap, "cp2", etcdConfig, true, false)
+		g.Expect(err).To(MatchError(ContainSubstring("etcd did not remove cp2")))
+		g.Expect(err).ToNot(MatchError(ContainSubstring("no quorum")))
+		g.Expect(err).ToNot(MatchError(ContainSubstring("--force-new-cluster")), "etcd has quorum, --force-new-cluster would drop healthy members")
+		g.Expect(errors.Is(err, rpctypes.ErrUnhealthy)).To(BeTrue())
+		g.Expect(cluster.removedMemberID).To(Equal(dead.ID))
 		g.Expect(k8sd.RemoveClusterMemberName).To(BeEmpty(), "node must not be removed from microcluster")
 	})
 
