@@ -8,6 +8,7 @@ require (
 	github.com/canonical/lxd v0.0.0-20260817092508-554567178c38
 	github.com/canonical/microcluster/v3 v3.1.1
 	github.com/go-logr/logr v1.4.4
+	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/gomega v1.44.0
@@ -104,7 +105,6 @@ require (
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-runewidth v0.0.27 // indirect
-	github.com/mattn/go-sqlite3 v1.14.52 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
