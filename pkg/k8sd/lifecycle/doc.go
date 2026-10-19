@@ -15,19 +15,26 @@
 //	nodeStatus[n]          NodeView.Phase      (Journal, dqlite)
 //	lease                  Snapshot.Lease      (Journal, dqlite; "" = NoNode)
 //	mcRole[n]              NodeView.Member     (Membership, microcluster)
+//	dqliteRole[n]          NodeView.Dqlite     (Membership, microcluster)
 //	etcdRole[n]            NodeView.Etcd       (Datastore, etcd)
 //	etcdRunning[n]         NodeView.EtcdRunning(Hosts)
 //	up[n]                  NodeView.Up         (Hosts)
 //
 //	TLA+ action            Go
-//	BeginJoin              Orchestrator.BeginJoin
-//	ConfirmMember          performed by microcluster; Plan waits (ErrAwaitingMember)
+//	McJoin, ConfirmMember  performed by microcluster before PostJoin
+//	McRollback, Rebalance  performed by microcluster / go-dqlite
+//	BeginJoin              Orchestrator.BeginJoin (PostJoin hook)
 //	AddLearner .. Activate StepAddLearner, StepStartEtcd, StepPromote, StepActivate
 //	FailJoin               Orchestrator.Abort
 //	BeginRemove            Orchestrator.BeginRemove
 //	RemoveVoter .. Finish  StepRemoveVoter, StepStopEtcd, StepRemoveLearner,
 //	                       StepLeaveCluster, StepFinishTeardown
 //	Crash / Restart        environment (exercised by the test simulator)
+//	ForceLeaveCluster      mutation only: remove-node --force before #161
+//
+// Observe needs etcd and dqlite quorum (MemberList and journal reads are
+// linearizable), so where the spec could still take a lease-only step the Go
+// code stutters until quorum returns. Stuttering never violates safety.
 //
 // Cross-process safety relies on two mechanisms only: the journal's
 // compare-and-swap (one dqlite transaction) for nodeStatus/lease, and the

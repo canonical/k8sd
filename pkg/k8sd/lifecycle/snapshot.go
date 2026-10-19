@@ -12,6 +12,7 @@ type NodeView struct {
 	PeerURL      string
 	Phase        Phase      // nodeStatus[n]
 	Member       MemberRole // mcRole[n]
+	Dqlite       DqliteRole // dqliteRole[n]
 	Etcd         EtcdRole   // etcdRole[n]
 	EtcdMemberID uint64
 	EtcdRunning  bool // etcdRunning[n]; always false when !Up
@@ -34,7 +35,7 @@ func (s Snapshot) Node(name string) NodeView {
 	if v, ok := s.Nodes[name]; ok {
 		return v
 	}
-	return NodeView{Name: name, Phase: PhaseAbsent, Member: MemberNone, Etcd: EtcdNone}
+	return NodeView{Name: name, Phase: PhaseAbsent, Member: MemberNone, Dqlite: DqliteNone, Etcd: EtcdNone}
 }
 
 func (s Snapshot) names() []string {
@@ -68,7 +69,7 @@ func (s Snapshot) etcdCounts(exclude string) (live, all int) {
 
 func (s Snapshot) dqliteCounts(exclude string) (live, all int) {
 	for name, v := range s.Nodes {
-		if name == exclude || v.Member != MemberJoined {
+		if name == exclude || v.Dqlite != DqliteVoter {
 			continue
 		}
 		all++
@@ -95,6 +96,32 @@ func (s Snapshot) DqliteQuorum() bool { return majority(s.dqliteCounts("")) }
 func (s Snapshot) DqliteQuorumWithout(n string) bool {
 	live, all := s.dqliteCounts(n)
 	return all > 0 && majority(live, all)
+}
+
+// CanLeaveDqlite reports whether node n can leave dqlite without losing
+// quorum: it is not a voter, quorum survives without it, or it can hand its
+// vote to an online spare first (go-dqlite handover). This is DqliteLeave(n).
+func (s Snapshot) CanLeaveDqlite(n string) bool {
+	if s.Node(n).Dqlite != DqliteVoter || s.DqliteQuorumWithout(n) {
+		return true
+	}
+	for name, v := range s.Nodes {
+		if name != n && v.Dqlite == DqliteSpare && v.Up {
+			return true
+		}
+	}
+	return false
+}
+
+// DqliteVoters returns the dqlite voters, sorted.
+func (s Snapshot) DqliteVoters() []string {
+	var out []string
+	for _, n := range s.names() {
+		if s.Nodes[n].Dqlite == DqliteVoter {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // Voters returns the attributed etcd voters, sorted.
@@ -145,8 +172,14 @@ func (s Snapshot) CheckInvariants() error {
 		if v.Phase == PhaseActive && (v.Etcd != EtcdVoter || v.Member != MemberJoined) {
 			errs = append(errs, fmt.Errorf("ActiveIsConfirmedVoter: node %s is Active with etcd=%s member=%s", n, v.Etcd, v.Member))
 		}
-		if v.Phase == PhaseAbsent && (v.Member != MemberNone || v.Etcd != EtcdNone || v.EtcdRunning) {
-			errs = append(errs, fmt.Errorf("AbsentIsClean: node %s is Absent with member=%s etcd=%s running=%t", n, v.Member, v.Etcd, v.EtcdRunning))
+		if v.Phase == PhaseAbsent && (v.Etcd != EtcdNone || v.EtcdRunning) {
+			errs = append(errs, fmt.Errorf("AbsentIsClean: node %s is Absent with etcd=%s running=%t", n, v.Etcd, v.EtcdRunning))
+		}
+		if v.Etcd != EtcdNone && v.Member != MemberJoined {
+			errs = append(errs, fmt.Errorf("NoOrphanedEtcdMember: node %s is an etcd %s but microcluster member=%s", n, v.Etcd, v.Member))
+		}
+		if (v.Dqlite != DqliteNone) != (v.Member == MemberJoined) {
+			errs = append(errs, fmt.Errorf("DqliteRoleMatchesMembership: node %s has dqlite=%s member=%s", n, v.Dqlite, v.Member))
 		}
 	}
 	if transitional > 1 {
@@ -157,6 +190,9 @@ func (s Snapshot) CheckInvariants() error {
 	}
 	if _, all := s.etcdCounts(""); all == 0 {
 		errs = append(errs, errors.New("ControlPlaneNeverEmpty: no etcd voters"))
+	}
+	if len(s.DqliteVoters()) == 0 {
+		errs = append(errs, errors.New("ControlPlaneNeverEmpty: no dqlite voters"))
 	}
 	return errors.Join(errs...)
 }

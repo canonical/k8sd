@@ -20,9 +20,10 @@ type Journal interface {
 	CompareAndSwap(ctx context.Context, t Transition) error
 }
 
-// Membership is the microcluster (dqlite) membership.
+// Membership is the microcluster (dqlite) membership. Remove must let
+// dqlite hand a voter's role to an online spare before the member leaves.
 type Membership interface {
-	Members(ctx context.Context) (map[string]MemberRole, error)
+	Members(ctx context.Context) (map[string]MemberInfo, error)
 	Remove(ctx context.Context, node string) error
 }
 
@@ -36,7 +37,9 @@ type Datastore interface {
 	Remove(ctx context.Context, id uint64) error
 }
 
-// Hosts controls node-local runtime state.
+// Hosts controls node-local runtime state. StartEtcd and StopEtcd must run
+// on the target node's own k8sd (e.g. through an endpoint on that node), and
+// fail when that host is down.
 type Hosts interface {
 	// Status reports Up=false (not an error) for unreachable hosts.
 	Status(ctx context.Context, node string) (HostStatus, error)
@@ -104,7 +107,7 @@ func (o *Orchestrator) Observe(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("failed to load journal: %w", err)
 	}
-	roles, err := o.members.Members(ctx)
+	members, err := o.members.Members(ctx)
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("failed to list cluster members: %w", err)
 	}
@@ -118,16 +121,19 @@ func (o *Orchestrator) Observe(ctx context.Context) (Snapshot, error) {
 		if v, ok := nodes[name]; ok {
 			return v
 		}
-		return NodeView{Name: name, Phase: PhaseAbsent, Member: MemberNone, Etcd: EtcdNone}
+		return NodeView{Name: name, Phase: PhaseAbsent, Member: MemberNone, Dqlite: DqliteNone, Etcd: EtcdNone}
 	}
 	for name, rec := range js.Records {
 		v := view(name)
 		v.PeerURL, v.Phase = rec.PeerURL, rec.Phase
 		nodes[name] = v
 	}
-	for name, role := range roles {
+	for name, m := range members {
 		v := view(name)
-		v.Member = role
+		v.Member, v.Dqlite = m.Role, m.Dqlite
+		if v.Dqlite == "" {
+			v.Dqlite = DqliteNone
+		}
 		nodes[name] = v
 	}
 
@@ -175,7 +181,8 @@ func (o *Orchestrator) Observe(ctx context.Context) (Snapshot, error) {
 	return Snapshot{Lease: js.Lease, Nodes: nodes, Orphans: orphans}, nil
 }
 
-// BeginJoin acquires the lease for node and records it as Joining.
+// BeginJoin acquires the lease for node and records it as Joining. As in
+// microcluster's PostJoin hook, node must already be a microcluster member.
 // It is idempotent for a join that is already in flight for node.
 func (o *Orchestrator) BeginJoin(ctx context.Context, node, peerURL string) error {
 	if node == "" || peerURL == "" {
@@ -196,6 +203,8 @@ func (o *Orchestrator) BeginJoin(ctx context.Context, node, peerURL string) erro
 		return fmt.Errorf("%w: node %s is %s", ErrInvalidPhase, node, v.Phase)
 	case v.Etcd != EtcdNone || v.EtcdRunning:
 		return fmt.Errorf("%w: node %s has stale etcd state (role=%s running=%t), remove it first", ErrInvalidPhase, node, v.Etcd, v.EtcdRunning)
+	case v.Member != MemberJoined:
+		return fmt.Errorf("%w: node %s is microcluster member=%s", ErrAwaitingMember, node, v.Member)
 	case s.Lease != "":
 		return fmt.Errorf("%w: lease held by %s", ErrLeaseHeld, s.Lease)
 	case !s.DqliteQuorum():

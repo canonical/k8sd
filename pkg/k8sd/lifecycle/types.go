@@ -35,6 +35,23 @@ const (
 	MemberJoined  MemberRole = "member"
 )
 
+// DqliteRole is dqliteRole[n]: the node's role in dqlite raft. dqlite keeps an
+// odd number of voters (at most 3); other members are spares or standbys,
+// which are reported as DqliteSpare.
+type DqliteRole string
+
+const (
+	DqliteNone  DqliteRole = "none"
+	DqliteSpare DqliteRole = "spare"
+	DqliteVoter DqliteRole = "voter"
+)
+
+// MemberInfo is the microcluster view of one member.
+type MemberInfo struct {
+	Role   MemberRole
+	Dqlite DqliteRole
+}
+
 // EtcdRole is etcdRole[n]: etcd raft membership.
 type EtcdRole string
 

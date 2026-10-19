@@ -84,7 +84,7 @@ func planTeardown(s Snapshot, v NodeView) (Step, error) {
 		if !s.DqliteQuorum() {
 			return StepNone, ErrNoDqliteQuorum
 		}
-		if v.Member == MemberJoined && !s.DqliteQuorumWithout(v.Name) {
+		if !s.CanLeaveDqlite(v.Name) {
 			return StepNone, ErrQuorumAtRisk
 		}
 		return StepLeaveCluster, nil

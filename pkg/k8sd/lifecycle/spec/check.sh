@@ -43,3 +43,4 @@ expect_pass NodeLifecycle.cfg NodeLifecycle.tla
 expect_pass NodeLifecyclePlusCal.cfg NodeLifecyclePlusCal.tla
 expect_violation NodeLifecycle_stop_before_remove.cfg NodeLifecycle.tla "OrchestratorNeverBreaksQuorum"
 expect_violation NodeLifecycle_unguarded_remove.cfg NodeLifecycle.tla "EtcdReconfigPreservesQuorum"
+expect_violation NodeLifecycle_force_remove.cfg NodeLifecycle.tla "NoOrphanedEtcdMember"

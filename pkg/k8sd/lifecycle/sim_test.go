@@ -48,6 +48,7 @@ type sim struct {
 	lease    string
 	records  map[string]lifecycle.Record
 	mc       map[string]lifecycle.MemberRole
+	dqlite   map[string]lifecycle.DqliteRole
 	members  map[uint64]*simMember
 	nextID   uint64
 	up       map[string]bool
@@ -63,6 +64,7 @@ func newSim(nodes ...string) *sim {
 		universe: nodes,
 		records:  map[string]lifecycle.Record{},
 		mc:       map[string]lifecycle.MemberRole{},
+		dqlite:   map[string]lifecycle.DqliteRole{},
 		members:  map[uint64]*simMember{},
 		up:       map[string]bool{},
 		running:  map[string]bool{},
@@ -81,11 +83,118 @@ func (s *sim) seedActive(n string) {
 	defer s.mu.Unlock()
 	s.records[n] = lifecycle.Record{Name: n, PeerURL: peerURL(n), Phase: lifecycle.PhaseActive}
 	s.mc[n] = lifecycle.MemberJoined
+	s.dqlite[n] = lifecycle.DqliteSpare
+	if len(s.truthLocked().DqliteVoters()) == 0 {
+		s.dqlite[n] = lifecycle.DqliteVoter
+	}
 	s.nextID++
 	s.members[s.nextID] = &simMember{id: s.nextID, node: n, name: n}
 	s.running[n] = true
+	s.rebalanceLocked()
 	if err := s.truthLocked().CheckInvariants(); err != nil {
 		panic(err)
+	}
+}
+
+// admit runs McJoin and ConfirmMember: what `k8s join-cluster` does in
+// microcluster before the PostJoin hook calls BeginJoin.
+func (s *sim) admit(n string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.truthLocked()
+	if s.mc[n] != "" || !s.up[n] || !t.DqliteQuorum() {
+		panic(fmt.Sprintf("cannot admit %s: member=%q up=%t quorum=%t", n, s.mc[n], s.up[n], t.DqliteQuorum()))
+	}
+	s.envLocked("env.McJoin("+n+")", func() { s.mc[n] = lifecycle.MemberPending })
+	s.confirmPendingLocked()
+}
+
+// rollbackMember is McRollback: microcluster force-deletes a member whose
+// join failed before the k8sd lease was taken.
+func (s *sim) rollbackMember(n string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.truthLocked()
+	v := t.Node(n)
+	switch {
+	case v.Phase != lifecycle.PhaseAbsent || v.Member == lifecycle.MemberNone:
+		return fmt.Errorf("%s is not an admitted Absent node", n)
+	case v.Etcd != lifecycle.EtcdNone || v.EtcdRunning:
+		return fmt.Errorf("%s has etcd state", n)
+	case !t.DqliteQuorum():
+		return errDqliteNoLeader
+	case !t.CanLeaveDqlite(n):
+		return errors.New("dqlite: removal would lose quorum")
+	}
+	s.envLocked("env.McRollback("+n+")", func() { s.leaveDqliteLocked(n) })
+	return nil
+}
+
+// envLocked applies an environment action and checks the spec properties.
+func (s *sim) envLocked(op string, apply func()) {
+	before := s.truthLocked()
+	apply()
+	s.checkLocked(op, before, s.truthLocked(), false)
+}
+
+// leaveDqliteLocked is DqliteLeave(n): a voter whose departure would lose
+// quorum first hands its vote to an online spare.
+func (s *sim) leaveDqliteLocked(n string) {
+	t := s.truthLocked()
+	if s.dqlite[n] == lifecycle.DqliteVoter && !t.DqliteQuorumWithout(n) {
+		for _, m := range s.universe {
+			if m != n && s.dqlite[m] == lifecycle.DqliteSpare && s.up[m] {
+				s.dqlite[m] = lifecycle.DqliteVoter
+				break
+			}
+		}
+	}
+	delete(s.mc, n)
+	delete(s.dqlite, n)
+}
+
+func (s *sim) confirmPendingLocked() {
+	for _, n := range s.universe {
+		if s.mc[n] == lifecycle.MemberPending && s.up[n] && s.truthLocked().DqliteQuorum() {
+			s.envLocked("env.ConfirmMember("+n+")", func() {
+				s.mc[n] = lifecycle.MemberJoined
+				s.dqlite[n] = lifecycle.DqliteSpare
+			})
+		}
+	}
+	s.rebalanceLocked()
+}
+
+// rebalanceLocked applies one go-dqlite role adjustment, if any is enabled:
+// 1 -> 3 voters, replacing an offline voter, or 2 -> 1 voters.
+func (s *sim) rebalanceLocked() {
+	t := s.truthLocked()
+	if !t.DqliteQuorum() {
+		return
+	}
+	voters := t.DqliteVoters()
+	var spares []string
+	for _, n := range s.universe {
+		if s.dqlite[n] == lifecycle.DqliteSpare && s.up[n] {
+			spares = append(spares, n)
+		}
+	}
+	switch {
+	case len(voters) == 1 && len(spares) >= 2:
+		s.envLocked("env.PromoteDqliteVoters", func() {
+			s.dqlite[spares[0]], s.dqlite[spares[1]] = lifecycle.DqliteVoter, lifecycle.DqliteVoter
+		})
+	case len(voters) == 2:
+		s.envLocked("env.DemoteDqliteVoter", func() { s.dqlite[voters[1]] = lifecycle.DqliteSpare })
+	case len(spares) > 0:
+		for _, v := range voters {
+			if !s.up[v] {
+				s.envLocked("env.ReplaceDqliteVoter", func() {
+					s.dqlite[v], s.dqlite[spares[0]] = lifecycle.DqliteSpare, lifecycle.DqliteVoter
+				})
+				return
+			}
+		}
 	}
 }
 
@@ -101,12 +210,15 @@ func (s *sim) memberOf(n string) *simMember {
 func (s *sim) truthLocked() lifecycle.Snapshot {
 	nodes := map[string]lifecycle.NodeView{}
 	for _, n := range s.universe {
-		v := lifecycle.NodeView{Name: n, Phase: lifecycle.PhaseAbsent, Member: lifecycle.MemberNone, Etcd: lifecycle.EtcdNone, Up: s.up[n], EtcdRunning: s.up[n] && s.running[n]}
+		v := lifecycle.NodeView{Name: n, Phase: lifecycle.PhaseAbsent, Member: lifecycle.MemberNone, Dqlite: lifecycle.DqliteNone, Etcd: lifecycle.EtcdNone, Up: s.up[n], EtcdRunning: s.up[n] && s.running[n]}
 		if r, ok := s.records[n]; ok {
 			v.Phase, v.PeerURL = r.Phase, r.PeerURL
 		}
 		if r, ok := s.mc[n]; ok {
 			v.Member = r
+		}
+		if r, ok := s.dqlite[n]; ok {
+			v.Dqlite = r
 		}
 		if m := s.memberOf(n); m != nil {
 			v.EtcdMemberID = m.id
@@ -126,17 +238,6 @@ func (s *sim) truth() lifecycle.Snapshot {
 	return s.truthLocked()
 }
 
-func mcJoined(snap lifecycle.Snapshot) []string {
-	var out []string
-	for n, v := range snap.Nodes {
-		if v.Member == lifecycle.MemberJoined {
-			out = append(out, n)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 // checkLocked evaluates invariants on after and action properties on (before, after).
 func (s *sim) checkLocked(op string, before, after lifecycle.Snapshot, orchestrator bool) {
 	report := func(format string, args ...any) {
@@ -148,8 +249,8 @@ func (s *sim) checkLocked(op string, before, after lifecycle.Snapshot, orchestra
 	if !slices.Equal(before.Voters(), after.Voters()) && (!before.EtcdQuorum() || !after.EtcdQuorum()) {
 		report("ReconfigPreservesQuorum: etcd voters %v -> %v", before.Voters(), after.Voters())
 	}
-	if !slices.Equal(mcJoined(before), mcJoined(after)) && (!before.DqliteQuorum() || !after.DqliteQuorum()) {
-		report("ReconfigPreservesQuorum: dqlite members %v -> %v", mcJoined(before), mcJoined(after))
+	if !slices.Equal(before.DqliteVoters(), after.DqliteVoters()) && (!before.DqliteQuorum() || !after.DqliteQuorum()) {
+		report("ReconfigPreservesQuorum: dqlite voters %v -> %v", before.DqliteVoters(), after.DqliteVoters())
 	}
 	if orchestrator && before.EtcdQuorum() && !after.EtcdQuorum() {
 		report("OrchestratorNeverBreaksQuorum")
@@ -312,10 +413,6 @@ func (j simJournal) CompareAndSwap(_ context.Context, t lifecycle.Transition) er
 			s.records[t.Node] = r
 		}
 		s.lease = t.ToLease
-		// BeginJoin also submits the microcluster join request (mcRole := pending).
-		if t.FromPhase == lifecycle.PhaseAbsent && t.ToPhase == lifecycle.PhaseJoining {
-			s.mc[t.Node] = lifecycle.MemberPending
-		}
 	})
 }
 
@@ -323,24 +420,23 @@ func (j simJournal) CompareAndSwap(_ context.Context, t lifecycle.Transition) er
 
 type simMembership struct{ s *sim }
 
-func (m simMembership) Members(context.Context) (map[string]lifecycle.MemberRole, error) {
+func (m simMembership) Members(context.Context) (map[string]lifecycle.MemberInfo, error) {
 	s := m.s
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.truthLocked().DqliteQuorum() {
 		return nil, errDqliteNoLeader
 	}
-	// ConfirmMember: microcluster completes pending joins of live hosts.
-	for _, n := range s.universe {
-		if s.mc[n] == lifecycle.MemberPending && s.up[n] {
-			before := s.truthLocked()
-			s.mc[n] = lifecycle.MemberJoined
-			s.checkLocked("env.ConfirmMember("+n+")", before, s.truthLocked(), false)
-		}
-	}
-	out := map[string]lifecycle.MemberRole{}
+	// microcluster completes pending joins and go-dqlite rebalances roles
+	// in the background; the simulator does it whenever it is observed.
+	s.confirmPendingLocked()
+	out := map[string]lifecycle.MemberInfo{}
 	for k, v := range s.mc {
-		out[k] = v
+		info := lifecycle.MemberInfo{Role: v, Dqlite: lifecycle.DqliteNone}
+		if d, ok := s.dqlite[k]; ok {
+			info.Dqlite = d
+		}
+		out[k] = info
 	}
 	return out, nil
 }
@@ -355,11 +451,11 @@ func (m simMembership) Remove(_ context.Context, node string) error {
 		if _, ok := s.mc[node]; !ok {
 			return fmt.Errorf("member %s not found", node)
 		}
-		if s.mc[node] == lifecycle.MemberJoined && !t.DqliteQuorumWithout(node) {
+		if !t.CanLeaveDqlite(node) {
 			return errors.New("dqlite: removal would lose quorum")
 		}
 		return nil
-	}, func() { delete(s.mc, node) })
+	}, func() { s.leaveDqliteLocked(node) })
 }
 
 // ---- Datastore (etcd) ----

@@ -11,13 +11,21 @@ import (
 type nv = lifecycle.NodeView
 
 func active(n string) nv {
-	return nv{Name: n, Phase: lifecycle.PhaseActive, Member: lifecycle.MemberJoined, Etcd: lifecycle.EtcdVoter, EtcdRunning: true, Up: true}
+	return nv{Name: n, Phase: lifecycle.PhaseActive, Member: lifecycle.MemberJoined, Dqlite: lifecycle.DqliteVoter, Etcd: lifecycle.EtcdVoter, EtcdRunning: true, Up: true}
 }
+
+// Fixtures default every microcluster member to a dqlite voter; spare()
+// overrides that to model go-dqlite's odd voter count.
+func spare(v nv) nv { v.Dqlite = lifecycle.DqliteSpare; return v }
 
 func down(v nv) nv { v.Up, v.EtcdRunning = false, false; return v }
 
 func node(n string, phase lifecycle.Phase, member lifecycle.MemberRole, etcd lifecycle.EtcdRole, running bool) nv {
-	return nv{Name: n, Phase: phase, Member: member, Etcd: etcd, EtcdRunning: running, Up: true}
+	dqlite := lifecycle.DqliteNone
+	if member == lifecycle.MemberJoined {
+		dqlite = lifecycle.DqliteVoter
+	}
+	return nv{Name: n, Phase: phase, Member: member, Dqlite: dqlite, Etcd: etcd, EtcdRunning: running, Up: true}
 }
 
 func snapshot(lease string, views ...nv) lifecycle.Snapshot {
@@ -84,6 +92,9 @@ func TestPlanVectors(t *testing.T) {
 		{"LeaveCluster", snapshot("n2", active("n1"), node("n2", removing, mJoined, eNone, false)), "n2", lifecycle.StepLeaveCluster, nil},
 		{"LeaveCluster for pending member", snapshot("n2", active("n1"), node("n2", rollingBack, mPending, eNone, false)), "n2", lifecycle.StepLeaveCluster, nil},
 		{"LeaveCluster refused when dqlite would lose quorum", snapshot("n3", active("n1"), down(active("n2")), node("n3", removing, mJoined, eNone, false)), "n3", lifecycle.StepNone, lifecycle.ErrQuorumAtRisk},
+		{"sole dqlite voter leaves by handing over to an online spare", snapshot("n2", spare(active("n1")), node("n2", removing, mJoined, eNone, false)), "n2", lifecycle.StepLeaveCluster, nil},
+		{"sole dqlite voter without an online spare cannot leave", snapshot("n2", down(spare(active("n1"))), node("n2", removing, mJoined, eNone, false)), "n2", lifecycle.StepNone, lifecycle.ErrQuorumAtRisk},
+		{"#161: dead dqlite spare of a 2-node cluster stays an etcd voter and member", snapshot("n2", active("n1"), down(spare(node("n2", removing, mJoined, eVoter, false)))), "n2", lifecycle.StepNone, lifecycle.ErrNoEtcdQuorum},
 		{"FinishTeardown", snapshot("n2", active("n1"), node("n2", rollingBack, mNone, eNone, false)), "n2", lifecycle.StepFinishTeardown, nil},
 
 		{"transition without the lease is rejected", snapshot("n3", active("n1"), node("n2", joining, mJoined, eNone, false)), "n2", lifecycle.StepNone, lifecycle.ErrLeaseLost},
@@ -120,7 +131,10 @@ func TestCheckInvariantsDetectsViolations(t *testing.T) {
 		{"two transitions", snapshot("n2", active("n1"), node("n2", joining, mJoined, eNone, false), node("n3", removing, mJoined, eVoter, true)), "SingleTransition"},
 		{"active learner", snapshot("", active("n1"), node("n2", lifecycle.PhaseActive, mJoined, eLearner, true)), "ActiveIsConfirmedVoter"},
 		{"orphan etcd member", snapshot("", active("n1"), node("n2", absent, mNone, eLearner, false)), "AbsentIsClean"},
+		{"#161: etcd voter outside microcluster", snapshot("n2", active("n1"), node("n2", removing, mNone, eVoter, false)), "NoOrphanedEtcdMember"},
+		{"dqlite role without membership", snapshot("", active("n1"), spare(node("n2", absent, mNone, eNone, false))), "DqliteRoleMatchesMembership"},
 		{"no voters", snapshot("", node("n1", absent, mNone, eNone, false)), "ControlPlaneNeverEmpty"},
+		{"no dqlite voters", snapshot("", spare(active("n1"))), "no dqlite voters"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)

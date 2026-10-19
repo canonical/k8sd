@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	traceSeeds      = 300
+	traceSeeds      = 1000
 	traceLength     = 80
 	traceMaxCrashes = 2 // MaxCrashes in NodeLifecycle.cfg
 )
@@ -40,12 +40,21 @@ func TestRandomTracesPreserveSpec(t *testing.T) {
 				n := nodes[rng.IntN(len(nodes))]
 				var action string
 				switch r := rng.IntN(100); {
-				case r < 50:
+				case r < 45:
 					step, err := o.Step(ctx, n)
 					action = fmt.Sprintf("Step(%s)=%s err=%v", n, step, err)
 					g.Expect(errors.Is(err, lifecycle.ErrLeaseLost)).To(BeFalse(), action)
-				case r < 60:
+				case r < 55:
 					action = fmt.Sprintf("BeginJoin(%s) err=%v", n, o.BeginJoin(ctx, n, peerURL(n)))
+				case r < 61:
+					t := s.truth()
+					v := t.Node(n)
+					if v.Phase == lifecycle.PhaseAbsent && v.Member == lifecycle.MemberNone && v.Etcd == lifecycle.EtcdNone && v.Up && t.DqliteQuorum() {
+						s.admit(n)
+						action = "McJoin(" + n + ") err=<nil>"
+					}
+				case r < 63:
+					action = fmt.Sprintf("McRollback(%s) err=%v", n, s.rollbackMember(n))
 				case r < 66:
 					action = fmt.Sprintf("Abort(%s) err=%v", n, o.Abort(ctx, n))
 				case r < 72:
@@ -69,7 +78,9 @@ func TestRandomTracesPreserveSpec(t *testing.T) {
 				}
 			}
 
-			// Liveness: once every host is back, the in-flight transition terminates.
+			// Liveness: once every host is back, the in-flight transition
+			// terminates (TransitionsTerminate) and microcluster rolls back
+			// members that never took the lease (AdmissionsResolve).
 			s.mu.Lock()
 			s.faults = map[string][]fault{}
 			s.mu.Unlock()
@@ -86,6 +97,11 @@ func TestRandomTracesPreserveSpec(t *testing.T) {
 				g.Expect(phase).To(BeElementOf(lifecycle.PhaseActive, lifecycle.PhaseAbsent))
 			}
 			g.Expect(s.truth().Lease).To(BeEmpty())
+			for _, n := range nodes {
+				if v := s.truth().Node(n); v.Phase == lifecycle.PhaseAbsent && v.Member != lifecycle.MemberNone {
+					g.Expect(s.rollbackMember(n)).To(Succeed(), "trace: %v", trace)
+				}
+			}
 			g.Expect(s.Violations()).To(BeEmpty(), "trace: %v", trace)
 			g.Expect(s.truth().CheckInvariants()).To(Succeed(), "trace: %v", trace)
 		})
