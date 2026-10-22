@@ -4,7 +4,7 @@ go 1.26.5
 
 require (
 	dario.cat/mergo v1.0.2
-	github.com/canonical/k8s-snap-api/v2 v2.2.0
+	github.com/canonical/k8s-snap-api/v2 v2.2.1
 	github.com/canonical/lxd v0.0.0-20260817092508-554567178c38
 	github.com/canonical/microcluster/v3 v3.1.1
 	github.com/go-logr/logr v1.4.4
