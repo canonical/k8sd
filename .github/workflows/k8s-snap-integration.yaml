@@ -11,7 +11,8 @@ on:
       k8s-snap-ref:
         description: |
           k8s-snap branch or tag to build and collect tests from. Defaults to the
-          k8s-snap branch matching the k8sd branch (falls back to main).
+          k8s-snap branch matching the k8sd branch (falls back to main, except
+          for release-X.Y branches which require a matching k8s-snap branch).
         type: string
         default: ""
       test-tags:
@@ -50,6 +51,9 @@ jobs:
           elif git ls-remote --exit-code --heads "https://github.com/${K8S_SNAP_REPOSITORY}" "refs/heads/${K8SD_BRANCH}" > /dev/null; then
             # k8s-snap release-X.Y branches build k8sd from the matching k8sd branch.
             ref="$K8SD_BRANCH"
+          elif [[ "$K8SD_BRANCH" =~ ^release-[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::No ${K8S_SNAP_REPOSITORY} branch named '${K8SD_BRANCH}', refusing to test a release branch against main"
+            exit 1
           else
             echo "::warning::No ${K8S_SNAP_REPOSITORY} branch named '${K8SD_BRANCH}', using main"
             ref="main"
