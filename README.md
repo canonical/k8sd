@@ -72,6 +72,12 @@ Run unit tests with coverage:
 make go.unit
 ```
 
+Integration tests live in [k8s-snap](https://github.com/canonical/k8s-snap/tree/main/tests/integration).
+The [k8s-snap integration tests](.github/workflows/k8s-snap-integration.yaml) workflow builds the
+k8s-snap with the k8sd revision of a pull request and runs the k8s-snap pull request test suite
+against it. It uses the k8s-snap branch matching the k8sd target branch (falling back to `main`).
+To test against a different k8s-snap branch or with other test tags, trigger the workflow manually.
+
 ### Documentation generation
 
 Generate documentation from code:
