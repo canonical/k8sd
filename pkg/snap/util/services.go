@@ -127,6 +127,15 @@ func StopK8sServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...strin
 	return nil
 }
 
+// StopK8sServicesExceptEtcd stops all k8s services except of k8sd and etcd.
+func StopK8sServicesExceptEtcd(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
+	svc := removeElement(slices.Clone(k8sServices), "etcd")
+	if err := snap.StopServices(ctx, svc, extraSnapArgs...); err != nil {
+		return fmt.Errorf("failed to stop service %v: %w", svc, err)
+	}
+	return nil
+}
+
 // removeElement returns s with the first occurrence of v removed, if present.
 func removeElement[S ~[]E, E comparable](s S, v E) S {
 	if i := slices.Index(s, v); i != -1 {
