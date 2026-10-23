@@ -3,4 +3,8 @@
 
 package api
 
-var RemoveNodeFromMicrocluster = removeNodeFromMicrocluster
+var (
+	RemoveNodeFromMicrocluster             = removeNodeFromMicrocluster
+	RemoveNodeFromDatastoreAndMicrocluster = removeNodeFromDatastoreAndMicrocluster
+	CanContinueAfterDatastoreRemovalError  = canContinueAfterDatastoreRemovalError
+)

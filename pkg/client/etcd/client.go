@@ -12,6 +12,10 @@ import (
 // ErrNotFound is returned when an etcd member is not found.
 var ErrNotFound = errors.New("etcd member not found")
 
+// ErrMemberList is returned when the etcd member list could not be read, for example because etcd has
+// no quorum. In that case it is unknown whether a member is still part of the cluster.
+var ErrMemberList = errors.New("failed to list etcd members")
+
 type Client struct {
 	*clientv3.Client
 	pkiDir string
@@ -118,7 +122,7 @@ func (c *Client) moveLeader(ctx context.Context, nodeName string, createClient f
 func (c *Client) RemoveNodeByName(ctx context.Context, name string) error {
 	resp, err := c.MemberList(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to list etcd members: %w", err)
+		return fmt.Errorf("%w: %w", ErrMemberList, err)
 	}
 
 	// Find the member with the matching name

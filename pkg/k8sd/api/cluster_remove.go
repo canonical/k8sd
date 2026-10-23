@@ -52,6 +52,8 @@ func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.
 	}
 
 	isControlPlane, err := node.IsControlPlaneNode(ctx, s, req.Name, e.provider.Snap())
+	// Only trust the worker classification if the microcluster membership could be read.
+	confirmedWorker := err == nil && !isControlPlane
 	if err != nil {
 		if req.Force {
 			log.Error(err, "Failed to determine if node is control-plane, but continuing due to force=true")
@@ -80,28 +82,56 @@ func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.
 	// mis-classify a control-plane node as a worker node. Hence we always proceed with the removal
 	// if force=true, regardless of the role of the node.
 	if isControlPlane || req.Force {
-		log.Info("Remove node from datastore")
-		if err := removeNodeFromDatastore(ctx, s, snap, req.Name, cfg); err != nil {
-			if req.Force {
-				// With force=true, we want to cleanup all out-of-sync mentions of this node.
-				// So we log the error, but continue.
-				log.Error(err, "Failed to remove node from datastore, but continuing due to force=true; ignore error for workers", "datastore", cfg.Datastore.GetType())
-			} else {
-				return mctypes.InternalError(fmt.Errorf("failed to delete node from datastore: %w", err))
-			}
-		}
-
-		log.Info("Remove node from microcluster")
-		if err := removeNodeFromMicrocluster(ctx, s, req.Name, req.Force, snap); err != nil {
-			if req.Force {
-				log.Error(err, "Failed to remove node from microcluster, but continuing due to force=true; ignore error for workers")
-			} else {
-				return mctypes.InternalError(fmt.Errorf("failed to delete node from microcluster: %w", err))
-			}
+		if err := removeNodeFromDatastoreAndMicrocluster(ctx, s, snap, req.Name, cfg, req.Force, confirmedWorker); err != nil {
+			return mctypes.InternalError(err)
 		}
 	}
 
 	return mctypes.SyncResponse(true, &apiv2.RemoveNodeResponse{})
+}
+
+// removeNodeFromDatastoreAndMicrocluster removes the node from the datastore and then from microcluster.
+// confirmedWorker must only be true if the node is known not to be a microcluster (control-plane) member.
+func removeNodeFromDatastoreAndMicrocluster(ctx context.Context, s mctypes.State, snap snap.Snap, nodeName string, cfg types.ClusterConfig, force bool, confirmedWorker bool) error {
+	log := log.FromContext(ctx).WithValues("name", nodeName, "force", force)
+
+	log.Info("Remove node from datastore")
+	if err := removeNodeFromDatastore(ctx, s, snap, nodeName, cfg); err != nil {
+		if !canContinueAfterDatastoreRemovalError(force, cfg.Datastore.GetType(), confirmedWorker) {
+			// Keep the node in microcluster so that a retry (or a later recovery) still knows about it.
+			log.Error(err, "Failed to remove node from datastore, not removing it from microcluster", "datastore", cfg.Datastore.GetType(), "confirmedWorker", confirmedWorker)
+			return fmt.Errorf("failed to delete node from datastore, not removing it from microcluster: %w", err)
+		}
+		// With force=true, we want to cleanup all out-of-sync mentions of this node.
+		// So we log the error, but continue.
+		log.Error(err, "Failed to remove node from datastore, but continuing due to force=true", "datastore", cfg.Datastore.GetType(), "confirmedWorker", confirmedWorker)
+	}
+
+	log.Info("Remove node from microcluster")
+	if err := removeNodeFromMicrocluster(ctx, s, nodeName, force, snap); err != nil {
+		if !force {
+			return fmt.Errorf("failed to delete node from microcluster: %w", err)
+		}
+		log.Error(err, "Failed to remove node from microcluster, but continuing due to force=true; ignore error for workers")
+	}
+
+	return nil
+}
+
+// canContinueAfterDatastoreRemovalError reports whether the node removal may proceed (and remove the
+// node from microcluster) after removing the node from the datastore failed.
+//
+// For etcd, a failure means the node could not be confirmed gone from the etcd membership (e.g. etcd
+// has no quorum). Removing it from microcluster anyway would leave a stale etcd voter that no k8sd path
+// can clean up anymore, so this is fatal even with force=true unless the node is a confirmed worker.
+func canContinueAfterDatastoreRemovalError(force bool, datastoreType string, confirmedWorker bool) bool {
+	if !force {
+		return false
+	}
+	if datastoreType == "etcd" && !confirmedWorker {
+		return false
+	}
+	return true
 }
 
 func removeNodeFromDatastore(ctx context.Context, s mctypes.State, snap snap.Snap, nodeName string, clusterConfig types.ClusterConfig) error {
@@ -161,10 +191,21 @@ func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s mctypes.State, cf
 
 	log.Info("Deleting node from etcd cluster")
 	if err := client.RemoveNodeByName(ctx, nodeName); err != nil {
-		if errors.Is(err, etcdclient.ErrNotFound) {
+		switch {
+		case errors.Is(err, etcdclient.ErrNotFound):
 			log.Info("Node not found in the etcd cluster, nothing to remove", "node", nodeName)
-		} else {
-			return fmt.Errorf("failed to remove node %s from etcd cluster: %w", nodeName, err)
+		case errors.Is(err, etcdclient.ErrMemberList):
+			// Without a member list, it is unknown whether the node is still an etcd member.
+			return fmt.Errorf("could not list the etcd members (etcd has no quorum or is unreachable), so %s may still be an etcd member; "+
+				"bring the unreachable etcd peer(s) back and retry, or, if a peer is permanently lost, "+
+				"recover etcd on a surviving control-plane node with --force-new-cluster (see the Canonical Kubernetes docs) and retry: %w",
+				nodeName, err)
+		default:
+			// The member list was read, so etcd had quorum. etcd refused or failed the removal itself,
+			// e.g. because removing the node would leave too few started voters.
+			return fmt.Errorf("etcd did not remove %s from its members; fix the cause reported by etcd "+
+				"(for example, bring the unreachable etcd peer(s) back or remove them first) and retry: %w",
+				nodeName, err)
 		}
 	}
 
