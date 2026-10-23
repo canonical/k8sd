@@ -13,7 +13,7 @@ go.fmt:
 go.lint:
 ifeq (, $(shell which golangci-lint))
 	echo "golangci-lint not found, installing it"
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.7.2
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 endif
 	golangci-lint run
 
