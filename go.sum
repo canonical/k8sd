@@ -36,8 +36,8 @@ github.com/canonical/go-dqlite/v3 v3.0.4 h1:JhITsrvVL0pii9arxDksXfsRqBI+je1VpcqV
 github.com/canonical/go-dqlite/v3 v3.0.4/go.mod h1:6O+E6MiYesijRUOECyywp16iT+N4QOrvjDWWiMJ/xF0=
 github.com/canonical/k8s-snap-api/v2 v2.2.1 h1:0c+y9Xtn5fm7pC38O1kc5+squ6CqGxj7hN7rEYj7A34=
 github.com/canonical/k8s-snap-api/v2 v2.2.1/go.mod h1:SVI4QZJFiUQVeKjHBGZNNE1nKmiLVQJJUXspAoogXBM=
-github.com/canonical/lxd v0.0.0-20261019222259-1a5f7ffe081f h1:3H5SwMizgW1Iupbw2HELsVC/Ssr7ZpI2OaOBA8XhWu4=
-github.com/canonical/lxd v0.0.0-20261019222259-1a5f7ffe081f/go.mod h1:JTSgnr/r+lUBYzNejAlXRlExHUkCUYy16AX7hI7KtO0=
+github.com/canonical/lxd v0.0.0-20261023183806-369ce4f33417 h1:Sx8kXs28Vpg7eC8DY8a4sVsSJYGa/hidOq2OEQ9TVxA=
+github.com/canonical/lxd v0.0.0-20261023183806-369ce4f33417/go.mod h1:Spt32lMAYPm8nhgw9vvteLRZurIRD2//cag14e7e9kU=
 github.com/canonical/microcluster/v3 v3.1.3 h1:ewpJ+vNq2KmhFcFHVT7O8SbN63OUKweeHxXjPvMDkOU=
 github.com/canonical/microcluster/v3 v3.1.3/go.mod h1:9AHrtA3jnyP3hkHTHpGeKsUvKVaifoLLjuwIinFqLIE=
 github.com/cenkalti/backoff/v5 v5.0.3 h1:ZN+IMa753KfX5hd8vVaMixjnqRZ3y8CuJKRKj1xcsSM=
