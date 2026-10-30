@@ -259,11 +259,12 @@ func New(cfg Config) (*App, error) {
 func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 	// TODO: consider improving API for overriding hooks.
 	hooks := &mctypes.Hooks{
-		PreInit:       a.onPreInit,
-		PostBootstrap: a.onBootstrap,
-		PostJoin:      a.onPostJoin,
-		PreRemove:     a.onPreRemove,
-		OnStart:       a.onStart,
+		PreInit:        a.onPreInit,
+		PostBootstrap:  a.onBootstrap,
+		PostJoin:       a.onPostJoin,
+		PreRemove:      a.onPreRemove,
+		OnStart:        a.onStart,
+		OnAuthenticate: a.onAuthenticate,
 	}
 	if customHooks != nil {
 		if customHooks.PreInit != nil {
