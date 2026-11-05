@@ -52,7 +52,7 @@ func TestValidateConfig(t *testing.T) {
 
 			// Create the containerd.sock file, which should cause the check to fail.
 			containerdDir := filepath.Join(containerdBaseDir, "run", "containerd")
-			err := os.MkdirAll(containerdDir, os.ModeDir)
+			err := os.MkdirAll(containerdDir, 0o755)
 			g.Expect(err).To(Not(HaveOccurred()))
 
 			f, err := os.Create(filepath.Join(containerdDir, "containerd.sock"))
