@@ -62,7 +62,7 @@ func newStatusCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&opts.waitReady, "wait-ready", false, "wait until at least one cluster node is ready")
+	cmd.Flags().BoolVar(&opts.waitReady, "wait-ready", false, "wait until at least one cluster node is ready and until the CNI workloads are ready if the network feature is enabled")
 	cmd.Flags().StringVar(&opts.outputFormat, "output-format", "plain", "set the output format to one of plain, json or yaml")
 	cmd.Flags().DurationVar(&opts.timeout, "timeout", 90*time.Second, "the max time to wait for the command to execute")
 	return cmd
