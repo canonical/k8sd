@@ -9,6 +9,7 @@ import (
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	k8sdclient "github.com/canonical/k8sd/pkg/client/k8sd"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
+	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
 	"github.com/canonical/k8sd/pkg/log"
@@ -98,6 +99,15 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 
 			log.Info("Cleaning up containers")
 			cleanup.TryCleanupContainers(ctx, snap)
+
+			// NOTE (canonical-ghaith) We must clean up the network at this stage,
+			// before the containerd paths are removed, otherwise we lose
+			// the cilium-dbg binary and won't be able to clean up the cilium
+			// interfaces when removing the snap.
+			log.Info("Cleaning up network")
+			if err := features.Cleanup.CleanupNetwork(ctx, snap); err != nil {
+				log.Error(err, "failed to cleanup network")
+			}
 
 			log.Info("Cleaning up containerd paths")
 			cleanup.TryCleanupContainerdPaths(ctx, snap)
