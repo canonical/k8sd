@@ -288,3 +288,91 @@ func TestValidateBGPMode(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateDNSServiceIP(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		dnsIP       string
+		serviceCIDR string
+		expectErr   bool
+	}{
+		{
+			name:        "IPv4/InRange",
+			dnsIP:       "10.152.183.10",
+			serviceCIDR: "10.152.183.0/24",
+			expectErr:   false,
+		},
+		{
+			name:        "IPv4/OutOfRange",
+			dnsIP:       "192.168.1.50",
+			serviceCIDR: "10.152.183.9/24",
+			expectErr:   true,
+		},
+		{
+			name:        "IPv6/InRange",
+			dnsIP:       "fd01::a",
+			serviceCIDR: "fd01::/108",
+			expectErr:   false,
+		},
+		{
+			name:        "IPv6/OutOfRange",
+			dnsIP:       "fd02::a",
+			serviceCIDR: "fd01::/108",
+			expectErr:   true,
+		},
+		{
+			name:        "DualStack/IPv6InRange",
+			dnsIP:       "fd01::a",
+			serviceCIDR: "10.152.183.0/24,fd01::/108",
+			expectErr:   false,
+		},
+		{
+			name:        "DualStack/IPv6OutOfRange",
+			dnsIP:       "fd02::a",
+			serviceCIDR: "10.152.183.0/24,fd01::/108",
+			expectErr:   true,
+		},
+		{
+			name:        "IPv4DNSWithIPv6OnlyCIDR",
+			dnsIP:       "10.152.183.10",
+			serviceCIDR: "fd01::/108",
+			expectErr:   true,
+		},
+		{
+			name:        "IPv6DNSWithIPv4OnlyCIDR",
+			dnsIP:       "fd01::a",
+			serviceCIDR: "10.152.183.0/24",
+			expectErr:   true,
+		},
+		{
+			name:        "EmptyDNS/NoError",
+			dnsIP:       "",
+			serviceCIDR: "10.152.183.0/24",
+			expectErr:   false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			config := types.ClusterConfig{
+				Network: types.Network{
+					PodCIDR:     utils.Pointer("10.1.0.0/16"),
+					ServiceCIDR: utils.Pointer(tc.serviceCIDR),
+				},
+			}
+
+			if tc.dnsIP != "" {
+				config.Kubelet = types.Kubelet{
+					ClusterDNS: utils.Pointer(tc.dnsIP),
+				}
+			}
+
+			err := config.Validate()
+			if tc.expectErr {
+				g.Expect(err).To(HaveOccurred())
+			} else {
+				g.Expect(err).ToNot(HaveOccurred())
+			}
+		})
+	}
+}

@@ -109,8 +109,8 @@ func TestMergeClusterConfig(t *testing.T) {
 		generateMergeClusterConfigTestCases("APIServer/SecurePort", false, 6443, 16443, func(c *types.ClusterConfig, v any) { c.APIServer.SecurePort = utils.Pointer(v.(int)) }),
 		generateMergeClusterConfigTestCases("APIServer/AuthorizationMode", true, "v1", "v2", func(c *types.ClusterConfig, v any) { c.APIServer.AuthorizationMode = utils.Pointer(v.(string)) }),
 		generateMergeClusterConfigTestCases("Kubelet/CloudProvider", true, "v1", "v2", func(c *types.ClusterConfig, v any) { c.Kubelet.CloudProvider = utils.Pointer(v.(string)) }),
-		generateMergeClusterConfigTestCases("Kubelet/ClusterDNS/AllowChange", true, "1.1.1.1", "2.2.2.2", func(c *types.ClusterConfig, v any) { c.Kubelet.ClusterDNS = utils.Pointer(v.(string)) }),
-		generateMergeClusterConfigTestCases("Kubelet/ClusterDNS/PreventChangeIfDNSEnabled", false, "1.1.1.1", "2.2.2.2", func(c *types.ClusterConfig, v any) {
+		generateMergeClusterConfigTestCases("Kubelet/ClusterDNS/AllowChange", true, "10.152.183.10", "10.152.183.20", func(c *types.ClusterConfig, v any) { c.Kubelet.ClusterDNS = utils.Pointer(v.(string)) }),
+		generateMergeClusterConfigTestCases("Kubelet/ClusterDNS/PreventChangeIfDNSEnabled", false, "10.152.183.19", "10.152.183.20", func(c *types.ClusterConfig, v any) {
 			c.DNS.Enabled = utils.Pointer(true)
 			c.Kubelet.ClusterDNS = utils.Pointer(v.(string))
 		}),
@@ -238,7 +238,7 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 			name: "Kubelet/AllowSetClusterDNS/EnableDNSAfter",
 			old: types.ClusterConfig{
 				Kubelet: types.Kubelet{
-					ClusterDNS: utils.Pointer("1.1.1.1"),
+					ClusterDNS: utils.Pointer("10.152.183.10"),
 				},
 			},
 			new: types.ClusterConfig{
@@ -246,7 +246,7 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 					Enabled: utils.Pointer(true),
 				},
 				Kubelet: types.Kubelet{
-					ClusterDNS: utils.Pointer("2.2.2.2"),
+					ClusterDNS: utils.Pointer("10.152.183.20"),
 				},
 			},
 			expectMerged: types.ClusterConfig{
@@ -254,7 +254,7 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 					Enabled: utils.Pointer(true),
 				},
 				Kubelet: types.Kubelet{
-					ClusterDNS: utils.Pointer("2.2.2.2"),
+					ClusterDNS: utils.Pointer("10.152.183.20"),
 				},
 			},
 		},
@@ -262,17 +262,17 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 			name: "Kubelet/AllowSetClusterDNS/KeepDNSDisabled",
 			old: types.ClusterConfig{
 				Kubelet: types.Kubelet{
-					ClusterDNS: utils.Pointer("1.1.1.1"),
+					ClusterDNS: utils.Pointer("10.152.183.10"),
 				},
 			},
 			new: types.ClusterConfig{
 				Kubelet: types.Kubelet{
-					ClusterDNS: utils.Pointer("2.2.2.2"),
+					ClusterDNS: utils.Pointer("10.152.183.20"),
 				},
 			},
 			expectMerged: types.ClusterConfig{
 				Kubelet: types.Kubelet{
-					ClusterDNS: utils.Pointer("2.2.2.2"),
+					ClusterDNS: utils.Pointer("10.152.183.20"),
 				},
 			},
 		},
@@ -285,7 +285,7 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 			},
 			new: types.ClusterConfig{
 				Kubelet: types.Kubelet{
-					ClusterDNS: utils.Pointer("2.2.2.2"),
+					ClusterDNS: utils.Pointer("10.152.183.20"),
 				},
 			},
 			expectMerged: types.ClusterConfig{
@@ -293,7 +293,7 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 					Enabled: utils.Pointer(true),
 				},
 				Kubelet: types.Kubelet{
-					ClusterDNS: utils.Pointer("2.2.2.2"),
+					ClusterDNS: utils.Pointer("10.152.183.20"),
 				},
 			},
 		},
