@@ -226,6 +226,10 @@ jobs:
           TEST_SUBSTRATE: lxd
           TEST_LXD_IMAGE: ubuntu:24.04
           TEST_INSPECTION_REPORTS_DIR: ${{ github.workspace }}/inspection-reports/${{ env.test_name }}
+          TEST_VERSION_UPGRADE_CHANNELS: "recent 6"
+          TEST_VERSION_DOWNGRADE_CHANNELS: "recent 6"
+          TEST_VERSION_UPGRADE_MIN_RELEASE: "1.32"
+          TEST_STRICT_INTERFACE_CHANNELS: "recent 6 strict"
           TEST_MIRROR_LIST: '[{"name": "ghcr.io", "port": 5000, "remote": "https://ghcr.io", "username": "${{ github.actor }}", "password": "${{ secrets.GITHUB_TOKEN }}"}, {"name": "docker.io", "port": 5001, "remote": "https://registry-1.docker.io", "username": "", "password": ""}]'
           # Some tests derive snap tracks from the branch they run on.
           TEST_GH_REF: ${{ needs.prepare.outputs.k8s-snap-ref }}
