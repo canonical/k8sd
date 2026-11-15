@@ -11,7 +11,7 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	"github.com/canonical/k8sd/pkg/utils"
-	"github.com/pelletier/go-toml"
+	"github.com/pelletier/go-toml/v2"
 )
 
 const defaultPauseImage = "ghcr.io/canonical/k8s-snap/pause:3.10"
