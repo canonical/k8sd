@@ -13,7 +13,6 @@ import (
 	cmdutil "github.com/canonical/k8sd/cmd/util"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v2"
 )
 
 func newRefreshCertsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
@@ -172,7 +171,7 @@ func getCertificatesFromYAML(env cmdutil.ExecutionEnvironment, filePath string) 
 	}
 
 	var config apiv2.RefreshCertificatesUpdateRequest
-	if err := yaml.UnmarshalStrict(b, &config); err != nil {
+	if err := utils.UnmarshalStrict(b, &config); err != nil {
 		return apiv2.RefreshCertificatesUpdateRequest{}, fmt.Errorf("failed to parse YAML certificates file: %w", err)
 	}
 

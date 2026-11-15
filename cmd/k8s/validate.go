@@ -9,7 +9,7 @@ import (
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
-	"gopkg.in/yaml.v2"
+	"github.com/canonical/k8sd/pkg/utils"
 )
 
 type runCommand func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
@@ -48,7 +48,7 @@ func verifyJoinConfigWithRunCommand(joinConfigString, token string, run runComma
 	if internalToken.Decode(token) == nil {
 		// worker token.
 		var joinConfig apiv2.WorkerJoinConfig
-		if err := yaml.UnmarshalStrict([]byte(joinConfigString), &joinConfig); err != nil {
+		if err := utils.UnmarshalStrict([]byte(joinConfigString), &joinConfig); err != nil {
 			return fmt.Errorf("failed to unmarshal worker join config: %w", err)
 		}
 
@@ -61,7 +61,7 @@ func verifyJoinConfigWithRunCommand(joinConfigString, token string, run runComma
 	}
 
 	var joinConfig apiv2.ControlPlaneJoinConfig
-	if err := yaml.UnmarshalStrict([]byte(joinConfigString), &joinConfig); err != nil {
+	if err := utils.UnmarshalStrict([]byte(joinConfigString), &joinConfig); err != nil {
 		return fmt.Errorf("failed to unmarshal control plane join config: %w", err)
 	}
 

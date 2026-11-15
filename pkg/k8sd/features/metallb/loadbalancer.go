@@ -11,8 +11,9 @@ import (
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -196,7 +197,7 @@ func bfdProfilesFromAnnotations(annotations types.Annotations) ([]bfdProfile, er
 		MinimumTTL       int    `yaml:"minimumTtl"`
 	}
 	var items []profileYAML
-	if err := yaml.UnmarshalStrict([]byte(profilesYAML), &items); err != nil {
+	if err := utils.UnmarshalStrict([]byte(profilesYAML), &items); err != nil {
 		return nil, fmt.Errorf("failed to parse bfd-profiles annotation: %w", err)
 	}
 

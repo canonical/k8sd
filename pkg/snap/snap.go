@@ -23,7 +23,7 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/checks"
 	"github.com/moby/sys/mountinfo"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
