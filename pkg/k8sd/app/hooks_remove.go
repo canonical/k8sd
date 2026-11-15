@@ -97,12 +97,12 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 			// the cilium-dbg binary and won't be able to clean up the cilium
 			// interfaces when removing the snap.
 			log.Info("Cleaning up network")
-			if err := features.Cleanup.CleanupNetwork(ctx, snap); err != nil {
+if err := features.Cleanup.CleanupNetwork(ctx, snap); err != nil {
 				log.Error(err, "failed to cleanup network")
+			} else {
+				log.Info("Cleaning up containerd paths")
+				cleanup.TryCleanupContainerdPaths(ctx, snap)
 			}
-
-			log.Info("Cleaning up containerd paths")
-			cleanup.TryCleanupContainerdPaths(ctx, snap)
 		} else {
 			log.Info("Skipping service stop and certificate cleanup")
 		}
