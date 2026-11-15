@@ -13,7 +13,7 @@ import (
 
 // EnsureAllDirectories ensures all required configuration and state directories are created.
 func EnsureAllDirectories(snap snap.Snap) error {
-	if err := ensureCniBinDir(snap.CNIBinDir()); err != nil {
+	if err := ensureCniBinDir(snap.CNIBinDir(), snap.UID(), snap.GID()); err != nil {
 		return err
 	}
 
@@ -42,7 +42,7 @@ func EnsureAllDirectories(snap snap.Snap) error {
 // ownership/permissions for it to be used as the CNI binary directory.
 // https://github.com/canonical/k8s-snap/issues/567
 // https://github.com/cilium/cilium/issues/23838
-func ensureCniBinDir(cniBinDir string) error {
+func ensureCniBinDir(cniBinDir string, uid, gid int) error {
 	l := log.L().WithValues("cniBinDir", cniBinDir)
 	if cniBinDir == "" {
 		l.V(1).Info("Skipping creation of cni bin directory since it was not set")
@@ -65,10 +65,10 @@ func ensureCniBinDir(cniBinDir string) error {
 		}
 	}
 
-	if stat.Uid != 0 || stat.Gid != 0 {
+	if stat.Uid != uint32(uid) || stat.Gid != uint32(gid) {
 		l.Info("Ensuring ownership of cni bin directory")
-		if err := os.Chown(cniBinDir, 0, 0); err != nil {
-			return fmt.Errorf("failed to os.Chown(%q, 0, 0): %w", cniBinDir, err)
+		if err := os.Chown(cniBinDir, uid, gid); err != nil {
+			return fmt.Errorf("failed to os.Chown(%q, %d, %d): %w", cniBinDir, uid, gid, err)
 		}
 	}
 
