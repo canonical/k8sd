@@ -20,18 +20,18 @@ import (
 )
 
 func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.Response {
-	log := log.FromContext(r.Context()).WithValues("endpoint", "getClusterStatus")
+	ctx := log.NewContext(r.Context(), log.FromContext(r.Context()).WithValues("endpoint", "getClusterStatus"))
 
 	// fail if node is not initialized yet
-	if err := s.Database().IsOpen(r.Context()); err != nil {
+	if err := s.Database().IsOpen(ctx); err != nil {
 		return mctypes.Unavailable(fmt.Errorf("daemon not yet initialized"))
 	}
 
-	members, err := impl.GetClusterMembers(r.Context(), s, e.provider.Snap())
+	members, err := impl.GetClusterMembers(ctx, s, e.provider.Snap())
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to get cluster members: %w", err))
 	}
-	config, err := databaseutil.GetClusterConfig(r.Context(), s)
+	config, err := databaseutil.GetClusterConfig(ctx, s)
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
@@ -41,21 +41,13 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 		return mctypes.InternalError(fmt.Errorf("failed to create k8s client: %w", err))
 	}
 
-	ready, err := client.HasReadyNodes(r.Context())
+	ready, err := e.clusterIsReady(ctx, config, client)
 	if err != nil {
-		return mctypes.InternalError(fmt.Errorf("failed to check if cluster has ready nodes: %w", err))
-	}
-
-	// If dns is enabled, we also check for the coredns service clusterIP before reporting cluster as "ready"
-	if config.DNS.Enabled != nil && *config.DNS.Enabled {
-		if err := e.checkKubeletClusterDNS(r.Context(), client); err != nil {
-			log.Error(err, "kubelet does not have correct --cluster-dns arg")
-			ready = false
-		}
+		return mctypes.InternalError(err)
 	}
 
 	var statuses map[types.FeatureName]types.FeatureStatus
-	if err := s.Database().Transaction(r.Context(), func(ctx context.Context, tx *sql.Tx) error {
+	if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var err error
 		statuses, err = database.GetFeatureStatuses(r.Context(), tx)
 		if err != nil {
@@ -84,6 +76,32 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 			LocalStorage:  statuses[features.LocalStorage].ToAPI(),
 		},
 	})
+}
+
+// clusterIsReady reports whether the cluster is ready.
+func (e *Endpoints) clusterIsReady(ctx context.Context, config types.ClusterConfig, client *kubernetes.Client) (bool, error) {
+	log := log.FromContext(ctx)
+
+	ready, err := client.HasReadyNodes(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if cluster has ready nodes: %w", err)
+	}
+
+	if config.DNS.GetEnabled() {
+		if err := e.checkKubeletClusterDNS(ctx, client); err != nil {
+			log.Error(err, "kubelet does not have correct --cluster-dns arg")
+			ready = false
+		}
+	}
+
+	if config.Network.GetEnabled() {
+		if err := features.StatusChecks.CheckNetwork(ctx, e.provider.Snap()); err != nil {
+			log.Error(err, "network pods are not ready")
+			ready = false
+		}
+	}
+
+	return ready, nil
 }
 
 // checkKubeletClusterDNS checks if --cluster-dns argument of the running kubelet service
