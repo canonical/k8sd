@@ -97,7 +97,7 @@ if [ ! -f "${BUILD_DIR}/dqlite/libdqlite.la" ]; then
     cd dqlite
     autoreconf -i > /dev/null
     ./configure --enable-build-raft \
-      CFLAGS=" -g -I${BUILD_DIR}/sqlite -I${BUILD_DIR}/libuv/include -I${BUILD_DIR}/lz4/lib -Werror=implicit-function-declaration -Wno-maybe-musttail-local-addr" \
+      CFLAGS=" -g -I${BUILD_DIR}/sqlite -I${BUILD_DIR}/libuv/include -I${BUILD_DIR}/lz4/lib -Wno-error -Werror=implicit-function-declaration" \
       LDFLAGS=" -L${BUILD_DIR}/libuv/.libs -L${BUILD_DIR}/lz4/lib -L${BUILD_DIR}/libnsl/src" \
       UV_CFLAGS="-I${BUILD_DIR}/libuv/include" \
       UV_LIBS="-L${BUILD_DIR}/libuv/.libs -luv" \
