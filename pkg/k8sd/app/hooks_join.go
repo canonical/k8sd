@@ -11,6 +11,7 @@ import (
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
+	etcdclient "github.com/canonical/k8sd/pkg/client/etcd"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
@@ -28,6 +29,7 @@ import (
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 )
 
@@ -229,9 +231,23 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 		// Add the new member as a learner (non-voting) first.
 		// This prevents quorum loss when going from 1->2 members, since a
 		// learner does not count towards quorum until promoted.
-		memberAddResp, err := etcdClient.MemberAddAsLearner(ctx, []string{peerURL})
+		//
+		// etcd allows only one pending (un-promoted) learner at a time and
+		// a second concurrent control-plane join can
+		// transiently hit ErrTooManyLearners or ErrUnhealthy here. Both
+		// clear on their own once the other joiner finishes, so retry
+		// instead of failing the whole join on the first hit.
+		isRetryableAddLearnerErr := func(err error) bool {
+			return errors.Is(err, rpctypes.ErrTooManyLearners) || errors.Is(err, rpctypes.ErrUnhealthy)
+		}
+		var memberAddResp *clientv3.MemberAddResponse
+		err = control.RetryForIf(ctx, 15, 2*time.Second, isRetryableAddLearnerErr, func() error {
+			var addErr error
+			memberAddResp, addErr = etcdClient.MemberAddAsLearner(ctx, []string{peerURL})
+			return addErr
+		})
 		if err != nil {
-			if errors.Is(err, rpctypes.ErrMemberNotEnoughStarted) || errors.Is(err, rpctypes.ErrUnhealthy) {
+			if isRetryableAddLearnerErr(err) {
 				return fmt.Errorf("failed to add learner member %s to etcd cluster: cluster is unhealthy or another node is currently joining the cluster", s.Name())
 			}
 			return fmt.Errorf("failed to add learner member %s to etcd cluster: %w", s.Name(), err)
@@ -442,7 +458,8 @@ func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []str
 				log.Error(err, "failed to create etcd client for member removal")
 			} else {
 				defer etcdClient.Close()
-				if err := etcdClient.RemoveNodeByName(rmCtx, nodeName); err != nil {
+				err := etcdClient.RemoveNodeByName(rmCtx, nodeName)
+				if err != nil && !errors.Is(err, etcdclient.ErrNotFound) {
 					log.Error(err, "failed to remove node from etcd cluster")
 				} else {
 					if err := os.RemoveAll(snap.EtcdDir()); err != nil {

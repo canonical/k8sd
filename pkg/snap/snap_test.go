@@ -44,7 +44,7 @@ func TestSnap(t *testing.T) {
 			g.Expect(err).To(Not(HaveOccurred()))
 			defer os.RemoveAll(tmpDir)
 
-			err = os.MkdirAll(filepath.Join(tmpDir, "meta"), os.ModeDir)
+			err = os.MkdirAll(filepath.Join(tmpDir, "meta"), 0o755)
 			g.Expect(err).To(Not(HaveOccurred()))
 
 			snapData := []byte("confinement: strict\n")
@@ -185,7 +185,7 @@ func TestSnap(t *testing.T) {
 		t.Run("Fail socket exists", func(t *testing.T) {
 			g := NewWithT(t)
 			// Create the containerd.sock file, which should cause the check to fail.
-			err := os.MkdirAll(snap.ContainerdSocketDir(), os.ModeDir)
+			err := os.MkdirAll(snap.ContainerdSocketDir(), 0o755)
 			g.Expect(err).To(Not(HaveOccurred()))
 			f, err := os.Create(snap.ContainerdSocketPath())
 			g.Expect(err).To(Not(HaveOccurred()))

@@ -7,7 +7,9 @@ import (
 	"os"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
+	k8sdclient "github.com/canonical/k8sd/pkg/client/k8sd"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
+	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
 	"github.com/canonical/k8sd/pkg/log"
@@ -35,27 +37,36 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 	// `bootstrap` and `join-cluster`. It is possible that we get stuck in this loop forever which causes
 	// the `bootstrap` and `join-cluster` commands to hang and finally return an uninformative `context deadline exceeded` error
 	// we optimistically stop trying after a fixed number of retries.
-	maxRetries := 10
-	var retries int
-	if err := control.WaitUntilReady(ctx, func() (bool, error) {
-		var notPending bool
-		log.Info("Waiting for node to finish microcluster join before removing")
-		member, err := c.GetClusterMember(ctx, s.Name())
-		if err != nil {
-			log.Error(err, "Failed to get member")
-			retries++
-		} else {
-			notPending = member.Role != "PENDING"
-		}
+	if c == nil {
+		// Can be nil if PreRemove fires during a bootstrap/join rollback, before a real client exists.
+		log.Info("No k8sd client available, skipping PENDING wait")
+	} else {
+		maxRetries := 10
+		var retries int
+		if err := control.WaitUntilReady(ctx, func() (bool, error) {
+			var notPending bool
+			log.Info("Waiting for node to finish microcluster join before removing")
+			member, err := c.GetClusterMember(ctx, s.Name())
+			switch {
+			case errors.Is(err, k8sdclient.ErrNotFound):
+				// Node not found, no PENDING state to wait for.
+				notPending = true
+			case err != nil:
+				log.Error(err, "Failed to get member")
+				retries++
+			default:
+				notPending = member.Role != "PENDING"
+			}
 
-		if retries >= maxRetries {
-			log.Info("Reached maximum number of retries for database transactions on pre-remove hook, continuing cleanup", "max_retries", maxRetries)
-			return true, nil
-		}
+			if retries >= maxRetries {
+				log.Info("Reached maximum number of retries for database transactions on pre-remove hook, continuing cleanup", "max_retries", maxRetries)
+				return true, nil
+			}
 
-		return notPending, nil
-	}); err != nil {
-		log.Error(err, "Failed to wait for node to finish microcluster join before removing. Continuing with the cleanup...")
+			return notPending, nil
+		}); err != nil {
+			log.Error(err, "Failed to wait for node to finish microcluster join before removing. Continuing with the cleanup...")
+		}
 	}
 
 	cfg, err := databaseutil.GetClusterConfig(ctx, s)
@@ -78,6 +89,9 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 				log.Error(err, "failed to cleanup control plane certificates")
 			}
 
+			log.Info("Syncing iSCSI devices before stopping services")
+			cleanup.SyncISCSIDevices(ctx)
+
 			log.Info("Stopping all services except k8sd")
 			if err := snaputil.StopK8sServices(ctx, snap, "--no-wait"); err != nil {
 				log.Error(err, "failed to stop k8s services")
@@ -86,8 +100,17 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 			log.Info("Cleaning up containers")
 			cleanup.TryCleanupContainers(ctx, snap)
 
-			log.Info("Cleaning up containerd paths")
-			cleanup.TryCleanupContainerdPaths(ctx, snap)
+			// NOTE (canonical-ghaith) We must clean up the network at this stage,
+			// before the containerd paths are removed, otherwise we lose
+			// the cilium-dbg binary and won't be able to clean up the cilium
+			// interfaces when removing the snap.
+			log.Info("Cleaning up network")
+			if err := features.Cleanup.CleanupNetwork(ctx, snap); err != nil {
+				log.Error(err, "failed to cleanup network")
+			} else {
+				log.Info("Cleaning up containerd paths")
+				cleanup.TryCleanupContainerdPaths(ctx, snap)
+			}
 		} else {
 			log.Info("Skipping service stop and certificate cleanup")
 		}

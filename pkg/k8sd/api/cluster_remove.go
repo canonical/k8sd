@@ -2,12 +2,15 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
+	etcdclient "github.com/canonical/k8sd/pkg/client/etcd"
+	k8sdclient "github.com/canonical/k8sd/pkg/client/k8sd"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
@@ -17,6 +20,11 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/node"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
+
+// etcdLeaderTransferTimeout bounds the best-effort etcd leadership transfer
+// attempted before removing a node, so an unreachable node/transferee cannot
+// consume the whole removal deadline and starve the subsequent MemberRemove call.
+const etcdLeaderTransferTimeout = 10 * time.Second
 
 // postClusterRemove handles requests to remove a node from the cluster.
 // It will remove the node from etcd, microcluster and from Kubernetes.
@@ -137,9 +145,27 @@ func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s mctypes.State, cf
 	defer client.Close()
 
 	log := log.FromContext(ctx).WithValues("remove", "etcd", "name", nodeName, "clientURLs", clientURLs)
+	log.Info("Transferring etcd leadership if node is the current leader")
+	// Best-effort: run under a short child timeout so an unreachable target/transferee
+	// cannot consume the removal deadline; MoveLeaderIfNeeded dials the node being
+	// removed and etcd's MoveLeader otherwise blocks until the transferee responds
+	// or ctx is cancelled. Cancel before removal so RemoveNodeByName keeps the
+	// remainder of the original deadline.
+	transferCtx, cancelTransfer := context.WithTimeout(ctx, etcdLeaderTransferTimeout)
+	err = client.MoveLeaderIfNeeded(transferCtx, nodeName)
+	cancelTransfer()
+	if err != nil {
+		// Etcd will re-elect on its own; this only minimises the leaderless window.
+		log.Error(err, "Failed to transfer etcd leadership before removal")
+	}
+
 	log.Info("Deleting node from etcd cluster")
 	if err := client.RemoveNodeByName(ctx, nodeName); err != nil {
-		return fmt.Errorf("failed to remove node %s from etcd cluster: %w", nodeName, err)
+		if errors.Is(err, etcdclient.ErrNotFound) {
+			log.Info("Node not found in the etcd cluster, nothing to remove", "node", nodeName)
+		} else {
+			return fmt.Errorf("failed to remove node %s from etcd cluster: %w", nodeName, err)
+		}
 	}
 
 	return nil
@@ -158,11 +184,15 @@ func removeNodeFromMicrocluster(ctx context.Context, s mctypes.State, nodeName s
 	if err := control.WaitUntilReady(ctx, func() (bool, error) {
 		var notPending bool
 		log.Info("Waiting for node to finish microcluster join before removing")
-		member, err := c.GetClusterMember(ctx, s.Name())
-		if err != nil {
-			log.Error(err, fmt.Sprintf("Failed to get cluster member %q", s.Name()))
+		member, err := c.GetClusterMember(ctx, nodeName)
+		switch {
+		case errors.Is(err, k8sdclient.ErrNotFound):
+			// Node not found, no PENDING state to wait for.
+			notPending = true
+		case err != nil:
+			log.Error(err, fmt.Sprintf("Failed to get cluster member %q", nodeName))
 			retries++
-		} else {
+		default:
 			// NOTE(Hue): We can not check for `cluster.Pending` with the `Role` type since it's internal to Microcluster
 			notPending = member.Role != "PENDING"
 		}
@@ -198,6 +228,10 @@ func removeNodeFromMicrocluster(ctx context.Context, s mctypes.State, nodeName s
 	defer deleteCancel()
 	log.Info("Deleting node from Microcluster cluster, for real")
 	if err := c.RemoveClusterMember(deleteCtx, nodeName, nodeAddr, force); err != nil {
+		if mctypes.IsNotFoundError(err) {
+			log.Info("Node not found in microcluster, nothing to remove")
+			return nil
+		}
 		return fmt.Errorf("failed to delete cluster member %s: %w", nodeName, err)
 	}
 

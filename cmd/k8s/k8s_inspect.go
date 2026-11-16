@@ -33,7 +33,20 @@ Arguments:
   --core-dump-dir         (Optional) Core dump location. Default: /var/crash.
 `,
 		DisableFlagParsing: true,
-		PreRun:             chainPreRunHooks(hookRequireRoot(env)),
+		PreRun: chainPreRunHooks(
+			func(cmd *cobra.Command, args []string) {
+				for _, arg := range args {
+					if arg == "--" {
+						break
+					}
+					if arg == "-h" || arg == "--help" {
+						_ = cmd.Help()
+						env.Exit(0)
+					}
+				}
+			},
+			hookRequireRoot(env),
+		),
 		Run: func(cmd *cobra.Command, args []string) {
 			inspectScriptPath := env.Snap.K8sInspectScriptPath()
 

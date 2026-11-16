@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	k8sdclient "github.com/canonical/k8sd/pkg/client/k8sd"
+	k8sdmock "github.com/canonical/k8sd/pkg/client/k8sd/mock"
 	"github.com/canonical/k8sd/pkg/k8sd/app"
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
@@ -47,7 +49,8 @@ func WithState(t *testing.T, f func(context.Context, mctypes.State)) {
 	defer cancel()
 
 	snapMock := mock.Snap{
-		Mock: mock.Mock{},
+		// PreRemove runs during bootstrap/join rollback too, so it needs a working client.
+		Mock: mock.Mock{K8sdClient: &k8sdmock.Mock{GetClusterMemberErr: k8sdclient.ErrNotFound}},
 	}
 	app, err := app.New(app.Config{
 		StateDir: t.TempDir(),
@@ -59,8 +62,13 @@ func WithState(t *testing.T, f func(context.Context, mctypes.State)) {
 
 	stateChan := make(chan mctypes.State, 1)
 	doneCh := make(chan error, 1)
-	defer close(stateChan)
-	defer close(doneCh)
+	// stateChan and doneCh are intentionally never closed: they are single-use,
+	// buffered (cap 1) signal channels read at most once via select, never
+	// ranged over. The background goroutine below may still be writing to them
+	// after WithState returns via one of the t.Fatalf timeout paths (e.g. slow
+	// CI runner); closing here would race with that write and panic with
+	// "send on closed channel". Leaving them open is safe: an unread buffered
+	// value is simply garbage collected once the channel goes out of scope.
 
 	// app.Run() is blocking, so we get the state handle through a channel
 	go func() {

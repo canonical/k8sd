@@ -83,6 +83,41 @@ func validateIPv6CIDRSize(serviceCIDR string) error {
 	return nil
 }
 
+// validateDNSServiceIPRange checks that the given dns service IP falls within the service CIDR.
+func validateDNSServiceIPRange(dnsIP string, serviceCIDR string) error {
+	ip := net.ParseIP(dnsIP)
+	if ip == nil {
+		return fmt.Errorf("dns.service-ip %q is not a valid IP address", dnsIP)
+	}
+
+	svcIPv4CIDR, svcIPv6CIDR, err := utils.SplitCIDRStrings(serviceCIDR)
+	if err != nil {
+		return fmt.Errorf("failed to parse service CIDR: %w", err)
+	}
+
+	var cidrToCheck string
+	if ip.To4() != nil {
+		cidrToCheck = svcIPv4CIDR
+	} else {
+		cidrToCheck = svcIPv6CIDR
+	}
+
+	if cidrToCheck == "" {
+		return fmt.Errorf("dns.service-ip %q has no matching address family in service CIDR %q", dnsIP, serviceCIDR)
+	}
+
+	_, ipNet, err := net.ParseCIDR(cidrToCheck)
+	if err != nil {
+		return fmt.Errorf("failed to parse service CIDR %q: %w", cidrToCheck, err)
+	}
+
+	if !ipNet.Contains(ip) {
+		return fmt.Errorf("dns.service-ip %q is not within the service CIDR %q", dnsIP, serviceCIDR)
+	}
+
+	return nil
+}
+
 // Validate that a ClusterConfig does not have conflicting or incompatible options.
 func (c *ClusterConfig) Validate() error {
 	// check: validate that PodCIDR and ServiceCIDR are configured
@@ -178,7 +213,12 @@ func (c *ClusterConfig) Validate() error {
 			return fmt.Errorf("dns.service-ip must be a valid IP address")
 		}
 
-		// TODO: ensure dns.service-ip is part of new.Network.ServiceCIDR
+		// check: when managed DNS is enabled, its service IP must be allocated from the service CIDR.
+		if c.DNS.GetEnabled() {
+			if err := validateDNSServiceIPRange(v, c.Network.GetServiceCIDR()); err != nil {
+				return fmt.Errorf("invalid dns configuration: %w", err)
+			}
+		}
 	}
 
 	// check: all external datastore servers are valid URLs

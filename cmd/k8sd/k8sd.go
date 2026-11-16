@@ -10,8 +10,6 @@ import (
 )
 
 var rootCmdOpts struct {
-	logDebug                            bool
-	logVerbose                          bool
 	logLevel                            int
 	stateDir                            string
 	pprofAddress                        string
@@ -53,8 +51,6 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			})
 
 			app, err := app.New(app.Config{
-				Debug:                               rootCmdOpts.logDebug,
-				Verbose:                             rootCmdOpts.logVerbose,
 				StateDir:                            rootCmdOpts.stateDir,
 				Snap:                                env.Snap,
 				PprofAddress:                        rootCmdOpts.pprofAddress,
@@ -91,8 +87,10 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.SetErr(env.Stderr)
 
 	cmd.PersistentFlags().IntVarP(&rootCmdOpts.logLevel, "log-level", "l", 0, "k8sd log level")
-	cmd.PersistentFlags().BoolVarP(&rootCmdOpts.logDebug, "debug", "d", false, "Deprecated: Show all debug messages")
-	cmd.PersistentFlags().BoolVarP(&rootCmdOpts.logVerbose, "verbose", "v", true, "Deprecated: Show all information messages")
+	cmd.PersistentFlags().BoolP("debug", "d", false, "Show all debug messages")
+	cmd.PersistentFlags().MarkDeprecated("debug", "this flag does not have any effect, use --log-level instead")
+	cmd.PersistentFlags().BoolP("verbose", "v", true, "Show all information messages")
+	cmd.PersistentFlags().MarkDeprecated("verbose", "this flag does not have any effect, use --log-level instead")
 	cmd.PersistentFlags().StringVar(&rootCmdOpts.stateDir, "state-dir", "", "Directory with the datastore")
 	cmd.PersistentFlags().StringVar(&rootCmdOpts.pprofAddress, "pprof-address", "", "Listen address for pprof endpoints, e.g. \"127.0.0.1:4217\"")
 	cmd.PersistentFlags().BoolVar(&rootCmdOpts.disableNodeConfigController, "disable-node-config-controller", false, "Disable the Node Config Controller")
@@ -105,8 +103,6 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&rootCmdOpts.disableCSRSigningController, "disable-csrsigning-controller", false, "Disable the CSR signing controller")
 	cmd.PersistentFlags().BoolVar(&rootCmdOpts.disableUpgradeController, "disable-upgrade-controller", false, "Disable the upgrade controller")
 
-	cmd.Flags().Uint("port", 0, "Default port for the HTTP API")
-	cmd.Flags().MarkDeprecated("port", "this flag does not have any effect, and will be removed in a future version")
 	cmd.Flags().DurationVar(&rootCmdOpts.drainConnectionsTimeout, "drain-connection-timeout", 10*time.Second, "amount of time to allow for all connections to drain when shutting down")
 	cmd.Flags().IntVar(&rootCmdOpts.featureControllerMaxRetryAttempts, "feature-controller-max-retry-attempts", 64, "Maximum number of retry attempts for the feature controller before giving up. Zero or negative values mean no limit.")
 	cmd.Flags().BoolVar(&rootCmdOpts.disableServiceArgsController, "disable-service-args-controller", false, "Disable the Service Args Controller")

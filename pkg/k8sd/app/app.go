@@ -20,18 +20,11 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"github.com/canonical/microcluster/v3/microcluster"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Config defines configuration for the k8sd app.
 type Config struct {
-	// Debug increases log message verbosity.
-	//
-	// Deprecated: No longer affects the underlying Microcluster.
-	Debug bool
-	// Verbose increases log message verbosity.
-	//
-	// Deprecated: No longer affects the underlying Microcluster.
-	Verbose bool
 	// StateDir is the local directory to store the state of the node.
 	StateDir string
 	// Snap is the snap instance to use.
@@ -259,11 +252,12 @@ func New(cfg Config) (*App, error) {
 func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 	// TODO: consider improving API for overriding hooks.
 	hooks := &mctypes.Hooks{
-		PreInit:       a.onPreInit,
-		PostBootstrap: a.onBootstrap,
-		PostJoin:      a.onPostJoin,
-		PreRemove:     a.onPreRemove,
-		OnStart:       a.onStart,
+		PreInit:        a.onPreInit,
+		PostBootstrap:  a.onBootstrap,
+		PostJoin:       a.onPostJoin,
+		PreRemove:      a.onPreRemove,
+		OnStart:        a.onStart,
+		OnAuthenticate: a.onAuthenticate,
 	}
 	if customHooks != nil {
 		if customHooks.PreInit != nil {
@@ -284,6 +278,8 @@ func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 	}
 
 	log := log.FromContext(ctx)
+
+	ctrllog.SetLogger(log)
 
 	// start profiling server
 	if a.profilingAddress != "" {

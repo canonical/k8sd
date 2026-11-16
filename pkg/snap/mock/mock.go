@@ -54,6 +54,7 @@ type Mock struct {
 	NodeKubernetesVersion       *versionutil.Version
 	NodeKubernetesVersionErr    error
 	KubernetesClient            *kubernetes.Client
+	KubernetesClientErr         error
 	KubernetesNodeClient        *kubernetes.Client
 	HelmClient                  helm.Client
 	EtcdClient                  *etcd.Client
@@ -283,7 +284,7 @@ func (s *Snap) NodeKubernetesVersion(context.Context) (*versionutil.Version, err
 }
 
 func (s *Snap) KubernetesClient(namespace string) (*kubernetes.Client, error) {
-	return s.Mock.KubernetesClient, nil
+	return s.Mock.KubernetesClient, s.Mock.KubernetesClientErr
 }
 
 func (s *Snap) KubernetesNodeClient(namespace string) (*kubernetes.Client, error) {

@@ -13,10 +13,17 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// TODO(ben): (KU-3218) Maybe make this more generic, e.g. GetUpgrade(filterFunc func(Upgrade) bool) (*Upgrade, error).
-// GetInProgressUpgrade returns the upgrade CR that is currently in progress.
-func (c *Client) GetInProgressUpgrade(ctx context.Context) (*upgradesv1alpha.Upgrade, error) {
-	log := log.FromContext(ctx).WithValues("upgrades", "GetInProgressUpgrade")
+// GetUpgrade returns the latest upgrade CR that matches the given filter function.
+// If multiple upgrades match, the most recently created one is returned and a warning is logged.
+// If no upgrades match, nil is returned.
+// If filterFunc is nil, all upgrades are considered matching.
+func (c *Client) GetUpgrade(ctx context.Context, filterFunc func(upgradesv1alpha.Upgrade) bool) (*upgradesv1alpha.Upgrade, error) {
+	log := log.FromContext(ctx).WithValues("upgrades", "GetUpgrade")
+
+	// Default to a match-all predicate if no filter function is provided.
+	if filterFunc == nil {
+		filterFunc = func(upgradesv1alpha.Upgrade) bool { return true }
+	}
 
 	result := &upgradesv1alpha.UpgradeList{}
 	var noUpgrades bool
@@ -40,7 +47,7 @@ func (c *Client) GetInProgressUpgrade(ctx context.Context) (*upgradesv1alpha.Upg
 
 	var matches []upgradesv1alpha.Upgrade
 	for _, upgrade := range result.Items {
-		if upgrade.Status.Phase != upgradesv1alpha.UpgradePhaseFailed && upgrade.Status.Phase != upgradesv1alpha.UpgradePhaseCompleted {
+		if filterFunc(upgrade) {
 			matches = append(matches, upgrade)
 		}
 	}
@@ -49,15 +56,25 @@ func (c *Client) GetInProgressUpgrade(ctx context.Context) (*upgradesv1alpha.Upg
 		return nil, nil
 	}
 	if lenMatches > 1 {
-		log.Info("Warning: Found multiple in-progress upgrades", "inprogress upgrades", len(matches))
+		log.Info("Warning: Found multiple matching upgrades", "matches", lenMatches)
 	}
-	// Sort matches by name
+	// Sort matches by creation timestamp, falling back to name for determinism.
 	sort.Slice(matches, func(i, j int) bool {
+		if !matches[i].CreationTimestamp.Equal(&matches[j].CreationTimestamp) {
+			return matches[i].CreationTimestamp.Before(&matches[j].CreationTimestamp)
+		}
 		return matches[i].Name < matches[j].Name
 	})
 
 	// Return the latest
 	return &matches[lenMatches-1], nil
+}
+
+// GetInProgressUpgrade returns the upgrade CR that is currently in progress.
+func (c *Client) GetInProgressUpgrade(ctx context.Context) (*upgradesv1alpha.Upgrade, error) {
+	return c.GetUpgrade(ctx, func(u upgradesv1alpha.Upgrade) bool {
+		return u.Status.Phase != upgradesv1alpha.UpgradePhaseFailed && u.Status.Phase != upgradesv1alpha.UpgradePhaseCompleted
+	})
 }
 
 // PatchUpgradeStatus patches the status of an upgrade CR.
