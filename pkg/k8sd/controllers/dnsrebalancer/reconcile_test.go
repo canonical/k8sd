@@ -3,6 +3,7 @@ package dnsrebalancer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 func TestReconcile_LessThanTwoNodesReady(t *testing.T) {
@@ -35,6 +37,16 @@ func TestReconcile_LessThanTwoNodesReady(t *testing.T) {
 	g.Expect(result).To(Equal(ctrl.Result{}))
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
+
+	// A late worker join wakes the check without polling a single-node cluster.
+	g.Expect(reconciler.client.Create(ctx, &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-2"},
+		Status:     corev1.NodeStatus{Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}}},
+	})).To(Succeed())
+	result, err = reconciler.Reconcile(ctx, ctrl.Request{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(Equal(ctrl.Result{}))
+	g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
 }
 
 func TestReconcile_CoreDNSAlreadyBalanced(t *testing.T) {
@@ -51,186 +63,24 @@ func TestReconcile_CoreDNSAlreadyBalanced(t *testing.T) {
 	g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
 }
 
-func TestCoreDNSNeedsRebalancing_AllPodsSameNode(t *testing.T) {
-	g := NewWithT(t)
-	ctx := context.Background()
-
-	pods := []corev1.Pod{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "coredns-1",
-				Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
-			},
-			Spec: corev1.PodSpec{NodeName: "node-a"},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "coredns-2",
-				Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
-			},
-			Spec: corev1.PodSpec{NodeName: "node-a"},
-		},
+func TestCoreDNSNeedsRebalancing(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		nodes []string
+		want  bool
+	}{
+		{"CoLocated", []string{"node-1", "node-1"}, true},
+		{"Distributed", []string{"node-1", "node-2"}, false},
+		{"ThreeReplicas", []string{"node-1", "node-1", "node-2"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pods := make([]corev1.Pod, len(test.nodes))
+			for i, node := range test.nodes {
+				pods[i].Spec.NodeName = node
+			}
+			NewWithT(t).Expect(coreDNSNeedsRebalancing(pods)).To(Equal(test.want))
+		})
 	}
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme.Scheme).
-		WithObjects(&pods[0], &pods[1]).
-		Build()
-
-	reconciler := &controller{
-		logger: ctrl.Log.WithName("test"),
-		client: fakeClient,
-		snap:   nil,
-	}
-
-	needsRebalancing, err := reconciler.coreDNSNeedsRebalancing(ctx)
-
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(needsRebalancing).To(BeTrue(), "should need rebalancing when all pods on same node")
-}
-
-func TestCoreDNSNeedsRebalancing_Distributed(t *testing.T) {
-	g := NewWithT(t)
-	ctx := context.Background()
-
-	pods := []corev1.Pod{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "coredns-1",
-				Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
-			},
-			Spec: corev1.PodSpec{NodeName: "node-a"},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "coredns-2",
-				Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
-			},
-			Spec: corev1.PodSpec{NodeName: "node-b"},
-		},
-	}
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme.Scheme).
-		WithObjects(&pods[0], &pods[1]).
-		Build()
-
-	reconciler := &controller{
-		logger: ctrl.Log.WithName("test"),
-		client: fakeClient,
-		snap:   nil,
-	}
-
-	needsRebalancing, err := reconciler.coreDNSNeedsRebalancing(ctx)
-
-	g.Expect(err).ToNot(HaveOccurred())
-	g.Expect(needsRebalancing).To(BeFalse(), "should not need rebalancing when pods distributed")
-}
-
-func TestCoreDNSNeedsRebalancing_IgnoresUnscheduledPods(t *testing.T) {
-	g := NewWithT(t)
-	ctx := context.Background()
-
-	// One scheduled, one pending (no NodeName)
-	pods := []corev1.Pod{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "coredns-1",
-				Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
-			},
-			Spec: corev1.PodSpec{NodeName: "node-a"},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "coredns-2",
-				Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
-			},
-			Spec: corev1.PodSpec{},
-		},
-	}
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme.Scheme).
-		WithObjects(&pods[0], &pods[1]).
-		Build()
-
-	reconciler := &controller{
-		logger: ctrl.Log.WithName("test"),
-		client: fakeClient,
-		snap:   nil,
-	}
-
-	needsRebalancing, err := reconciler.coreDNSNeedsRebalancing(ctx)
-
-	g.Expect(err.Error()).To(Equal("less than 2 pods are scheduled"))
-	g.Expect(needsRebalancing).To(BeFalse(), "should not need rebalancing with unscheduled pods")
-}
-
-func TestCoreDNSNeedsRebalancing_AllPodsPending(t *testing.T) {
-	g := NewWithT(t)
-	ctx := context.Background()
-
-	// Both pods pending (no NodeName)
-	pods := []corev1.Pod{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "coredns-1",
-				Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
-			},
-			Spec: corev1.PodSpec{},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: "kube-system",
-				Name:      "coredns-2",
-				Labels:    map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"},
-			},
-			Spec: corev1.PodSpec{},
-		},
-	}
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme.Scheme).
-		WithObjects(&pods[0], &pods[1]).
-		Build()
-
-	reconciler := &controller{
-		logger: ctrl.Log.WithName("test"),
-		client: fakeClient,
-		snap:   nil,
-	}
-
-	needsRebalancing, err := reconciler.coreDNSNeedsRebalancing(ctx)
-
-	g.Expect(err.Error()).To(Equal("less than 2 pods are scheduled"))
-	g.Expect(needsRebalancing).To(BeFalse(), "should not need rebalancing when no pods scheduled")
-}
-
-func TestCoreDNSNeedsRebalancing_NoPods(t *testing.T) {
-	g := NewWithT(t)
-	ctx := context.Background()
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme.Scheme).
-		Build()
-
-	reconciler := &controller{
-		logger: ctrl.Log.WithName("test"),
-		client: fakeClient,
-		snap:   nil,
-	}
-
-	needsRebalancing, err := reconciler.coreDNSNeedsRebalancing(ctx)
-
-	g.Expect(err.Error()).To(Equal("no CoreDNS pods found"))
-	g.Expect(needsRebalancing).To(BeFalse())
 }
 
 func TestReconcile_RestartsDeploymentForCoLocatedPods(t *testing.T) {
@@ -274,6 +124,14 @@ func TestReconcile_SafetyGuards(t *testing.T) {
 		}, true},
 		{"YoungPod", func(_ *corev1.Node, pod *corev1.Pod, _ *appsv1.Deployment) {
 			pod.CreationTimestamp = metav1.Now()
+		}, true},
+		{"UnscheduledPod", func(_ *corev1.Node, pod *corev1.Pod, _ *appsv1.Deployment) {
+			pod.Spec.NodeName = ""
+		}, true},
+		{"TerminatingPod", func(_ *corev1.Node, pod *corev1.Pod, _ *appsv1.Deployment) {
+			now := metav1.Now()
+			pod.DeletionTimestamp = &now
+			pod.Finalizers = []string{"test.example/hold"}
 		}, true},
 		{"RecentRestart", func(_ *corev1.Node, _ *corev1.Pod, deployment *appsv1.Deployment) {
 			deployment.Spec.Template.Annotations = map[string]string{restartedAtAnnotation: time.Now().Format(time.RFC3339)}
@@ -328,40 +186,67 @@ func TestReconcile_SafetyGuards(t *testing.T) {
 	}
 }
 
-func TestReconcile_BackToBackNodeEvents(t *testing.T) {
-	for _, observeRestart := range []bool{true, false} {
-		name := "StaleDeploymentCache"
-		if observeRestart {
-			name = "ObservedRestart"
-		}
-		t.Run(name, func(t *testing.T) {
+func TestReconcile_MissingPods(t *testing.T) {
+	for _, remaining := range []int{0, 1} {
+		t.Run(fmt.Sprintf("%dRemaining", remaining), func(t *testing.T) {
 			g := NewWithT(t)
 			ctx := context.Background()
 			reconciler, k8sClient := newReconcileTestController(t, nil)
-
-			result, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "node-1"}})
-			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(result).To(Equal(ctrl.Result{}))
-			g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
-
-			if observeRestart {
-				updated, err := k8sClient.AppsV1().Deployments(corednsNamespace).Get(ctx, corednsDeployment, metav1.GetOptions{})
-				g.Expect(err).ToNot(HaveOccurred())
-				cached := &appsv1.Deployment{}
-				g.Expect(reconciler.client.Get(ctx, client.ObjectKeyFromObject(updated), cached)).To(Succeed())
-				cached.Spec = updated.Spec
-				g.Expect(reconciler.client.Update(ctx, cached)).To(Succeed())
+			for i := remaining + 1; i <= 2; i++ {
+				g.Expect(reconciler.client.Delete(ctx, &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+					Namespace: corednsNamespace, Name: fmt.Sprintf("coredns-%d", i),
+				}})).To(Succeed())
 			}
-
-			result, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "node-2"}})
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{})
 			g.Expect(err).ToNot(HaveOccurred())
-			// The cooldown / in-flight rollout guards skip the second rebalance
-			// but requeue so it is retried once CoreDNS has settled.
 			g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: minRebalanceInterval}))
-			g.Expect(reconciler.settleAttempts).To(Equal(1))
-			g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
+			g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
 		})
 	}
+}
+
+func TestReconcile_RebalanceOncePerNodeSet(t *testing.T) {
+	g := NewWithT(t)
+	ctx := context.Background()
+	reconciler, k8sClient := newReconcileTestController(t, nil)
+
+	result, err := reconciler.Reconcile(ctx, ctrl.Request{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(Equal(ctrl.Result{}))
+	g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
+
+	// The rollout settled but the scheduler left both pods on the same node.
+	deployment, err := k8sClient.AppsV1().Deployments(corednsNamespace).Get(ctx, corednsDeployment, metav1.GetOptions{})
+	g.Expect(err).ToNot(HaveOccurred())
+	deployment.Spec.Template.Annotations[restartedAtAnnotation] = time.Now().Add(-time.Minute).Format(time.RFC3339)
+	_, err = k8sClient.AppsV1().Deployments(corednsNamespace).Update(ctx, deployment, metav1.UpdateOptions{})
+	g.Expect(err).ToNot(HaveOccurred())
+	k8sClient.ClearActions()
+
+	for _, key := range []client.ObjectKey{
+		{Name: "node-1"},
+		{Name: "node-2"},
+		{Namespace: corednsNamespace, Name: "coredns-1"},
+		{Namespace: corednsNamespace, Name: "coredns-2"},
+		{}, // A queued retry must not restart either.
+	} {
+		result, err = reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: key})
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(result).To(Equal(ctrl.Result{}))
+	}
+	g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
+
+	// Replacing a node permits another attempt, even with the same node count.
+	node := &corev1.Node{}
+	g.Expect(reconciler.client.Get(ctx, client.ObjectKey{Name: "node-2"}, node)).To(Succeed())
+	g.Expect(reconciler.client.Delete(ctx, node)).To(Succeed())
+	node.Name = "node-3"
+	node.ResourceVersion = ""
+	g.Expect(reconciler.client.Create(ctx, node)).To(Succeed())
+	result, err = reconciler.Reconcile(ctx, ctrl.Request{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(result).To(Equal(ctrl.Result{}))
+	g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
 }
 
 func TestReconcile_SettleBackoff(t *testing.T) {
@@ -377,6 +262,9 @@ func TestReconcile_SettleBackoff(t *testing.T) {
 		2 * minRebalanceInterval,
 		4 * minRebalanceInterval,
 		8 * minRebalanceInterval,
+		16 * minRebalanceInterval,
+		maxRebalanceInterval,
+		maxRebalanceInterval,
 	} {
 		result, err := reconciler.Reconcile(ctx, ctrl.Request{})
 		g.Expect(err).ToNot(HaveOccurred())
@@ -384,32 +272,16 @@ func TestReconcile_SettleBackoff(t *testing.T) {
 	}
 	g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
 
-	// A successful rebalance resets the backoff.
-	reconciler, k8sClient = newReconcileTestController(t, nil)
-	reconciler.settleAttempts = 10
+	// Readiness recovery resumes the pending rebalance and resets the backoff.
+	pod := &corev1.Pod{}
+	g.Expect(reconciler.client.Get(ctx, client.ObjectKey{Namespace: corednsNamespace, Name: "coredns-1"}, pod)).To(Succeed())
+	pod.Status.Conditions[0].Status = corev1.ConditionTrue
+	g.Expect(reconciler.client.Status().Update(ctx, pod)).To(Succeed())
 	result, err := reconciler.Reconcile(ctx, ctrl.Request{})
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(result).To(Equal(ctrl.Result{}))
 	g.Expect(reconciler.settleAttempts).To(BeZero())
 	g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
-}
-
-func TestSettleRequeueInterval(t *testing.T) {
-	g := NewWithT(t)
-	for _, test := range []struct {
-		attempts int
-		want     time.Duration
-	}{
-		{0, minRebalanceInterval},
-		{1, minRebalanceInterval},
-		{2, 2 * minRebalanceInterval},
-		{3, 4 * minRebalanceInterval},
-		{10, maxRebalanceInterval},
-		{100, maxRebalanceInterval},
-	} {
-		reconciler := &controller{settleAttempts: test.attempts}
-		g.Expect(reconciler.settleRequeueInterval()).To(Equal(test.want), "attempts=%d", test.attempts)
-	}
 }
 
 func deploymentUpdateCount(k8sClient *k8sfake.Clientset) int {
@@ -480,6 +352,7 @@ func TestReconcile_ClusterConfig(t *testing.T) {
 			g := NewWithT(t)
 			reconciler, k8sClient := newReconcileTestController(t, nil)
 			reconciler.getClusterConfig = test.getConfig
+			reconciler.settleAttempts = 10
 
 			result, err := reconciler.Reconcile(context.Background(), ctrl.Request{})
 
@@ -487,6 +360,38 @@ func TestReconcile_ClusterConfig(t *testing.T) {
 			g.Expect(result).To(Equal(ctrl.Result{}))
 			g.Expect(reconciler.settleAttempts).To(BeZero(), "non-settle paths must not advance the backoff")
 			g.Expect(k8sClient.Actions()).To(BeEmpty())
+		})
+	}
+}
+
+func TestReconcile_ListErrorResetsBackoff(t *testing.T) {
+	for _, failPods := range []bool{false, true} {
+		t.Run(fmt.Sprintf("Pods=%t", failPods), func(t *testing.T) {
+			g := NewWithT(t)
+			ctx := context.Background()
+			reconciler, k8sClient := newReconcileTestController(t, func(_ *corev1.Node, pod *corev1.Pod, _ *appsv1.Deployment) {
+				pod.Status.Conditions[0].Status = corev1.ConditionFalse
+			})
+			original := reconciler.client
+			listError := errors.New("API unavailable")
+			reconciler.client = interceptor.NewClient(original.(client.WithWatch), interceptor.Funcs{
+				List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+					_, isPodList := list.(*corev1.PodList)
+					if isPodList == failPods {
+						return listError
+					}
+					return c.List(ctx, list, opts...)
+				},
+			})
+			reconciler.settleAttempts = 10
+			_, err := reconciler.Reconcile(ctx, ctrl.Request{})
+			g.Expect(errors.Is(err, listError)).To(BeTrue())
+
+			reconciler.client = original
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(result).To(Equal(ctrl.Result{RequeueAfter: minRebalanceInterval}))
+			g.Expect(deploymentUpdateCount(k8sClient)).To(BeZero())
 		})
 	}
 }
@@ -521,19 +426,30 @@ func TestReconcile_DeploymentErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			g := NewWithT(t)
 			reconciler, k8sClient := newReconcileTestController(t, nil)
+			reconciler.settleAttempts = 10
+			fail := true
 			k8sClient.PrependReactor(test.verb, "deployments", func(k8stesting.Action) (bool, runtime.Object, error) {
-				return true, nil, test.apiError
+				return fail, nil, test.apiError
 			})
 
 			result, err := reconciler.Reconcile(context.Background(), ctrl.Request{})
 
 			if test.wantError {
 				g.Expect(errors.Is(err, test.apiError)).To(BeTrue())
+				g.Expect(reconciler.settleAttempts).To(BeZero())
 			} else {
 				g.Expect(err).ToNot(HaveOccurred())
 			}
 			g.Expect(result).To(Equal(ctrl.Result{}))
 			g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(test.wantUpdates))
+
+			// A failed API call must not consume the restart attempt.
+			fail = false
+			k8sClient.ClearActions()
+			result, err = reconciler.Reconcile(context.Background(), ctrl.Request{})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(result).To(Equal(ctrl.Result{}))
+			g.Expect(deploymentUpdateCount(k8sClient)).To(Equal(1))
 		})
 	}
 }

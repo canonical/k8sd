@@ -22,11 +22,10 @@ type controller struct {
 	getClusterConfig func(context.Context) (types.ClusterConfig, error)
 	snap             snap.Snap
 
-	// settleAttempts counts consecutive reconciliations skipped because
-	// CoreDNS was not settled yet. It drives the capped exponential backoff
-	// on the requeue interval, and is reset on errors and successful
-	// rebalances so fresh triggers are evaluated promptly.
+	// settleAttempts counts consecutive settle skips.
 	settleAttempts int
+	// rebalancedNodes limits restarts to one per observed schedulable node set.
+	rebalancedNodes map[string]struct{}
 }
 
 func NewController(
@@ -45,14 +44,7 @@ func NewController(
 
 // SetupWithManager sets up the controller with the manager.
 func (r *controller) SetupWithManager(mgr ctrl.Manager) error {
-	// Watch Node resources. Do not reconcile on every update of an already-Ready
-	// node (kubelet heartbeats rewrite Node status and previously caused a
-	// restart storm). Reconcile when schedulability changes: Ready condition,
-	// unschedulable flag, taints, or node deletion (downscale).
-	//
-	// Also watch the CoreDNS pods: the skip paths in Reconcile all mean
-	// "CoreDNS is not settled yet", and the events that signal settling are a
-	// CoreDNS pod getting bound to a node, becoming Ready, or going away.
+	// Node changes allow rebalancing; pod events wake checks waiting for settling.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Node{}, builder.WithPredicates(nodeEventPredicate())).
 		Watches(&corev1.Pod{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(coreDNSPodEventPredicate())).
@@ -87,10 +79,7 @@ func nodeEventPredicate() predicate.Funcs {
 	}
 }
 
-// coreDNSPodEventPredicate triggers reconciliation on CoreDNS pod events that
-// change whether the deployment is settled: a pod getting bound to a node,
-// becoming (un)Ready, starting termination, or being deleted. Other pod updates
-// (status heartbeat churn) are ignored.
+// coreDNSPodEventPredicate ignores pod updates unrelated to scheduling or readiness.
 func coreDNSPodEventPredicate() predicate.Funcs {
 	selector := labels.SelectorFromSet(corednsPodLabels)
 	isCoreDNSPod := func(obj client.Object) bool {

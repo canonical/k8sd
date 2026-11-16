@@ -29,8 +29,18 @@ const (
 var corednsPodLabels = map[string]string{"k8s-app": "coredns", "app.kubernetes.io/instance": "ck-dns"}
 
 // Reconcile implements the reconciliation loop.
-func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
 	log := log.FromContext(ctx).WithValues("node", req.Name)
+	defer func() {
+		if reconcileErr != nil || result.RequeueAfter == 0 {
+			r.settleAttempts = 0
+		}
+	}()
+
+	requeueAfterSettle := func() (ctrl.Result, error) {
+		r.settleAttempts++
+		return ctrl.Result{RequeueAfter: r.settleRequeueInterval()}, nil
+	}
 
 	if r.getClusterConfig == nil {
 		log.Info("getClusterConfig is nil")
@@ -40,7 +50,6 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// skip reconcile if dns is disabled
 	config, err := r.getClusterConfig(ctx)
 	if err != nil {
-		r.settleAttempts = 0
 		return ctrl.Result{}, fmt.Errorf("failed to get cluster config: %w", err)
 	}
 	if !config.DNS.GetEnabled() {
@@ -57,22 +66,25 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	readyCount := countReadyNodes(nodeList)
-	schedulableCount := countSchedulableNodes(nodeList)
+	schedulableCount := 0
+	nodesUnchanged := r.rebalancedNodes != nil
+	for i := range nodeList.Items {
+		node := &nodeList.Items[i]
+		if nodeSchedulableForCoreDNS(node) {
+			schedulableCount++
+			if _, ok := r.rebalancedNodes[node.Name]; !ok {
+				nodesUnchanged = false
+			}
+		}
+	}
+	// Our own rollout's pod events must not trigger another restart.
+	if nodesUnchanged && schedulableCount == len(r.rebalancedNodes) {
+		return ctrl.Result{}, nil
+	}
+	r.rebalancedNodes = nil
 	if schedulableCount < 2 {
 		log.V(1).Info("Less than 2 nodes are schedulable for CoreDNS, skipping rebalancing",
 			"readyCount", readyCount, "schedulableCount", schedulableCount)
-		return ctrl.Result{}, nil
-	}
-
-	log.V(1).Info("Sufficient nodes ready, checking CoreDNS distribution", "readyCount", readyCount)
-
-	// Check if rebalancing is needed
-	needsRebalancing, err := r.coreDNSNeedsRebalancing(ctx)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to check CoreDNS pods distribution: %w", err)
-	}
-
-	if !needsRebalancing {
 		return ctrl.Result{}, nil
 	}
 
@@ -91,15 +103,6 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if deployment.Spec.Replicas != nil {
 		desiredReplicas = *deployment.Spec.Replicas
 	}
-	// requeueAfterSettle requeues with a capped exponential backoff: CoreDNS
-	// not being settled usually resolves itself within seconds, but if it
-	// never does (e.g. a second replica that can never be scheduled) the
-	// fixed 30s requeue would hot-loop forever.
-	requeueAfterSettle := func() (ctrl.Result, error) {
-		r.settleAttempts++
-		return ctrl.Result{RequeueAfter: r.settleRequeueInterval()}, nil
-	}
-
 	if desiredReplicas < 2 {
 		log.V(1).Info("CoreDNS deployment has less than 2 replicas, skipping rebalance", "desiredReplicas", desiredReplicas)
 		return requeueAfterSettle()
@@ -118,29 +121,38 @@ func (r *controller) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return requeueAfterSettle()
 	}
 
-	scheduled, err := r.scheduledCoreDNSPods(ctx)
-	if err != nil {
-		return ctrl.Result{}, err
+	pods := &corev1.PodList{}
+	if err := r.client.List(ctx, pods, client.InNamespace(corednsNamespace), client.MatchingLabels(corednsPodLabels)); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to list CoreDNS pods: %w", err)
 	}
-	for _, pod := range scheduled {
-		if pod.DeletionTimestamp != nil {
-			log.V(1).Info("CoreDNS pod is being deleted, skipping rebalance", "pod", pod.Name)
-			return requeueAfterSettle()
-		}
-		if !podReady(&pod) || (!pod.CreationTimestamp.IsZero() && time.Since(pod.CreationTimestamp.Time) < minRebalanceInterval) {
+	if len(pods.Items) != int(desiredReplicas) {
+		return requeueAfterSettle()
+	}
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if pod.DeletionTimestamp != nil || pod.Spec.NodeName == "" || !podReady(pod) ||
+			(!pod.CreationTimestamp.IsZero() && time.Since(pod.CreationTimestamp.Time) < minRebalanceInterval) {
 			log.V(1).Info("CoreDNS pods are not yet settled, skipping rebalance")
 			return requeueAfterSettle()
 		}
+	}
+	if !coreDNSNeedsRebalancing(pods.Items) {
+		return ctrl.Result{}, nil
 	}
 
 	log.Info("CoreDNS pods need rebalancing, triggering deployment rollout restart")
 
 	if err := k8sClient.RestartDeployment(ctx, corednsDeployment, corednsNamespace); err != nil {
-		r.settleAttempts = 0
 		return ctrl.Result{}, fmt.Errorf("failed to restart CoreDNS deployment: %w", err)
 	}
 
-	r.settleAttempts = 0
+	r.rebalancedNodes = make(map[string]struct{}, schedulableCount)
+	for i := range nodeList.Items {
+		node := &nodeList.Items[i]
+		if nodeSchedulableForCoreDNS(node) {
+			r.rebalancedNodes[node.Name] = struct{}{}
+		}
+	}
 	log.Info("Successfully triggered CoreDNS deployment restart")
 	return ctrl.Result{}, nil
 }
@@ -156,44 +168,18 @@ func (r *controller) settleRequeueInterval() time.Duration {
 	return min(interval, maxRebalanceInterval)
 }
 
-func (r *controller) scheduledCoreDNSPods(ctx context.Context) ([]corev1.Pod, error) {
-	pods := &corev1.PodList{}
-	if err := r.client.List(ctx, pods, client.InNamespace(corednsNamespace), client.MatchingLabels(corednsPodLabels)); err != nil {
-		return nil, err
+// coreDNSNeedsRebalancing checks whether all settled pods are on the same node.
+func coreDNSNeedsRebalancing(pods []corev1.Pod) bool {
+	if len(pods) < 2 {
+		return false
 	}
-	if len(pods.Items) == 0 {
-		return nil, fmt.Errorf("no CoreDNS pods found")
-	}
-
-	scheduled := make([]corev1.Pod, 0, len(pods.Items))
-	for _, pod := range pods.Items {
-		if pod.DeletionTimestamp != nil {
-			continue
-		}
-		if pod.Spec.NodeName != "" {
-			scheduled = append(scheduled, pod)
+	firstNodeName := pods[0].Spec.NodeName
+	for i := 1; i < len(pods); i++ {
+		if pods[i].Spec.NodeName != firstNodeName {
+			return false
 		}
 	}
-	if len(scheduled) < 2 {
-		return nil, fmt.Errorf("less than 2 pods are scheduled")
-	}
-	return scheduled, nil
-}
-
-// coreDNSNeedsRebalancing checks if CoreDNS pods need rebalancing.
-func (r *controller) coreDNSNeedsRebalancing(ctx context.Context) (bool, error) {
-	scheduled, err := r.scheduledCoreDNSPods(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	firstNodeName := scheduled[0].Spec.NodeName
-	for _, pod := range scheduled[1:] {
-		if pod.Spec.NodeName != firstNodeName {
-			return false, nil
-		}
-	}
-	return true, nil
+	return true
 }
 
 // countReadyNodes counts the number of nodes with Ready condition.
@@ -208,16 +194,6 @@ func countReadyNodes(nodeList *corev1.NodeList) int {
 		}
 	}
 	return readyCount
-}
-
-func countSchedulableNodes(nodeList *corev1.NodeList) int {
-	count := 0
-	for i := range nodeList.Items {
-		if nodeSchedulableForCoreDNS(&nodeList.Items[i]) {
-			count++
-		}
-	}
-	return count
 }
 
 func nodeSchedulableForCoreDNS(node *corev1.Node) bool {
