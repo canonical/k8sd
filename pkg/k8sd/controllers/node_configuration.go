@@ -19,19 +19,27 @@ type NodeConfigurationController struct {
 	snap      snap.Snap
 	waitReady func()
 	// reconciledCh is used to notify that the controller has finished its reconciliation loop.
-	reconciledCh  chan struct{}
-	watchDuration time.Duration
+	reconciledCh         chan struct{}
+	watchDuration        time.Duration
+	removeKubeProxyRules func(context.Context, snap.Snap) error
 }
 
 func NewNodeConfigurationController(snap snap.Snap, waitReady func(),
 	watchDuration time.Duration,
 ) *NodeConfigurationController {
 	return &NodeConfigurationController{
-		snap:          snap,
-		waitReady:     waitReady,
-		reconciledCh:  make(chan struct{}, 1),
-		watchDuration: watchDuration,
+		snap:                 snap,
+		waitReady:            waitReady,
+		reconciledCh:         make(chan struct{}, 1),
+		watchDuration:        watchDuration,
+		removeKubeProxyRules: cleanup.TryRemoveKubeProxyRules,
 	}
+}
+
+// WithRemoveKubeProxyRules sets the function used to remove kube-proxy iptables rules.
+func (c *NodeConfigurationController) WithRemoveKubeProxyRules(fn func(context.Context, snap.Snap) error) *NodeConfigurationController {
+	c.removeKubeProxyRules = fn
+	return c
 }
 
 func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(context.Context) (*rsa.PublicKey, error),
@@ -135,25 +143,47 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 	}
 
 	kubeProxyEnabled := nodeConfig.Network.GetKubeProxyEnabled()
-	if err := updateKubeProxyEnabled(ctx, kubeProxyEnabled); err != nil {
-		return fmt.Errorf("failed to update kube-proxy enabled state: %w", err)
-	}
-
-	if kubeProxyEnabled {
-		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-			return c.snap.StartServices(ctx, []string{"kube-proxy"})
-		}); err != nil {
-			return fmt.Errorf("failed to start kube-proxy: %w", err)
+	if err := snap.WithKubeProxyStateLock(func() error {
+		if kubeProxyEnabled {
+			if err := snaputil.MarkKubeProxyDisabled(c.snap, false); err != nil {
+				return fmt.Errorf("failed to clear kube-proxy disabled marker: %w", err)
+			}
+			if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+				return c.snap.StartServices(ctx, []string{"kube-proxy"})
+			}); err != nil {
+				return fmt.Errorf("failed to start kube-proxy: %w", err)
+			}
+			return nil
 		}
-	} else {
+
 		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
 			return c.snap.StopServices(ctx, []string{"kube-proxy"})
 		}); err != nil {
 			return fmt.Errorf("failed to stop kube-proxy: %w", err)
 		}
-		cleanup.RemoveKubeProxyRules(ctx, c.snap)
+		alreadyDisabled, err := snaputil.IsKubeProxyDisabled(c.snap)
+		if err != nil {
+			return fmt.Errorf("failed to check kube-proxy disabled state: %w", err)
+		}
+		if !alreadyDisabled {
+			removeKubeProxyRules := c.removeKubeProxyRules
+			if removeKubeProxyRules == nil {
+				removeKubeProxyRules = cleanup.TryRemoveKubeProxyRules
+			}
+			if err := removeKubeProxyRules(ctx, c.snap); err != nil {
+				return fmt.Errorf("failed to remove kube-proxy rules: %w", err)
+			}
+			if err := snaputil.MarkKubeProxyDisabled(c.snap, true); err != nil {
+				return fmt.Errorf("failed to mark kube-proxy as disabled: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
-
+	if err := updateKubeProxyEnabled(ctx, kubeProxyEnabled); err != nil {
+		return fmt.Errorf("failed to update kube-proxy enabled state: %w", err)
+	}
 	return nil
 }
 

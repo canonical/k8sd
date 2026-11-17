@@ -9,13 +9,13 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
-func RemoveKubeProxyRules(ctx context.Context, s snap.Snap) {
-	log := log.FromContext(ctx)
-
-	// Remove kube-proxy rules
+func TryRemoveKubeProxyRules(ctx context.Context, s snap.Snap) error {
 	cmd := exec.CommandContext(ctx, filepath.Join(s.K8sBinDir(), "kube-proxy"), "--cleanup")
+	return cmd.Run()
+}
 
-	if err := cmd.Run(); err != nil {
-		log.Error(err, "failed to run kube-proxy cleanup")
+func RemoveKubeProxyRules(ctx context.Context, s snap.Snap) {
+	if err := TryRemoveKubeProxyRules(ctx, s); err != nil {
+		log.FromContext(ctx).Error(err, "failed to run kube-proxy cleanup")
 	}
 }

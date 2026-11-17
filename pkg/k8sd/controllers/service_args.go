@@ -105,8 +105,14 @@ func (c *ServiceArgsController) reconcile(ctx context.Context) error {
 		}
 
 		log.Info("service arguments have drifted from args file, restarting", "service", svc)
-		if err := c.snap.RestartServices(ctx, []string{svc}); err != nil {
-			log.Error(err, "failed to restart service", "service", svc)
+		var restartErr error
+		if svc == "kube-proxy" {
+			restartErr = snaputil.RestartKubeProxyIfEnabled(ctx, c.snap)
+		} else {
+			restartErr = c.snap.RestartServices(ctx, []string{svc})
+		}
+		if restartErr != nil {
+			log.Error(restartErr, "failed to restart service", "service", svc)
 		}
 	}
 

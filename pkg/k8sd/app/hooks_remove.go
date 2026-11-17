@@ -142,6 +142,11 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 		}
 	}
 
+	log.Info("Removing kube-proxy disabled mark")
+	if err := snaputil.MarkKubeProxyDisabled(snap, false); err != nil {
+		log.Error(err, "failed to clear kube-proxy disabled marker")
+	}
+
 	log.Info("Remove hook completed ")
 	return nil
 }

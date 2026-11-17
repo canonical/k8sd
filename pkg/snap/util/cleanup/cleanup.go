@@ -41,7 +41,12 @@ func TryCleanupContainerdPaths(ctx context.Context, s snap.Snap) {
 	internal.TryCleanupContainerdPaths(ctx, s)
 }
 
-// RemoveKubeProxyRules removes routing rules, such as iptables rules, that were created by kube-proxy.
+// TryRemoveKubeProxyRules removes routing rules, such as iptables rules, that were created by kube-proxy.
+func TryRemoveKubeProxyRules(ctx context.Context, s snap.Snap) error {
+	return internal.TryRemoveKubeProxyRules(ctx, s)
+}
+
+// RemoveKubeProxyRules removes routing rules created by kube-proxy, logging any error.
 func RemoveKubeProxyRules(ctx context.Context, s snap.Snap) {
 	internal.RemoveKubeProxyRules(ctx, s)
 }
