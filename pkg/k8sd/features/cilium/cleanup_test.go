@@ -231,7 +231,7 @@ exit 0
 		g.Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
 	})
 
-	t.Run("TimeoutDuringExecution", func(t *testing.T) {
+	t.Run("TimeoutDuringCiliumDbg", func(t *testing.T) {
 		g := NewWithT(t)
 
 		tmpDir := t.TempDir()
@@ -240,8 +240,7 @@ exit 0
 
 		// cilium-dbg sleeps longer than timeout
 		createFakeExe(t, cniDir, "cilium-dbg", `#!/bin/sh
-/bin/sleep 5
-exit 0
+exec /bin/sleep 5
 `)
 		iptablesCallsLog := filepath.Join(tmpDir, "iptables.log")
 		createFakeExe(t, tmpDir, "iptables-save", `#!/bin/sh
@@ -261,9 +260,69 @@ exit 0
 
 		err := cilium.CleanupNetwork(ctx, s)
 		g.Expect(err).To(HaveOccurred())
+		g.Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
 
 		// Subsequent iptables command must not have run
 		_, err = os.Stat(iptablesCallsLog)
+		g.Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
+	})
+
+	t.Run("TimeoutDuringIptablesSave", func(t *testing.T) {
+		g := NewWithT(t)
+
+		tmpDir := t.TempDir()
+		createFakeExe(t, tmpDir, "iptables-save", `#!/bin/sh
+exec /bin/sleep 5
+`)
+		ip6tablesCallsLog := filepath.Join(tmpDir, "ip6tables.log")
+		createFakeExe(t, tmpDir, "ip6tables-save", `#!/bin/sh
+echo "ip6tables-called" >> `+ip6tablesCallsLog+`
+exit 0
+`)
+		setupTestPath(t, tmpDir)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		err := cilium.CleanupNetwork(ctx, nil)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
+
+		// Subsequent ip6tables command must not have run
+		_, err = os.Stat(ip6tablesCallsLog)
+		g.Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
+	})
+
+	t.Run("TimeoutDuringIptablesRestore", func(t *testing.T) {
+		g := NewWithT(t)
+
+		tmpDir := t.TempDir()
+		createFakeExe(t, tmpDir, "iptables-save", `#!/bin/sh
+/bin/cat << 'EOF'
+*filter
+:CILIUM_INPUT - [0:0]
+COMMIT
+EOF
+`)
+		createFakeExe(t, tmpDir, "iptables-restore", `#!/bin/sh
+exec /bin/sleep 5
+`)
+		ip6tablesCallsLog := filepath.Join(tmpDir, "ip6tables.log")
+		createFakeExe(t, tmpDir, "ip6tables-save", `#!/bin/sh
+echo "ip6tables-called" >> `+ip6tablesCallsLog+`
+exit 0
+`)
+		setupTestPath(t, tmpDir)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+
+		err := cilium.CleanupNetwork(ctx, nil)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
+
+		// Subsequent ip6tables command must not have run
+		_, err = os.Stat(ip6tablesCallsLog)
 		g.Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
 	})
 }

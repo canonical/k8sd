@@ -27,8 +27,8 @@ func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
 			if _, err := os.Stat(ciliumDbg); err == nil {
 				if err := exec.CommandContext(ctx, ciliumDbg, "post-uninstall-cleanup", "--all-state", "--force").Run(); err != nil {
 					errs = append(errs, fmt.Errorf("cilium-dbg cleanup failed: %w", err))
-					if ctx.Err() != nil {
-						return errors.Join(errs...)
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return errors.Join(append(errs, ctxErr)...)
 					}
 				}
 			}
@@ -47,7 +47,8 @@ func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
 				continue
 			}
 			errs = append(errs, fmt.Errorf("failed to read %s rules: %w", cmd, err))
-			if ctx.Err() != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				errs = append(errs, ctxErr)
 				break
 			}
 			continue
@@ -70,7 +71,8 @@ func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
 		restore.Stdin = strings.NewReader(strings.Join(lines, "\n"))
 		if err := restore.Run(); err != nil {
 			errs = append(errs, fmt.Errorf("failed to restore %s rules: %w", cmd, err))
-			if ctx.Err() != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				errs = append(errs, ctxErr)
 				break
 			}
 			continue
