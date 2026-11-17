@@ -87,6 +87,9 @@ type Snap struct {
 }
 
 func (s *Snap) StartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
+	if err := snap.ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
+		return err
+	}
 	if len(s.StartServicesCalledWith) == 0 {
 		s.StartServicesCalledWith = [][]string{names}
 	} else {
@@ -111,6 +114,9 @@ func (s *Snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 }
 
 func (s *Snap) RestartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
+	if err := snap.ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
+		return err
+	}
 	if len(s.RestartServicesCalledWith) == 0 {
 		s.RestartServicesCalledWith = [][]string{names}
 	} else {

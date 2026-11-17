@@ -143,16 +143,19 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 	}
 
 	kubeProxyEnabled := nodeConfig.Network.GetKubeProxyEnabled()
-	if kubeProxyEnabled {
-		if err := snaputil.MarkKubeProxyDisabled(c.snap, false); err != nil {
-			return fmt.Errorf("failed to clear kube-proxy disabled marker: %w", err)
+	if err := snap.WithKubeProxyStateLock(func() error {
+		if kubeProxyEnabled {
+			if err := snaputil.MarkKubeProxyDisabled(c.snap, false); err != nil {
+				return fmt.Errorf("failed to clear kube-proxy disabled marker: %w", err)
+			}
+			if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+				return c.snap.StartServices(ctx, []string{"kube-proxy"})
+			}); err != nil {
+				return fmt.Errorf("failed to start kube-proxy: %w", err)
+			}
+			return nil
 		}
-		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-			return c.snap.StartServices(ctx, []string{"kube-proxy"})
-		}); err != nil {
-			return fmt.Errorf("failed to start kube-proxy: %w", err)
-		}
-	} else {
+
 		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
 			return c.snap.StopServices(ctx, []string{"kube-proxy"})
 		}); err != nil {
@@ -174,8 +177,10 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 				return fmt.Errorf("failed to mark kube-proxy as disabled: %w", err)
 			}
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
-
 	if err := updateKubeProxyEnabled(ctx, kubeProxyEnabled); err != nil {
 		return fmt.Errorf("failed to update kube-proxy enabled state: %w", err)
 	}

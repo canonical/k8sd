@@ -164,8 +164,10 @@ func refreshCertsUpdateWorker(s mctypes.State, r *http.Request, snap snap.Snap) 
 			return fmt.Errorf("failed to restart kubelet: %w", err)
 		}
 
-		if err := snap.RestartServices(ctx, []string{"kube-proxy"}); err != nil {
-			return fmt.Errorf("failed to restart kube-proxy: %w", err)
+		if clusterConfig.Network.GetKubeProxyEnabled() {
+			if err := snap.RestartServices(ctx, []string{"kube-proxy"}); err != nil {
+				return fmt.Errorf("failed to restart kube-proxy: %w", err)
+			}
 		}
 		return nil
 	}

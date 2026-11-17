@@ -475,7 +475,7 @@ func refreshCertsRunWorker(s mctypes.State, r *http.Request, snap snap.Snap) mct
 	// proxy connection and cause missed responses in the proxy side.
 	restartFn := func(ctx context.Context) error {
 		restartKubelet := slices.Contains(certsToRefresh, apiv2.CertificateKubelet) || slices.Contains(certsToRefresh, apiv2.CertificateKubeletClient)
-		restartProxy := slices.Contains(certsToRefresh, apiv2.CertificateProxyClient)
+		restartProxy := slices.Contains(certsToRefresh, apiv2.CertificateProxyClient) && clusterConfig.Network.GetKubeProxyEnabled()
 
 		if restartKubelet {
 			if err := snap.RestartServices(ctx, []string{"kubelet"}); err != nil {

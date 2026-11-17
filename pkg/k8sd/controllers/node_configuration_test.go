@@ -738,5 +738,16 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 			g.Fail("Timed out waiting for reconcile")
 		}
 		g.Expect(cleanupCh).ToNot(Receive())
+
+		// Restarting kube-proxy clears the disabled marker so the next reconcile cleans up rules again.
+		g.Expect(s.RestartServices(ctx, []string{"kube-proxy"})).To(Succeed())
+		w.Modify(disableCM)
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for post-restart reconcile")
+		}
+		g.Expect(cleanupCh).To(Receive())
 	})
 }

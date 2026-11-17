@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/canonical/k8sd/pkg/client/etcd"
@@ -28,8 +29,35 @@ import (
 )
 
 const (
-	ContainerdBaseDir = ".containerd-base-dir"
+	ContainerdBaseDir         = ".containerd-base-dir"
+	KubeProxyDisabledLockFile = "kube-proxy-disabled"
 )
+
+var kubeProxyStateMu sync.Mutex
+
+// WithKubeProxyStateLock serializes kube-proxy enable/disable transitions with background service restarts.
+func WithKubeProxyStateLock(fn func() error) error {
+	kubeProxyStateMu.Lock()
+	defer kubeProxyStateMu.Unlock()
+	return fn()
+}
+
+// ClearKubeProxyDisabledIfTargeted removes the disabled marker when kube-proxy is started or restarted.
+func ClearKubeProxyDisabledIfTargeted(lockFilesDir string, names []string) error {
+	if lockFilesDir == "" {
+		return nil
+	}
+	for _, name := range names {
+		if serviceName(name) == "k8s.kube-proxy" {
+			fname := filepath.Join(lockFilesDir, KubeProxyDisabledLockFile)
+			if err := os.Remove(fname); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("failed to clear kube-proxy disabled marker: %w", err)
+			}
+			return nil
+		}
+	}
+	return nil
+}
 
 type SnapOpts struct {
 	SnapInstanceName  string
@@ -86,6 +114,9 @@ func (s *snap) buildServiceCommand(action string, names []string, extraSnapArgs 
 // StartServices starts k8s services. The names can be either prefixed or not.
 func (s *snap) StartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
 	log.FromContext(ctx).V(1).WithCallDepth(1).Info("Starting services", "services", names)
+	if err := ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
+		return err
+	}
 	extraSnapArgs = append([]string{"--enable"}, extraSnapArgs...)
 	cmd := s.buildServiceCommand("start", names, extraSnapArgs...)
 	return s.runCommand(ctx, cmd)
@@ -102,6 +133,9 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 // RestartServices restarts k8s services. The names can be either prefixed or not.
 func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
 	log.FromContext(ctx).V(1).WithCallDepth(1).Info("Restarting services", "services", names)
+	if err := ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
+		return err
+	}
 	cmd := s.buildServiceCommand("restart", names, extraSnapArgs...)
 	return s.runCommand(ctx, cmd)
 }

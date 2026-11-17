@@ -39,7 +39,7 @@ func MarkAsWorkerNode(snap snap.Snap, mark bool) error {
 }
 
 // KubeProxyDisabledLockFile is the node-local marker recording that kube-proxy has been stopped and its rules cleaned up.
-const KubeProxyDisabledLockFile = "kube-proxy-disabled"
+const KubeProxyDisabledLockFile = snap.KubeProxyDisabledLockFile
 
 // IsKubeProxyDisabled reports whether kube-proxy has been stopped and its rules cleaned up on this node.
 func IsKubeProxyDisabled(snap snap.Snap) (bool, error) {
