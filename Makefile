@@ -20,8 +20,21 @@ endif
 go.vet:
 	$(DQLITE_BUILD_SCRIPTS_DIR)/static-go-vet.sh ./...
 
+# Note: coverage.txt must remain raw and unfiltered because .github/workflows/tics.yaml consumes it.
 go.unit:
-	$(DQLITE_BUILD_SCRIPTS_DIR)/static-go-test.sh -v ./pkg/... ./cmd/... -coverprofile=coverage.txt --cover
+	$(DQLITE_BUILD_SCRIPTS_DIR)/static-go-test.sh -v ./pkg/... ./cmd/... -covermode=atomic -coverprofile=coverage.txt
+
+COVERAGE_BASE ?=
+go.coverage:
+	$(DQLITE_BUILD_SCRIPTS_DIR)/coverage.sh $(if $(COVERAGE_BASE),-b $(COVERAGE_BASE))
+
+coverage.filtered.txt: coverage.txt $(DQLITE_BUILD_SCRIPTS_DIR)/coverage.conf $(DQLITE_BUILD_SCRIPTS_DIR)/coverage.sh
+	COVERAGE_THRESHOLD=0 $(DQLITE_BUILD_SCRIPTS_DIR)/coverage.sh -o /dev/null
+
+go.coverage.html: coverage.filtered.txt
+	go tool cover -html=coverage.filtered.txt -o coverage.html
+
+.PHONY: go.coverage go.coverage.html
 
 go.doc: bin/static/k8s
 	bin/static/k8s generate-docs --output-dir $(DOCS_OUTPUT_DIR) --project-dir .

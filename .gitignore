@@ -4,6 +4,11 @@
 /hack/.build
 /hack/.deps
 coverage.txt
+coverage.filtered.txt
+coverage.breakdown.tsv
+coverage.md
+coverage.html
+.coverage-base/
 
 # Default output directory for generated documentation
 .docs/

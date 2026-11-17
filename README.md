@@ -72,6 +72,23 @@ Run unit tests with coverage:
 make go.unit
 ```
 
+Evaluate coverage and verify against the CI floor:
+
+```bash
+make go.coverage
+```
+
+Generate an HTML coverage report:
+
+```bash
+make go.coverage.html
+```
+
+#### Coverage policy
+
+- **Metric**: Isolated per-package unit coverage (without `-coverpkg`). Statements are attributed strictly to each package's own tests. Exclusions configured in `hack/coverage.conf` filter out test doubles, mocks, doc generation, and CLI entrypoint.
+- **Floor policy**: CI fails if total coverage drops below `COVERAGE_THRESHOLD` in `hack/coverage.conf`. PRs that raise coverage should bump this threshold to prevent regressions. CI posts a pull request comment showing total coverage and package deltas versus the base branch.
+
 Integration tests live in [k8s-snap](https://github.com/canonical/k8s-snap/tree/main/tests/integration).
 The [k8s-snap integration tests](.github/workflows/k8s-snap-integration.yaml) workflow builds the
 k8s-snap with the k8sd revision of a pull request and runs the k8s-snap pull request test suite

@@ -2,27 +2,38 @@ name: Go lint and unit tests
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
+      - 'release-*'
 
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
     permissions:
-      contents: read  # for actions/checkout to fetch code
-      pull-requests: write  # for marocchino/sticky-pull-request-comment to create or update PR comment
-      checks: write # for golangci/golangci-lint-action to checks to allow the action to annotate code in the PR.
+      contents: read # for actions/checkout to fetch code
+      pull-requests: write # for marocchino/sticky-pull-request-comment to post coverage report
+      checks: write # for golangci/golangci-lint-action to annotate code in the PR
+      actions: read # for gh run list and actions/download-artifact to fetch base coverage artifact
     name: Unit Tests & Code Quality
     runs-on: ubuntu-24.04
 
     steps:
       - name: Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: 'go.mod'
+          cache: false
 
       - name: go mod download
         run: go mod download
@@ -49,7 +60,80 @@ jobs:
       - name: go test
         # NOTE: there are a handful of tests checking/setting
         # root ownership so the tests must be run as root:
-        run: sudo make go.unit
+        run: |
+          sudo env "PATH=$PATH" "GOPATH=$(go env GOPATH)" "GOMODCACHE=$(go env GOMODCACHE)" "GOCACHE=$(go env GOCACHE)" make go.unit
+          sudo chown "$(id -u):$(id -g)" coverage.txt
+
+      - name: Find base branch coverage run
+        id: base
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          RUN_ID=$(gh run list --repo "$REPO" --workflow go.yaml --branch "$BASE_REF" --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download base coverage breakdown
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.base.outputs.run-id != ''
+        continue-on-error: true
+        with:
+          name: go-coverage-breakdown
+          path: .coverage-base
+          run-id: ${{ steps.base.outputs.run-id }}
+          github-token: ${{ github.token }}
+
+      - name: Check coverage and generate report
+        id: coverage
+        run: |
+          if [ -f .coverage-base/coverage.breakdown.tsv ]; then
+            make go.coverage COVERAGE_BASE=.coverage-base/coverage.breakdown.tsv
+          else
+            make go.coverage
+          fi
+
+      - name: Append coverage summary
+        if: ${{ !cancelled() && steps.coverage.outcome != 'skipped' }}
+        run: |
+          if [ -f coverage.md ]; then
+            cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Generate HTML coverage report
+        if: ${{ !cancelled() && steps.coverage.outcome != 'skipped' }}
+        run: |
+          if [ -f coverage.filtered.txt ]; then
+            make go.coverage.html
+          fi
+
+      - name: Upload coverage breakdown
+        if: ${{ !cancelled() && steps.coverage.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-coverage-breakdown
+          path: coverage.breakdown.tsv
+          retention-days: 90
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() && steps.coverage.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: go-coverage-report
+          path: |
+            coverage.txt
+            coverage.filtered.txt
+            coverage.html
+            coverage.md
+
+      - name: Post coverage comment
+        if: ${{ !cancelled() && steps.coverage.outcome != 'skipped' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: go-coverage
+          path: coverage.md
 
       - name: dqlite-for-golangci-lint
         run: |
@@ -67,16 +151,22 @@ jobs:
 
   test-binary:
     name: Binaries
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read # for actions/checkout to fetch code
 
     steps:
       - name: Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: 'go.mod'
+          cache: false
 
       - name: go mod download
         run: go mod download
