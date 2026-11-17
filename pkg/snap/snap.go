@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,6 +63,7 @@ type SnapOpts struct {
 	SnapInstanceName  string
 	SnapDir           string
 	SnapCommonDir     string
+	SnapRevision      string
 	SnapdSocketPath   string
 	RunCommand        func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
 	ContainerdBaseDir string
@@ -72,6 +74,7 @@ type snap struct {
 	snapDir           string
 	snapCommonDir     string
 	snapInstanceName  string
+	snapRevision      string
 	snapdSocketPath   string
 	runCommand        func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
 	containerdBaseDir string
@@ -88,6 +91,7 @@ func NewSnap(opts SnapOpts) *snap {
 		snapDir:          opts.SnapDir,
 		snapCommonDir:    opts.SnapCommonDir,
 		snapInstanceName: opts.SnapInstanceName,
+		snapRevision:     strings.TrimSpace(opts.SnapRevision),
 		snapdSocketPath:  opts.SnapdSocketPath,
 		runCommand:       runCommand,
 	}
@@ -550,6 +554,10 @@ func (s *snap) SnapctlSet(ctx context.Context, args ...string) error {
 }
 
 func (s *snap) Revision(ctx context.Context) (string, error) {
+	if s.snapRevision != "" {
+		return s.snapRevision, nil
+	}
+
 	client, err := s.newSnapdClient()
 	if err != nil {
 		return "", err

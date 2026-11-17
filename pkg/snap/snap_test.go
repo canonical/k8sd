@@ -405,4 +405,43 @@ func TestSnap(t *testing.T) {
 			g.Expect(err).To(HaveOccurred())
 		})
 	})
+
+	t.Run("Revision", func(t *testing.T) {
+		t.Run("returns revision from SnapRevision", func(t *testing.T) {
+			g := NewWithT(t)
+
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapRevision: "42",
+			})
+
+			rev, err := s.Revision(context.Background())
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(rev).To(Equal("42"))
+		})
+
+		t.Run("trims whitespace from SnapRevision", func(t *testing.T) {
+			g := NewWithT(t)
+
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapRevision: "  1234\n",
+			})
+
+			rev, err := s.Revision(context.Background())
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(rev).To(Equal("1234"))
+		})
+
+		t.Run("falls back to snapd when SnapRevision is empty", func(t *testing.T) {
+			g := NewWithT(t)
+
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapRevision:     "",
+				SnapdSocketPath:  filepath.Join(t.TempDir(), "missing.sock"),
+				SnapInstanceName: "nonexistent-snap-name-xyz",
+			})
+
+			_, err := s.Revision(context.Background())
+			g.Expect(err).To(HaveOccurred())
+		})
+	})
 }
