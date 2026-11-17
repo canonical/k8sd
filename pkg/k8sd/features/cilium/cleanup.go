@@ -70,6 +70,9 @@ func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
 		restore := exec.CommandContext(ctx, fmt.Sprintf("%s-restore", cmd))
 		restore.Stdin = strings.NewReader(strings.Join(lines, "\n"))
 		if err := restore.Run(); err != nil {
+			if errors.Is(err, exec.ErrNotFound) {
+				continue
+			}
 			errs = append(errs, fmt.Errorf("failed to restore %s rules: %w", cmd, err))
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				errs = append(errs, ctxErr)

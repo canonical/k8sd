@@ -209,6 +209,46 @@ exit 1
 	g.Expect(strings.ToLower(string(restored))).NotTo(ContainSubstring("cilium"))
 }
 
+func TestCleanupNetwork_MissingRestoreBinarySkipped(t *testing.T) {
+	g := NewWithT(t)
+
+	tmpDir := t.TempDir()
+
+	// iptables-save outputs cilium rules, but iptables-restore is not installed
+	createFakeExe(t, tmpDir, "iptables-save", `#!/bin/sh
+/bin/cat << 'EOF'
+*filter
+:CILIUM_INPUT - [0:0]
+COMMIT
+EOF
+`)
+	// ip6tables-save and ip6tables-restore succeed
+	ip6RestoreLog := filepath.Join(tmpDir, "ip6tables-restore.log")
+	createFakeExe(t, tmpDir, "ip6tables-save", `#!/bin/sh
+/bin/cat << 'EOF'
+*filter
+:CILIUM_INPUT - [0:0]
+-A INPUT -j ACCEPT
+COMMIT
+EOF
+`)
+	createFakeExe(t, tmpDir, "ip6tables-restore", `#!/bin/sh
+/bin/cat - >> `+ip6RestoreLog+`
+exit 0
+`)
+
+	setupTestPath(t, tmpDir)
+
+	err := cilium.CleanupNetwork(context.Background(), nil)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	// Verify ip6tables-restore ran and cleaned rules
+	restored, err := os.ReadFile(ip6RestoreLog)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(string(restored)).To(ContainSubstring("-A INPUT -j ACCEPT"))
+	g.Expect(strings.ToLower(string(restored))).NotTo(ContainSubstring("cilium"))
+}
+
 func TestCleanupNetwork_ContextCancelled(t *testing.T) {
 	t.Run("PreCancelled", func(t *testing.T) {
 		g := NewWithT(t)
