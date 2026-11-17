@@ -4,3 +4,5 @@
 package api
 
 var RemoveNodeFromMicrocluster = removeNodeFromMicrocluster
+
+var RemoveNodeFromEtcd = removeNodeFromEtcd

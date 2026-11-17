@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	etcdclient "github.com/canonical/k8sd/pkg/client/etcd"
+	etcdmock "github.com/canonical/k8sd/pkg/client/etcd/mock"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/lxd/shared/revert"
@@ -149,6 +151,85 @@ func TestRegisterEtcdMemberReverter_Learner_WithEndpoints_ClientError(t *testing
 	// must have attempted to create the client (isLearner=true bypasses the
 	// endpoint count guard).
 	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when client creation fails")
+}
+
+// TestRegisterEtcdLearnerAddReverter tests the cleanup of a learner that
+// MemberAddAsLearner may have added although no attempt returned it.
+func TestRegisterEtcdLearnerAddReverter(t *testing.T) {
+	const peerURL = "https://10.0.0.2:2380"
+	endpoints := []string{"https://10.0.0.1:2379"}
+	voter := func() *etcdserverpb.Member {
+		return &etcdserverpb.Member{ID: 1, Name: "cp1", PeerURLs: []string{"https://10.0.0.1:2380"}}
+	}
+	orphan := func() *etcdserverpb.Member {
+		return &etcdserverpb.Member{ID: 7, PeerURLs: []string{peerURL}, IsLearner: true}
+	}
+	run := func(cluster *etcdmock.Cluster, add *etcdLearnerAdd) {
+		mockSnap := &snapmock.Snap{Mock: snapmock.Mock{EtcdClient: etcdmock.NewClient(cluster)}}
+		reverter := revert.New()
+		registerEtcdLearnerAddReverter(mockSnap, endpoints, peerURL, add, reverter)
+		reverter.Fail()
+	}
+
+	t.Run("AmbiguousAddCommitted", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		cluster := &etcdmock.Cluster{Members: []*etcdserverpb.Member{voter(), orphan()}}
+
+		run(cluster, &etcdLearnerAdd{ambiguous: true})
+
+		g.Expect(cluster.Member(peerURL)).To(BeNil())
+		g.Expect(cluster.Members).To(HaveLen(1))
+	})
+
+	t.Run("AmbiguousAddCommittedLate", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		// Not visible right after the error; it commits a few listings later.
+		cluster := &etcdmock.Cluster{Members: []*etcdserverpb.Member{voter()}, Late: []*etcdserverpb.Member{orphan()}, LateAfterLists: 3}
+
+		run(cluster, &etcdLearnerAdd{ambiguous: true})
+
+		g.Expect(cluster.Member(peerURL)).To(BeNil())
+		g.Expect(cluster.Members).To(HaveLen(1))
+	})
+
+	t.Run("NeverRemovesVoter", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		joiner := &etcdserverpb.Member{ID: 7, Name: "cp2", PeerURLs: []string{peerURL}}
+		cluster := &etcdmock.Cluster{Members: []*etcdserverpb.Member{voter(), joiner}}
+
+		run(cluster, &etcdLearnerAdd{ambiguous: true})
+
+		g.Expect(cluster.Members).To(ContainElement(joiner))
+		g.Expect(cluster.RemovedIDs).To(BeEmpty())
+	})
+
+	t.Run("RejectedAddRemovesStaleLearner", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		// The add was rejected because a learner that started before holds
+		// the peer URL; it is not adopted, so the failed join removes it.
+		stale := &etcdserverpb.Member{ID: 7, Name: "cp2", PeerURLs: []string{peerURL}, IsLearner: true}
+		cluster := &etcdmock.Cluster{Members: []*etcdserverpb.Member{voter(), stale}}
+
+		run(cluster, &etcdLearnerAdd{})
+
+		g.Expect(cluster.Member(peerURL)).To(BeNil())
+	})
+
+	t.Run("KnownLearnerLeftToEtcdReverter", func(t *testing.T) {
+		t.Parallel()
+		g := NewWithT(t)
+		learner := orphan()
+		cluster := &etcdmock.Cluster{Members: []*etcdserverpb.Member{voter(), learner}}
+
+		run(cluster, &etcdLearnerAdd{result: &etcdclient.AddLearnerResult{Member: learner}})
+
+		g.Expect(cluster.Members).To(ContainElement(learner))
+		g.Expect(cluster.Barriers).To(BeZero())
+	})
 }
 
 // TestRegisterK8sNodeDeletionReverter_FailDeletesNode ensures a failed join triggers Node deletion.
