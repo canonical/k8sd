@@ -83,7 +83,7 @@ type snap struct {
 // NewSnap creates a new interface with the K8s snap.
 // NewSnap accepts the $SNAP, $SNAP_COMMON, directories, and a number of options.
 func NewSnap(opts SnapOpts) *snap {
-	runCommand := utils.RunCommand
+	runCommand := utils.RunHostCommand
 	if opts.RunCommand != nil {
 		runCommand = opts.RunCommand
 	}
@@ -587,7 +587,7 @@ func (s *snap) PreInitChecks(ctx context.Context, config types.ClusterConfig, se
 	// NOTE(neoaggelos): in some environments the Kubernetes might hang when running for the first time
 	// This works around the issue by running them once during the install hook
 	for _, binary := range []string{"kube-apiserver", "kube-controller-manager", "kube-scheduler", "kube-proxy", "kubelet"} {
-		if err := s.runCommand(ctx, []string{filepath.Join(s.snapDir, "bin", binary), "--version"}, func(c *exec.Cmd) { c.Stdout = nil; c.Stderr = nil }); err != nil {
+		if err := s.runCommand(ctx, []string{filepath.Join(s.snapDir, "bin", binary), "--version"}, func(c *exec.Cmd) { c.Stdout = nil; c.Stderr = nil; c.Env = nil }); err != nil {
 			return fmt.Errorf("%q binary could not run: %w", binary, err)
 		}
 	}
