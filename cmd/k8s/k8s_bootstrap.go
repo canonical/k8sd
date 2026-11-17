@@ -54,13 +54,13 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			snapdClient, err := snapd.NewClient()
 			if err != nil {
-				cmd.PrintErrf("Error: failed to create snapd client: %v", err)
+				cmd.PrintErrf("Error: failed to create snapd client: %v\n", err)
 				env.Exit(1)
 				return
 			}
 			microk8sInfo, err := snapdClient.GetSnapInfo("microk8s")
 			if err != nil {
-				cmd.PrintErrf("Warning: failed to check if microk8s is installed: %v", err)
+				cmd.PrintErrf("Warning: failed to check if microk8s is installed: %v\n", err)
 			} else if microk8sInfo.StatusCode == 200 && microk8sInfo.HasInstallDate() {
 				cmd.PrintErrln("Error: microk8s snap is installed. Please remove it using the following command and try again:\n\n  sudo snap remove microk8s")
 				env.Exit(1)
@@ -166,7 +166,7 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			if err := verifyBootstrapConfig(bootstrapConfig); err != nil {
-				cmd.PrintErrf("Bootstrap config verification failed: %v", err)
+				cmd.PrintErrf("Bootstrap config verification failed: %v\n", err)
 				env.Exit(1)
 				return
 			}

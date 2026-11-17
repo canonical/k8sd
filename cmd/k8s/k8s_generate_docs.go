@@ -39,7 +39,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			err := docgen.MarkdownFromJsonStructToFile(apiv2.BootstrapConfig{}, outPath, opts.projectDir)
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to generate markdown documentation for bootstrap configuration\n\n")
-				cmd.PrintErrf("Error: %v", err)
+				cmd.PrintErrf("Error: %v\n", err)
 				env.Exit(1)
 				return
 			}
@@ -48,7 +48,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			err = docgen.MarkdownFromJsonStructToFile(apiv2.ControlPlaneJoinConfig{}, outPath, opts.projectDir)
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to generate markdown documentation for ctrl plane join configuration\n\n")
-				cmd.PrintErrf("Error: %v", err)
+				cmd.PrintErrf("Error: %v\n", err)
 				env.Exit(1)
 				return
 			}
@@ -57,7 +57,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			err = docgen.MarkdownFromJsonStructToFile(apiv2.WorkerJoinConfig{}, outPath, opts.projectDir)
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to generate markdown documentation for worker join configuration\n\n")
-				cmd.PrintErrf("Error: %v", err)
+				cmd.PrintErrf("Error: %v\n", err)
 				env.Exit(1)
 				return
 			}
@@ -66,7 +66,7 @@ func newGenerateDocsCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			err = docgen.MarkdownFromJsonStructToFile(apiv2.RefreshCertificatesUpdateRequest{}, outPath, opts.projectDir)
 			if err != nil {
 				cmd.PrintErrf("Error: Failed to generate markdown documentation for refresh certificates request\n\n")
-				cmd.PrintErrf("Error: %v", err)
+				cmd.PrintErrf("Error: %v\n", err)
 				env.Exit(1)
 				return
 			}

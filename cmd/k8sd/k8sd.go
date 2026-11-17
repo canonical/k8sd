@@ -69,13 +69,13 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 				ServiceArgsControllerCheckInterval:  rootCmdOpts.serviceArgsControllerCheckInterval,
 			})
 			if err != nil {
-				cmd.PrintErrf("Error: Failed to initialize k8sd: %v", err)
+				cmd.PrintErrf("Error: Failed to initialize k8sd: %v\n", err)
 				env.Exit(1)
 				return
 			}
 
 			if err := app.Run(cmd.Context(), nil); err != nil {
-				cmd.PrintErrf("Error: Failed to run k8sd: %v", err)
+				cmd.PrintErrf("Error: Failed to run k8sd: %v\n", err)
 				env.Exit(1)
 				return
 			}
