@@ -50,12 +50,14 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 				return nil, fmt.Errorf("failed to load RSA key: %w", err)
 			}
 			return key, nil
-		}, func(ctx context.Context, enabled bool) error {
+		}, func(ctx context.Context, enabled bool) (bool, error) {
+			var wasEnabled bool
 			if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 				cfg, err := database.GetClusterConfig(ctx, tx)
 				if err != nil {
 					return fmt.Errorf("failed to get cluster config: %w", err)
 				}
+				wasEnabled = cfg.Network.GetKubeProxyEnabled()
 				if cfg.Network.KubeProxyEnabled != nil && *cfg.Network.KubeProxyEnabled == enabled {
 					// no update needed
 					return nil
@@ -66,9 +68,9 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 				}
 				return nil
 			}); err != nil {
-				return fmt.Errorf("database transaction to update cluster configuration failed: %w", err)
+				return false, fmt.Errorf("database transaction to update cluster configuration failed: %w", err)
 			}
-			return nil
+			return wasEnabled, nil
 		})
 	}
 

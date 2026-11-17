@@ -19,23 +19,31 @@ type NodeConfigurationController struct {
 	snap      snap.Snap
 	waitReady func()
 	// reconciledCh is used to notify that the controller has finished its reconciliation loop.
-	reconciledCh  chan struct{}
-	watchDuration time.Duration
+	reconciledCh         chan struct{}
+	watchDuration        time.Duration
+	removeKubeProxyRules func(context.Context, snap.Snap)
 }
 
 func NewNodeConfigurationController(snap snap.Snap, waitReady func(),
 	watchDuration time.Duration,
 ) *NodeConfigurationController {
 	return &NodeConfigurationController{
-		snap:          snap,
-		waitReady:     waitReady,
-		reconciledCh:  make(chan struct{}, 1),
-		watchDuration: watchDuration,
+		snap:                 snap,
+		waitReady:            waitReady,
+		reconciledCh:         make(chan struct{}, 1),
+		watchDuration:        watchDuration,
+		removeKubeProxyRules: cleanup.RemoveKubeProxyRules,
 	}
 }
 
+// WithRemoveKubeProxyRules sets the function used to remove kube-proxy iptables rules.
+func (c *NodeConfigurationController) WithRemoveKubeProxyRules(fn func(context.Context, snap.Snap)) *NodeConfigurationController {
+	c.removeKubeProxyRules = fn
+	return c
+}
+
 func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(context.Context) (*rsa.PublicKey, error),
-	updateKubeProxyEnabled func(context.Context, bool) error,
+	updateKubeProxyEnabled func(context.Context, bool) (bool, error),
 ) {
 	ctx = log.NewContext(ctx, log.FromContext(ctx).WithValues("controller", "node-configuration"))
 	log := log.FromContext(ctx)
@@ -80,7 +88,7 @@ func (c *NodeConfigurationController) Run(ctx context.Context, getRSAKey func(co
 }
 
 func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *v1.ConfigMap, getRSAKey func(context.Context) (*rsa.PublicKey, error),
-	updateKubeProxyEnabled func(context.Context, bool) error,
+	updateKubeProxyEnabled func(context.Context, bool) (bool, error),
 ) error {
 	log := log.FromContext(ctx)
 
@@ -135,7 +143,8 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 	}
 
 	kubeProxyEnabled := nodeConfig.Network.GetKubeProxyEnabled()
-	if err := updateKubeProxyEnabled(ctx, kubeProxyEnabled); err != nil {
+	wasEnabled, err := updateKubeProxyEnabled(ctx, kubeProxyEnabled)
+	if err != nil {
 		return fmt.Errorf("failed to update kube-proxy enabled state: %w", err)
 	}
 
@@ -151,7 +160,13 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 		}); err != nil {
 			return fmt.Errorf("failed to stop kube-proxy: %w", err)
 		}
-		cleanup.RemoveKubeProxyRules(ctx, c.snap)
+		if wasEnabled {
+			removeKubeProxyRules := c.removeKubeProxyRules
+			if removeKubeProxyRules == nil {
+				removeKubeProxyRules = cleanup.RemoveKubeProxyRules
+			}
+			removeKubeProxyRules(ctx, c.snap)
+		}
 	}
 
 	return nil
