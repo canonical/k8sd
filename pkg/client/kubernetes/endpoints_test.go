@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/canonical/k8sd/pkg/utils"
@@ -11,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/utils/ptr"
 )
 
@@ -369,6 +371,45 @@ func TestHasReadyEndpoints(t *testing.T) {
 			expectedReady: false,
 		},
 		{
+			name: "unready endpointslice does not fall back to ready corev1 endpoints",
+			objects: []runtime.Object{
+				&discoveryv1.EndpointSlice{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "my-svc-abc",
+						Namespace: "default",
+						Labels: map[string]string{
+							discoveryv1.LabelServiceName: "my-svc",
+						},
+					},
+					AddressType: discoveryv1.AddressTypeIPv4,
+					Endpoints: []discoveryv1.Endpoint{
+						{
+							Addresses: []string{"10.0.0.1"},
+							Conditions: discoveryv1.EndpointConditions{
+								Ready: ptr.To(false),
+							},
+						},
+					},
+				},
+				&corev1.Endpoints{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "my-svc",
+						Namespace: "default",
+					},
+					Subsets: []corev1.EndpointSubset{
+						{
+							Addresses: []corev1.EndpointAddress{
+								{IP: "10.0.0.1"},
+							},
+						},
+					},
+				},
+			},
+			namespace:     "default",
+			serviceName:   "my-svc",
+			expectedReady: false,
+		},
+		{
 			name:          "cancelled context returns error",
 			objects:       []runtime.Object{},
 			namespace:     "default",
@@ -401,4 +442,30 @@ func TestHasReadyEndpoints(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("endpointslice list API error is propagated", func(t *testing.T) {
+		g := NewWithT(t)
+		clientset := fake.NewSimpleClientset()
+		clientset.PrependReactor("list", "endpointslices", func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, errors.New("forbidden")
+		})
+		client := &Client{Interface: clientset}
+
+		ready, err := client.HasReadyEndpoints(context.Background(), "default", "my-svc")
+		g.Expect(err).To(MatchError(ContainSubstring("failed to list endpoint slices")))
+		g.Expect(ready).To(BeFalse())
+	})
+
+	t.Run("endpoints get API error is propagated", func(t *testing.T) {
+		g := NewWithT(t)
+		clientset := fake.NewSimpleClientset()
+		clientset.PrependReactor("get", "endpoints", func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, errors.New("forbidden")
+		})
+		client := &Client{Interface: clientset}
+
+		ready, err := client.HasReadyEndpoints(context.Background(), "default", "my-svc")
+		g.Expect(err).To(MatchError(ContainSubstring("failed to get endpoints")))
+		g.Expect(ready).To(BeFalse())
+	})
 }

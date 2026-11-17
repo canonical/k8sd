@@ -297,16 +297,15 @@ func TestEnabled(t *testing.T) {
 		}()
 
 		// Wait until ChartMetalLB is applied and ensure ChartMetalLBLoadBalancer is not yet applied.
-		g.Eventually(func() int {
-			return len(helmM.ApplyCalledWith)
-		}, "3s", "100ms").Should(Equal(1))
-		g.Expect(helmM.ApplyCalledWith[0].Chart).To(Equal(ChartMetalLB))
+		g.Eventually(func() []helmmock.MockApplyArguments {
+			return helmM.Calls()
+		}, "3s", "100ms").Should(HaveLen(1))
+		g.Expect(helmM.Calls()[0].Chart).To(Equal(ChartMetalLB))
 
 		// Confirm it continues waiting while endpoints are unready.
-		g.Consistently(func() int {
-			return len(helmM.ApplyCalledWith)
-		}, "500ms", "100ms").Should(Equal(1))
-
+		g.Consistently(func() []helmmock.MockApplyArguments {
+			return helmM.Calls()
+		}, "500ms", "100ms").Should(HaveLen(1))
 		// Make webhook endpoint ready.
 		readySlice := fakeWebhookEndpointSlice()
 		_, err := clientset.DiscoveryV1().EndpointSlices(ChartMetalLB.Namespace).Update(
@@ -318,8 +317,9 @@ func TestEnabled(t *testing.T) {
 
 		// Now ApplyLoadBalancer should complete successfully and apply ChartMetalLBLoadBalancer.
 		g.Eventually(errCh, "3s", "100ms").Should(Receive(BeNil()))
-		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
-		g.Expect(helmM.ApplyCalledWith[1].Chart).To(Equal(ChartMetalLBLoadBalancer))
+		calls := helmM.Calls()
+		g.Expect(calls).To(HaveLen(2))
+		g.Expect(calls[1].Chart).To(Equal(ChartMetalLBLoadBalancer))
 	})
 	t.Run("WebhookEndpointsTimeout", func(t *testing.T) {
 		g := NewWithT(t)

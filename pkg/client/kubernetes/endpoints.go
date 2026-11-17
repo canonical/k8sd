@@ -6,6 +6,7 @@ import (
 
 	"github.com/canonical/k8sd/pkg/utils"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 )
@@ -41,7 +42,7 @@ func (c *Client) GetKubeAPIServerEndpoints(ctx context.Context) ([]string, error
 
 // HasReadyEndpoints checks whether the specified service in the namespace has at least one ready endpoint.
 // It checks EndpointSlices first (matching label kubernetes.io/service-name=<serviceName>),
-// falling back to Endpoints.
+// falling back to Endpoints only when EndpointSlices are unavailable or none exist for the service.
 func (c *Client) HasReadyEndpoints(ctx context.Context, namespace, serviceName string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
@@ -50,6 +51,9 @@ func (c *Client) HasReadyEndpoints(ctx context.Context, namespace, serviceName s
 	endpointSlices, err := c.DiscoveryV1().EndpointSlices(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", discoveryv1.LabelServiceName, serviceName),
 	})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return false, fmt.Errorf("failed to list endpoint slices for service %s/%s: %w", namespace, serviceName, err)
+	}
 	if err == nil && endpointSlices != nil && len(endpointSlices.Items) > 0 {
 		for _, slice := range endpointSlices.Items {
 			for _, ep := range slice.Endpoints {
@@ -59,14 +63,19 @@ func (c *Client) HasReadyEndpoints(ctx context.Context, namespace, serviceName s
 				}
 			}
 		}
+		return false, nil
 	}
 
 	endpoints, err := c.CoreV1().Endpoints(namespace).Get(ctx, serviceName, metav1.GetOptions{})
-	if err == nil && endpoints != nil {
-		for _, subset := range endpoints.Subsets {
-			if len(subset.Addresses) > 0 {
-				return true, nil
-			}
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to get endpoints for service %s/%s: %w", namespace, serviceName, err)
+	}
+	for _, subset := range endpoints.Subsets {
+		if len(subset.Addresses) > 0 {
+			return true, nil
 		}
 	}
 
