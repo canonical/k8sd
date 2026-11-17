@@ -1,9 +1,12 @@
 package snapd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -20,7 +23,21 @@ type SnapInfoResponse struct {
 
 // GetSnapInfo retrieves information about a snap from the snapd API.
 func (c *Client) GetSnapInfo(snap string) (*SnapInfoResponse, error) {
-	resp, err := c.client.Get(fmt.Sprintf("http://localhost/v2/snaps/%s", snap))
+	return c.GetSnapInfoWithContext(context.Background(), snap)
+}
+
+// GetSnapInfoWithContext retrieves information about a snap from the snapd API using ctx.
+func (c *Client) GetSnapInfoWithContext(ctx context.Context, snap string) (*SnapInfoResponse, error) {
+	if snap == "" {
+		return nil, fmt.Errorf("snap name must not be empty")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://localhost/v2/snaps/%s", url.PathEscape(snap)), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build snapd snap info request: %w", err)
+	}
+
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapd snap info: %w", err)
 	}

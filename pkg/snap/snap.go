@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/canonical/k8sd/pkg/client/etcd"
@@ -35,6 +34,7 @@ type SnapOpts struct {
 	SnapInstanceName  string
 	SnapDir           string
 	SnapCommonDir     string
+	SnapdSocketPath   string
 	RunCommand        func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
 	ContainerdBaseDir string
 }
@@ -44,6 +44,7 @@ type snap struct {
 	snapDir           string
 	snapCommonDir     string
 	snapInstanceName  string
+	snapdSocketPath   string
 	runCommand        func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
 	containerdBaseDir string
 }
@@ -59,6 +60,7 @@ func NewSnap(opts SnapOpts) *snap {
 		snapDir:          opts.SnapDir,
 		snapCommonDir:    opts.SnapCommonDir,
 		snapInstanceName: opts.SnapInstanceName,
+		snapdSocketPath:  opts.SnapdSocketPath,
 		runCommand:       runCommand,
 	}
 
@@ -74,36 +76,114 @@ func NewSnap(opts SnapOpts) *snap {
 	return s
 }
 
-// buildServiceCommand creates a snap command for managing services.
-func (s *snap) buildServiceCommand(action string, names []string, extraSnapArgs ...string) []string {
-	cmd := []string{"snap", action}
-	for _, name := range names {
-		cmd = append(cmd, serviceName(name))
+func (s *snap) newSnapdClient() (*snapd.Client, error) {
+	client, err := snapd.NewClientWithSocket(s.snapdSocketPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create snapd client: %w", err)
 	}
-	return append(cmd, extraSnapArgs...)
+	return client, nil
+}
+
+func qualifyServiceNames(names []string) []string {
+	qualified := make([]string, len(names))
+	for i, name := range names {
+		qualified[i] = serviceName(name)
+	}
+	return qualified
 }
 
 // StartServices starts k8s services. The names can be either prefixed or not.
 func (s *snap) StartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
 	log.FromContext(ctx).V(1).WithCallDepth(1).Info("Starting services", "services", names)
-	extraSnapArgs = append([]string{"--enable"}, extraSnapArgs...)
-	cmd := s.buildServiceCommand("start", names, extraSnapArgs...)
-	return s.runCommand(ctx, cmd)
+	opts := snapd.StartOptions{Enable: true}
+	wait := true
+	for _, arg := range extraSnapArgs {
+		switch arg {
+		case "--enable":
+			opts.Enable = true
+		case "--no-wait":
+			wait = false
+		default:
+			return fmt.Errorf("unsupported snap start argument %q", arg)
+		}
+	}
+
+	client, err := s.newSnapdClient()
+	if err != nil {
+		return err
+	}
+
+	changeID, err := client.StartServices(ctx, qualifyServiceNames(names), opts)
+	if err != nil {
+		return fmt.Errorf("failed to start services %v: %w", names, err)
+	}
+	if !wait {
+		return nil
+	}
+	return client.WaitChange(ctx, changeID)
 }
 
 // StopServices stops k8s services. The names can be either prefixed or not.
 func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
 	log.FromContext(ctx).V(1).WithCallDepth(1).Info("Stopping services", "services", names)
-	extraSnapArgs = append([]string{"--disable"}, extraSnapArgs...)
-	cmd := s.buildServiceCommand("stop", names, extraSnapArgs...)
-	return s.runCommand(ctx, cmd)
+
+	opts := snapd.StopOptions{Disable: true}
+	wait := true
+	for _, arg := range extraSnapArgs {
+		switch arg {
+		case "--disable":
+			opts.Disable = true
+		case "--no-wait":
+			wait = false
+		default:
+			return fmt.Errorf("unsupported snap stop argument %q", arg)
+		}
+	}
+
+	client, err := s.newSnapdClient()
+	if err != nil {
+		return err
+	}
+
+	changeID, err := client.StopServices(ctx, qualifyServiceNames(names), opts)
+	if err != nil {
+		return fmt.Errorf("failed to stop services %v: %w", names, err)
+	}
+	if !wait {
+		return nil
+	}
+	return client.WaitChange(ctx, changeID)
 }
 
 // RestartServices restarts k8s services. The names can be either prefixed or not.
 func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
 	log.FromContext(ctx).V(1).WithCallDepth(1).Info("Restarting services", "services", names)
-	cmd := s.buildServiceCommand("restart", names, extraSnapArgs...)
-	return s.runCommand(ctx, cmd)
+	var opts snapd.RestartOptions
+	wait := true
+	for _, arg := range extraSnapArgs {
+		switch arg {
+		case "--reload":
+			opts.Reload = true
+		case "--no-wait":
+			wait = false
+		default:
+			return fmt.Errorf("unsupported snap restart argument %q", arg)
+		}
+	}
+
+	client, err := s.newSnapdClient()
+	if err != nil {
+		return err
+	}
+
+	changeID, err := client.RestartServices(ctx, qualifyServiceNames(names), opts)
+	if err != nil {
+		return fmt.Errorf("failed to restart services %v: %w", names, err)
+	}
+	if !wait {
+		return nil
+	}
+	return client.WaitChange(ctx, changeID)
 }
 
 // Refresh refreshes the snap to a different track, revision or custom snap.
@@ -112,16 +192,29 @@ func (s *snap) Refresh(ctx context.Context, to types.RefreshOpts) (string, error
 		return "", fmt.Errorf("refresh operation not available on strictly confined deployments")
 	}
 
-	var out []byte
-	var err error
+	client, err := s.newSnapdClient()
+	if err != nil {
+		return "", err
+	}
 
+	var changeID string
 	switch {
 	case to.Channel != "":
-		out, err = exec.CommandContext(ctx, "snap", "refresh", s.snapInstanceName, "--amend", "--channel", to.Channel, "--no-wait").Output()
+		changeID, err = client.Refresh(ctx, s.snapInstanceName, snapd.RefreshOptions{
+			Channel: to.Channel,
+			Amend:   true,
+		})
 	case to.Revision != "":
-		out, err = exec.CommandContext(ctx, "snap", "refresh", s.snapInstanceName, "--amend", "--revision", to.Revision, "--no-wait").Output()
+		changeID, err = client.Refresh(ctx, s.snapInstanceName, snapd.RefreshOptions{
+			Revision: to.Revision,
+			Amend:    true,
+		})
 	case to.LocalPath != "":
-		out, err = exec.CommandContext(ctx, "snap", "install", to.LocalPath, "--classic", "--dangerous", "--name", s.snapInstanceName, "--no-wait").Output()
+		changeID, err = client.InstallPath(ctx, to.LocalPath, snapd.InstallPathOptions{
+			Name:      s.snapInstanceName,
+			Classic:   true,
+			Dangerous: true,
+		})
 	default:
 		return "", fmt.Errorf("empty refresh options")
 	}
@@ -129,8 +222,6 @@ func (s *snap) Refresh(ctx context.Context, to types.RefreshOpts) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to refresh snap: %w", err)
 	}
-
-	changeID := strings.TrimSpace(string(out))
 
 	return changeID, nil
 }
@@ -141,12 +232,12 @@ func (s *snap) RefreshStatus(ctx context.Context, changeID string) (*types.Refre
 		return nil, fmt.Errorf("refresh status operation not available on strictly confined deployments")
 	}
 
-	client, err := snapd.NewClient()
+	client, err := s.newSnapdClient()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create snapd client: %w", err)
+		return nil, err
 	}
 
-	status, err := client.GetRefreshStatus(changeID)
+	status, err := client.GetRefreshStatusWithContext(ctx, changeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get snapd refresh status: %w", err)
 	}
@@ -423,12 +514,12 @@ func (s *snap) SnapctlSet(ctx context.Context, args ...string) error {
 }
 
 func (s *snap) Revision(ctx context.Context) (string, error) {
-	client, err := snapd.NewClient()
+	client, err := s.newSnapdClient()
 	if err != nil {
-		return "", fmt.Errorf("failed to create snapd client: %w", err)
+		return "", err
 	}
 
-	snap, err := client.GetSnapInfo(s.snapInstanceName)
+	snap, err := client.GetSnapInfoWithContext(ctx, s.snapInstanceName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get snap info: %w", err)
 	}
