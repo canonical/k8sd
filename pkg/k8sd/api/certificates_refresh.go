@@ -484,7 +484,7 @@ func refreshCertsRunWorker(s mctypes.State, r *http.Request, snap snap.Snap) mct
 		}
 
 		if restartProxy {
-			if err := snap.RestartServices(ctx, []string{"kube-proxy"}); err != nil {
+			if err := snaputil.RestartKubeProxyIfEnabled(ctx, snap); err != nil {
 				return fmt.Errorf("failed to restart kube-proxy: %w", err)
 			}
 		}

@@ -48,41 +48,52 @@ func ControlPlaneServices() []string { return append([]string(nil), controlPlane
 
 // RestartControlPlaneServices restarts the control plane services.
 // RestartControlPlaneServices will return on the first failing service.
-func RestartControlPlaneServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
-	svc := ControlPlaneServices()
-	if !cfg.Network.GetKubeProxyEnabled() {
-		svc = removeElement(ControlPlaneServices(), "kube-proxy")
-	}
-	if err := snap.RestartServices(ctx, svc, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to restart service %v: %w", svc, err)
-	}
-	return nil
+func RestartControlPlaneServices(ctx context.Context, s snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	return snap.WithKubeProxyStateLock(func() error {
+		svc := ControlPlaneServices()
+		if !cfg.Network.GetKubeProxyEnabled() {
+			svc = removeElement(ControlPlaneServices(), "kube-proxy")
+		} else {
+			disabled, err := IsKubeProxyDisabled(s)
+			if err == nil && disabled {
+				svc = removeElement(svc, "kube-proxy")
+			}
+		}
+		if err := s.RestartServices(ctx, svc, extraSnapArgs...); err != nil {
+			return fmt.Errorf("failed to restart service %v: %w", svc, err)
+		}
+		return nil
+	})
 }
 
 // StartWorkerServices starts the worker services.
 // StartWorkerServices will return on the first failing service.
-func StartWorkerServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
-	svc := WorkerServices()
-	if !cfg.Network.GetKubeProxyEnabled() {
-		svc = removeElement(WorkerServices(), "kube-proxy")
-	}
-	if err := snap.StartServices(ctx, svc, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to start service %v: %w", svc, err)
-	}
-	return nil
+func StartWorkerServices(ctx context.Context, s snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	return snap.WithKubeProxyStateLock(func() error {
+		svc := WorkerServices()
+		if !cfg.Network.GetKubeProxyEnabled() {
+			svc = removeElement(WorkerServices(), "kube-proxy")
+		}
+		if err := s.StartServices(ctx, svc, extraSnapArgs...); err != nil {
+			return fmt.Errorf("failed to start service %v: %w", svc, err)
+		}
+		return nil
+	})
 }
 
 // StartControlPlaneServices starts the control plane services.
 // StartControlPlaneServices will return on the first failing service.
-func StartControlPlaneServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
-	svc := ControlPlaneServices()
-	if !cfg.Network.GetKubeProxyEnabled() {
-		svc = removeElement(ControlPlaneServices(), "kube-proxy")
-	}
-	if err := snap.StartServices(ctx, svc, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to start service %v: %w", svc, err)
-	}
-	return nil
+func StartControlPlaneServices(ctx context.Context, s snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	return snap.WithKubeProxyStateLock(func() error {
+		svc := ControlPlaneServices()
+		if !cfg.Network.GetKubeProxyEnabled() {
+			svc = removeElement(ControlPlaneServices(), "kube-proxy")
+		}
+		if err := s.StartServices(ctx, svc, extraSnapArgs...); err != nil {
+			return fmt.Errorf("failed to start service %v: %w", svc, err)
+		}
+		return nil
+	})
 }
 
 // StartEtcdServices starts the etcd datastore service.

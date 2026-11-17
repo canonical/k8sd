@@ -1,6 +1,7 @@
 package snaputil
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -83,4 +84,19 @@ func MarkKubeProxyDisabled(snap snap.Snap, disabled bool) error {
 	}
 
 	return nil
+}
+
+// RestartKubeProxyIfEnabled restarts kube-proxy under the kube-proxy state lock
+// only when kube-proxy is not marked disabled on this node.
+func RestartKubeProxyIfEnabled(ctx context.Context, s snap.Snap, extraArgs ...string) error {
+	return snap.WithKubeProxyStateLock(func() error {
+		disabled, err := IsKubeProxyDisabled(s)
+		if err != nil {
+			return fmt.Errorf("failed to check kube-proxy disabled state: %w", err)
+		}
+		if disabled {
+			return nil
+		}
+		return s.RestartServices(ctx, []string{"kube-proxy"}, extraArgs...)
+	})
 }
