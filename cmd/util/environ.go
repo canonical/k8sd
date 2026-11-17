@@ -43,6 +43,7 @@ func DefaultExecutionEnvironment() ExecutionEnvironment {
 			SnapDir:           os.Getenv("SNAP"),
 			SnapCommonDir:     os.Getenv("SNAP_COMMON"),
 			SnapInstanceName:  os.Getenv("SNAP_INSTANCE_NAME"),
+			SnapRevision:      os.Getenv("SNAP_REVISION"),
 			ContainerdBaseDir: containerdBaseDir,
 		})
 	case "pebble":
