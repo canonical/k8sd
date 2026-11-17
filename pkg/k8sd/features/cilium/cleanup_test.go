@@ -25,7 +25,7 @@ func createFakeExe(t *testing.T, dir, name, script string) string {
 
 func setupTestPath(t *testing.T, tmpDir string) {
 	t.Helper()
-	t.Setenv("PATH", tmpDir+":/bin:/usr/bin")
+	t.Setenv("PATH", tmpDir)
 }
 
 func TestCleanupNetwork_Success(t *testing.T) {
