@@ -666,7 +666,7 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(disabled).To(BeFalse())
 
-		// Allow cleanup to succeed on the next reconcile andVerify both cleanup and DB update run.
+		// Allow cleanup to succeed on the next reconcile and verify both cleanup and DB update run.
 		mu.Lock()
 		failCleanup = false
 		mu.Unlock()

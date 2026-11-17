@@ -93,7 +93,11 @@ func (s *pebble) Refresh(ctx context.Context, to types.RefreshOpts) (string, err
 				log.FromContext(ctx).Error(err, "Warning: failed to update the kubernetes binary")
 			}
 			// restart services if already running.
-			services := []string{"kube-apiserver", "kubelet", "kube-controller-manager", "kube-proxy", "kube-scheduler"}
+			services := []string{"kube-apiserver", "kubelet", "kube-controller-manager", "kube-scheduler"}
+			disabledMarkerExists, err := utils.FileExists(filepath.Join(s.LockFilesDir(), "kube-proxy-disabled"))
+			if err != nil || !disabledMarkerExists {
+				services = append(services, "kube-proxy")
+			}
 			if err := s.RestartServices(ctx, services); err != nil {
 				log.FromContext(ctx).WithValues("services", services).Error(err, "Warning: failed to restart after updating kubernetes binary")
 			}
