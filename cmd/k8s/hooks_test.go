@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	cmdutil "github.com/canonical/k8sd/cmd/util"
@@ -59,12 +60,10 @@ func TestHookCheckLXDStderrNewline(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetErr(stderr)
 
-	hook := hookCheckLXD()
+	hook := hookCheckLXDWith(func() (bool, error) {
+		return true, errors.New("permission denied")
+	})
 	hook(cmd, nil)
 
-	if stderr.Len() > 0 {
-		g.Expect(stderr.String()).To(HaveSuffix("\n"))
-		g.Expect(stderr.String()).To(Not(ContainSubstring("cannnot")))
-		g.Expect(stderr.String()).To(Not(ContainSubstring("runing")))
-	}
+	g.Expect(stderr.String()).To(Equal("Failed to check if running inside LXD container: permission denied\n"))
 }

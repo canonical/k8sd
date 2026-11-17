@@ -40,8 +40,12 @@ func ValidateRootOwnership(path string) (err error) {
 
 // InLXDContainer checks if k8s runs in a lxd container.
 func InLXDContainer() (isLXD bool, err error) {
+	return inLXDContainer(os.ReadFile)
+}
+
+func inLXDContainer(readFile func(string) ([]byte, error)) (isLXD bool, err error) {
 	initialProcessEnvironmentVariables := "/proc/1/environ"
-	content, err := os.ReadFile(initialProcessEnvironmentVariables)
+	content, err := readFile(initialProcessEnvironmentVariables)
 	if err != nil {
 		// if the permission to file is missing we still want to display info about lxd
 		if os.IsPermission(err) {
