@@ -276,6 +276,9 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 	if err := snaputil.MarkAsWorkerNode(snap, true); err != nil {
 		return fmt.Errorf("failed to mark node as worker: %w", err)
 	}
+	if err := snaputil.MarkKubeProxyDisabled(snap, !cfg.Network.GetKubeProxyEnabled()); err != nil {
+		return fmt.Errorf("failed to record kube-proxy state: %w", err)
+	}
 
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
@@ -519,6 +522,10 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 
 	if err := snapdconfig.SetSnapdFromK8sd(ctx, cfg.ToUserFacing(), snap); err != nil {
 		return fmt.Errorf("failed to set snapd configuration from k8sd: %w", err)
+	}
+
+	if err := snaputil.MarkKubeProxyDisabled(snap, !cfg.Network.GetKubeProxyEnabled()); err != nil {
+		return fmt.Errorf("failed to record kube-proxy state: %w", err)
 	}
 
 	// Start services

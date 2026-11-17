@@ -381,6 +381,10 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
+	if err := snaputil.MarkKubeProxyDisabled(snap, !cfg.Network.GetKubeProxyEnabled()); err != nil {
+		return fmt.Errorf("failed to record kube-proxy state: %w", err)
+	}
+
 	log.Info("Starting control-plane services")
 	if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
 		if err := startControlPlaneServices(ctx, snap, cfg); err != nil {
