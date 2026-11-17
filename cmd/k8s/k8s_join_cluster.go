@@ -139,7 +139,7 @@ func newJoinClusterCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			if err := verifyJoinConfig(joinClusterConfig, token); err != nil {
-				cmd.PrintErrf("Join cluster config verification failed: %v", err)
+				cmd.PrintErrf("Join cluster config verification failed: %v\n", err)
 				env.Exit(1)
 				return
 			}

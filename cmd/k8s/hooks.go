@@ -28,7 +28,7 @@ func hookInitializeFormatter(env cmdutil.ExecutionEnvironment, format *string) f
 		var err error
 		outputFormatter, err = cmdutil.NewFormatter(*format, cmd.OutOrStdout())
 		if err != nil {
-			cmd.PrintErrf("Error: Unknown --output-format %q. It must be one of %q (default), %q or %q.", *format, "plain", "json", "yaml")
+			cmd.PrintErrf("Error: Unknown --output-format %q. It must be one of %q (default), %q or %q.\n", *format, "plain", "json", "yaml")
 			env.Exit(1)
 			return
 		}
@@ -43,7 +43,7 @@ func hookCheckLXD() func(*cobra.Command, []string) {
 		pathsOwnershipCheck := []string{"/sys", "/proc", "/dev/kmsg"}
 		inLXD, err := cmdutil.InLXDContainer()
 		if err != nil {
-			cmd.PrintErrf("Failed to check if running inside LXD container: %s", err.Error())
+			cmd.PrintErrf("Failed to check if running inside LXD container: %s\n", err.Error())
 			return
 		}
 		if inLXD {
