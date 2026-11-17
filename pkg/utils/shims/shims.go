@@ -32,13 +32,18 @@ func listAllSystemProcesses(ctx context.Context) (map[string]processInfo, error)
 	// output is a list of lines in the following format, one line for each running process:
 	// [pid] [ppid] [arg1 arg2 arg3 ...]
 	// [pid] [ppid] [arg1 arg2 arg3 ...]
-	stdout, err := exec.CommandContext(ctx, "bash", "-c", `ps -e -o pid=,ppid=,args=`).CombinedOutput()
+	stdout, err := exec.CommandContext(ctx, "ps", "-e", "-o", "pid=,ppid=,args=").CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute ps command (output=%q): %w", stdout, err)
 	}
 
+	return parseProcessList(string(stdout)), nil
+}
+
+// parseProcessList parses `ps -e -o pid=,ppid=,args=` output into a PID-keyed map.
+func parseProcessList(output string) map[string]processInfo {
 	result := map[string]processInfo{}
-	for _, line := range strings.Split(string(stdout), "\n") {
+	for _, line := range strings.Split(output, "\n") {
 		parts := strings.Fields(line)
 		if len(parts) < 3 {
 			continue
@@ -50,7 +55,7 @@ func listAllSystemProcesses(ctx context.Context) (map[string]processInfo, error)
 		}
 	}
 
-	return result, nil
+	return result
 }
 
 // makeShallowChildPIDs returns a shallow map of the direct children for each process.
