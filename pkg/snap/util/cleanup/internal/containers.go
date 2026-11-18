@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,44 +14,76 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/shims"
 )
 
+type processTarget struct {
+	pid       int
+	startTime uint64
+}
+
 var (
 	runningContainerdShimPIDs = shims.RunningContainerdShimPIDs
-	killProcessPID            = defaultKillProcessPID
+	killProcessTarget         = defaultKillProcessTarget
 	isProcessAlive            = defaultIsProcessAlive
+	readProcStat              = defaultReadProcessStat
 	containersPollInterval    = 100 * time.Millisecond
 	containersMaxWaitTimeout  = 5 * time.Second
 )
 
-func defaultKillProcessPID(pid int) error {
-	proc, err := os.FindProcess(pid)
+func defaultReadProcessStat(pid int) (state byte, startTime uint64, exists bool) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0, 0, false
+	}
+	content := string(data)
+	idx := strings.LastIndexByte(content, ')')
+	if idx == -1 || idx+1 >= len(content) {
+		return 0, 0, false
+	}
+	fields := strings.Fields(content[idx+1:])
+	if len(fields) < 20 {
+		return 0, 0, false
+	}
+	state = fields[0][0]
+	st, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return state, 0, true
+	}
+	return state, st, true
+}
+
+func defaultIsProcessAlive(target processTarget) bool {
+	state, startTime, exists := readProcStat(target.pid)
+	if !exists {
+		return false
+	}
+	// A zombie ('Z') or dead ('X') process has exited and released all namespaces/mounts.
+	if state == 'Z' || state == 'X' {
+		return false
+	}
+	// If the start time has changed, the PID has been recycled by another process.
+	if target.startTime != 0 && startTime != 0 && startTime != target.startTime {
+		return false
+	}
+	return true
+}
+
+func defaultKillProcessTarget(target processTarget) error {
+	if !isProcessAlive(target) {
+		return nil
+	}
+	proc, err := os.FindProcess(target.pid)
 	if err != nil {
 		return fmt.Errorf("failed to find process: %w", err)
 	}
 	return proc.Kill()
 }
 
-func defaultIsProcessAlive(pid int) bool {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = proc.Signal(syscall.Signal(0))
-	if err == nil {
-		return true
-	}
-	if errors.Is(err, syscall.ESRCH) || errors.Is(err, os.ErrProcessDone) {
-		return false
-	}
-	// On EPERM, process exists but belongs to another user.
-	return true
-}
-
 func RemoveContainers(ctx context.Context) {
 	removeContainers(
 		ctx,
 		runningContainerdShimPIDs,
-		killProcessPID,
+		killProcessTarget,
 		isProcessAlive,
+		readProcStat,
 		containersPollInterval,
 		containersMaxWaitTimeout,
 	)
@@ -60,8 +92,9 @@ func RemoveContainers(ctx context.Context) {
 func removeContainers(
 	ctx context.Context,
 	getPIDs func(context.Context) ([]string, error),
-	killPID func(int) error,
-	isAlive func(int) bool,
+	killTarget func(processTarget) error,
+	isAlive func(processTarget) bool,
+	getStat func(int) (byte, uint64, bool),
 	pollInterval time.Duration,
 	maxWaitTimeout time.Duration,
 ) {
@@ -70,7 +103,8 @@ func removeContainers(
 	waitCtx, cancel := context.WithTimeout(ctx, maxWaitTimeout)
 	defer cancel()
 
-	trackedPIDs := make(map[int]struct{})
+	trackedTargets := make(map[int]processTarget)
+	var order []int
 
 	for {
 		if waitCtx.Err() != nil {
@@ -82,30 +116,39 @@ func removeContainers(
 			if waitCtx.Err() == nil {
 				log.Error(err, "failed to get containerd shim PIDs")
 			}
+			if len(trackedTargets) == 0 {
+				return
+			}
+		} else {
+			// pids are returned in post-order: children before parent shim.
+			// Prepend newly discovered PIDs to preserve post-order so children are killed before parent shims.
+			var newPIDs []int
+			for _, pidStr := range pids {
+				intPid, err := strconv.Atoi(pidStr)
+				if err != nil {
+					log.Error(err, "failed to convert PID to integer", "pid", pidStr)
+					continue
+				}
+				if _, ok := trackedTargets[intPid]; !ok {
+					_, startTime, _ := getStat(intPid)
+					trackedTargets[intPid] = processTarget{pid: intPid, startTime: startTime}
+					newPIDs = append(newPIDs, intPid)
+				}
+			}
+			order = append(newPIDs, order...)
+		}
+
+		if len(pids) == 0 && len(trackedTargets) == 0 {
 			return
 		}
 
-		for _, pid := range pids {
-			intPid, err := strconv.Atoi(pid)
-			if err != nil {
-				log.Error(err, "failed to convert PID to integer", "pid", pid)
+		// Kill in post-order (children before parent shims)
+		for _, pid := range order {
+			target, ok := trackedTargets[pid]
+			if !ok {
 				continue
 			}
-			trackedPIDs[intPid] = struct{}{}
-		}
-
-		if len(pids) == 0 && len(trackedPIDs) == 0 {
-			return
-		}
-
-		pidsToKill := make([]int, 0, len(trackedPIDs))
-		for pid := range trackedPIDs {
-			pidsToKill = append(pidsToKill, pid)
-		}
-		slices.Sort(pidsToKill)
-
-		for _, pid := range pidsToKill {
-			if err := killPID(pid); err != nil {
+			if err := killTarget(target); err != nil {
 				if !errors.Is(err, os.ErrProcessDone) && !errors.Is(err, syscall.ESRCH) {
 					log.Error(err, "failed to kill containerd shim PID", "pid", pid)
 				}
@@ -121,10 +164,18 @@ func removeContainers(
 		}
 
 		// Prune processes that have exited after the wait.
-		for pid := range trackedPIDs {
-			if !isAlive(pid) {
-				delete(trackedPIDs, pid)
+		var remainingOrder []int
+		for _, pid := range order {
+			target, ok := trackedTargets[pid]
+			if !ok {
+				continue
+			}
+			if isAlive(target) {
+				remainingOrder = append(remainingOrder, pid)
+			} else {
+				delete(trackedTargets, pid)
 			}
 		}
+		order = remainingOrder
 	}
 }
