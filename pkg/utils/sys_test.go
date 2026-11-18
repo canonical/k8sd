@@ -128,6 +128,19 @@ func TestCleanHostEnviron(t *testing.T) {
 			},
 		},
 		{
+			name: "relative entries in REAL_PATH are dropped from the sanitized PATH",
+			input: []string{
+				"SNAP=/snap/k8s/current",
+				"REAL_PATH=/usr/bin:tools:.",
+				"PATH=/snap/k8s/current/bin:/usr/bin",
+			},
+			expected: []string{
+				"SNAP=/snap/k8s/current",
+				"REAL_PATH=/usr/bin:tools:.",
+				"PATH=/usr/bin",
+			},
+		},
+		{
 			name: "outside snap environment preserves LD_LIBRARY_PATH and PATH",
 			input: []string{
 				"LD_LIBRARY_PATH=/custom/lib",

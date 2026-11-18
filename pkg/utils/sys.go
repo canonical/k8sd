@@ -56,6 +56,11 @@ func stripSnapPaths(pathList, snapDir, snapLibPath string) string {
 		if _, ok := snapLibDirs[filepath.Clean(entry)]; ok {
 			continue
 		}
+		// Relative entries resolve against the working directory; a host
+		// utility spawning a child would inherit them, defeating sanitization.
+		if !filepath.IsAbs(entry) {
+			continue
+		}
 		kept = append(kept, entry)
 	}
 	return strings.Join(kept, string(os.PathListSeparator))
