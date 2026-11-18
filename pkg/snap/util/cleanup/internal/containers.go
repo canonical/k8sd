@@ -104,8 +104,10 @@ func defaultKillProcessTarget(target processTarget) error {
 	return proc.Kill()
 }
 
-func RemoveContainers(ctx context.Context) {
-	removeContainers(
+// RemoveContainers kills the k8s snap's container processes, waits for them to exit and returns
+// the network namespaces they were running in.
+func RemoveContainers(ctx context.Context) NetworkNamespaces {
+	return removeContainers(
 		ctx,
 		runningContainerdShimPIDs,
 		killProcessTarget,
@@ -124,8 +126,9 @@ func removeContainers(
 	getStat func(int) (byte, uint64, bool),
 	pollInterval time.Duration,
 	maxWaitTimeout time.Duration,
-) {
+) (netns NetworkNamespaces) {
 	log := log.FromContext(ctx)
+	netns = NetworkNamespaces{}
 
 	waitCtx, cancel := context.WithTimeout(ctx, maxWaitTimeout)
 	defer cancel()
@@ -163,6 +166,7 @@ func removeContainers(
 						continue
 					}
 					trackedTargets[intPid] = processTarget{pid: intPid, startTime: startTime}
+					netns.add(fmt.Sprintf("/proc/%d/ns/net", intPid))
 					newPIDs = append(newPIDs, intPid)
 				}
 			}

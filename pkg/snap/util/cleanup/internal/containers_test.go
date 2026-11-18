@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"slices"
+	"strconv"
 	"sync"
 	"syscall"
 	"testing"
@@ -631,4 +632,25 @@ func TestDefaultKillProcessTarget_RecycledPIDSkipped(t *testing.T) {
 	target := processTarget{pid: selfPid, startTime: 999999999}
 	err := defaultKillProcessTarget(target)
 	g.Expect(err).ToNot(HaveOccurred())
+}
+
+func TestRemoveContainers_ReturnsNetworkNamespaces(t *testing.T) {
+	g := NewWithT(t)
+
+	var calls int
+	mockGetPIDs := func(ctx context.Context) ([]string, error) {
+		calls++
+		if calls == 1 {
+			// The test process stands in for a container process; kill is mocked.
+			return []string{strconv.Itoa(os.Getpid())}, nil
+		}
+		return nil, nil
+	}
+	mockKill := func(target processTarget) error { return nil }
+	mockIsAlive := func(target processTarget) bool { return false }
+
+	netns := removeContainers(context.Background(), mockGetPIDs, mockKill, mockIsAlive, defaultMockStat, 10*time.Millisecond, 2*time.Second)
+
+	g.Expect(netns).To(HaveLen(1))
+	g.Expect(netns.contains("/proc/self/ns/net")).To(BeTrue())
 }

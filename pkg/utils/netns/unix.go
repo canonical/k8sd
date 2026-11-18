@@ -2,6 +2,7 @@ package netnsutils
 
 import (
 	"context"
+	"path/filepath"
 
 	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
 )
@@ -15,6 +16,10 @@ func (h UnixNetworkNamespaceManager) ForEachNetworkNamespace(ctx context.Context
 func (h UnixNetworkNamespaceManager) DeleteNetworkNamespace(ctx context.Context, namespace string) error {
 	mountHelper := mountutils.NewUnixMountHelper()
 	return deleteNetworkNamespace(ctx, mountHelper, "/run/netns", namespace)
+}
+
+func (h UnixNetworkNamespaceManager) Path(namespace string) string {
+	return filepath.Join("/run/netns", namespace)
 }
 
 func NewUnixNetworkNSHelper() NetworkNamespaceManager {

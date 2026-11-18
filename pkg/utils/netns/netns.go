@@ -14,6 +14,8 @@ import (
 type NetworkNamespaceManager interface {
 	ForEachNetworkNamespace(ctx context.Context, callback func(ctx context.Context, namespace string) error) error
 	DeleteNetworkNamespace(ctx context.Context, namespace string) error
+	// Path returns the path of the named network namespace.
+	Path(namespace string) string
 }
 
 func deleteNetworkNamespace(ctx context.Context, mountHelper mountutils.MountManager, netnsDir string, namespace string) error {
