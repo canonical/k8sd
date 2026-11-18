@@ -1,9 +1,6 @@
 DQLITE_BUILD_SCRIPTS_DIR ?= $(shell pwd)/hack
 GO_SOURCES = $(shell find . -name '*.go')
-LOCALBIN ?= $(shell pwd)/bin
 DOCS_OUTPUT_DIR ?= .docs
-$(LOCALBIN):
-	mkdir -p $(LOCALBIN)
 
 ## Development
 go.fmt:
