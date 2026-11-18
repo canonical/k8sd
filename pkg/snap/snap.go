@@ -46,15 +46,22 @@ type snap struct {
 	snapInstanceName  string
 	snapdSocketPath   string
 	runCommand        func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
+	runHostCommand    func(ctx context.Context, command []string, opts ...func(c *exec.Cmd)) error
 	containerdBaseDir string
 }
 
 // NewSnap creates a new interface with the K8s snap.
 // NewSnap accepts the $SNAP, $SNAP_COMMON, directories, and a number of options.
 func NewSnap(opts SnapOpts) *snap {
+	// runCommand keeps the snap environment and runs snap-internal binaries
+	// ($SNAP/bin/...). runHostCommand runs host binaries (snapctl) with a
+	// sanitized environment and is kept separate so future snap-internal calls
+	// do not need per-call environment overrides.
 	runCommand := utils.RunCommand
+	runHostCommand := utils.RunHostCommand
 	if opts.RunCommand != nil {
 		runCommand = opts.RunCommand
+		runHostCommand = opts.RunCommand
 	}
 	s := &snap{
 		snapDir:          opts.SnapDir,
@@ -62,6 +69,7 @@ func NewSnap(opts SnapOpts) *snap {
 		snapInstanceName: opts.SnapInstanceName,
 		snapdSocketPath:  opts.SnapdSocketPath,
 		runCommand:       runCommand,
+		runHostCommand:   runHostCommand,
 	}
 
 	containerdBaseDir := opts.ContainerdBaseDir
@@ -503,14 +511,14 @@ func (s *snap) K8sdClient(address string) (k8sd.Client, error) {
 
 func (s *snap) SnapctlGet(ctx context.Context, args ...string) ([]byte, error) {
 	var b bytes.Buffer
-	if err := s.runCommand(ctx, append([]string{"snapctl", "get"}, args...), func(c *exec.Cmd) { c.Stdout = &b }); err != nil {
+	if err := s.runHostCommand(ctx, append([]string{"snapctl", "get"}, args...), func(c *exec.Cmd) { c.Stdout = &b }); err != nil {
 		return nil, err
 	}
 	return b.Bytes(), nil
 }
 
 func (s *snap) SnapctlSet(ctx context.Context, args ...string) error {
-	return s.runCommand(ctx, append([]string{"snapctl", "set"}, args...))
+	return s.runHostCommand(ctx, append([]string{"snapctl", "set"}, args...))
 }
 
 func (s *snap) Revision(ctx context.Context) (string, error) {
