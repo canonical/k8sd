@@ -23,7 +23,6 @@ var reBinaryName = reBinaryCmd
 var (
 	osReadlink    = os.Readlink
 	listProcesses = listAllSystemProcesses
-	parentPID     = readParentPID
 )
 
 // RunningContainerdShimPIDs returns a list of all the pids on the system that have been started by a containerd shim.
@@ -34,48 +33,6 @@ func RunningContainerdShimPIDs(ctx context.Context) ([]string, error) {
 	}
 
 	return findAllChildren(findShimPIDs(procs), makeShallowChildPIDs(procs)), nil
-}
-
-// IsSnapOwned reports whether pid is currently a k8s snap containerd shim or one of its descendants.
-// It inspects the live process tree, so callers that pin the process first (e.g. with a pidfd)
-// can use it to rule out PID reuse since the PIDs were listed.
-func IsSnapOwned(pid int) bool {
-	for pid > 1 {
-		if exe, err := osReadlink(fmt.Sprintf("/proc/%d/exe", pid)); err == nil && isShimExe(exe) {
-			return true
-		}
-		ppid, err := parentPID(pid)
-		if err != nil {
-			return false
-		}
-		pid = ppid
-	}
-	return false
-}
-
-// readParentPID returns the parent PID from /proc/<pid>/stat.
-func readParentPID(pid int) (int, error) {
-	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return 0, err
-	}
-	// The command name in field 2 may contain spaces and parentheses, so parse after the last ')'.
-	// The remaining fields are "<state> <ppid> ...".
-	i := strings.LastIndexByte(string(stat), ')')
-	if i < 0 {
-		return 0, fmt.Errorf("malformed /proc/%d/stat", pid)
-	}
-	fields := strings.Fields(string(stat[i+1:]))
-	if len(fields) < 2 {
-		return 0, fmt.Errorf("malformed /proc/%d/stat", pid)
-	}
-	return strconv.Atoi(fields[1])
-}
-
-// isShimExe reports whether exe is the k8s snap's containerd-shim-runc-v2. The binary of a
-// refreshed or removed snap revision is reported with a " (deleted)" suffix.
-func isShimExe(exe string) bool {
-	return reBinaryExe.MatchString(strings.TrimSuffix(exe, " (deleted)"))
 }
 
 type processInfo struct {
@@ -169,7 +126,8 @@ func findShimPIDsWithReadlink(procs map[string]processInfo, readlink func(string
 			continue
 		}
 
-		if isShimExe(exe) {
+		exe = strings.TrimSuffix(exe, " (deleted)")
+		if reBinaryExe.MatchString(exe) {
 			result = append(result, pid)
 		}
 	}

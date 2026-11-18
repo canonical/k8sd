@@ -22,7 +22,7 @@ func TestKillProcessesWaitsForExit(t *testing.T) {
 		_ = cmd.Wait()
 	})
 
-	killProcesses(context.Background(), []int{cmd.Process.Pid}, 5*time.Second)
+	netns := killProcesses(context.Background(), []int{cmd.Process.Pid}, 5*time.Second)
 
 	// The process has already exited when killProcesses returns. It stays a zombie until
 	// this test, its parent, reaps it.
@@ -30,4 +30,7 @@ func TestKillProcessesWaitsForExit(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	state := strings.Fields(string(stat[strings.LastIndexByte(string(stat), ')')+1:]))[0]
 	g.Expect(state).To(Equal("Z"))
+
+	// The process ran in this test's network namespace.
+	g.Expect(netns.contains("/proc/self/ns/net")).To(BeTrue())
 }

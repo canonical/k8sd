@@ -1,7 +1,6 @@
 package cilium
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,19 +12,26 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
-const ciliumPidFile = "/var/run/cilium/cilium.pid"
-
 func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
+	_ = os.Remove("/var/run/cilium/cilium.pid")
+
 	var errs []error
 
-	if err := cleanupCiliumState(ctx, snap); err != nil {
-		errs = append(errs, err)
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return errors.Join(append(errs, ctxErr)...)
+	if snap != nil {
+		if cniBinDir := snap.CNIBinDir(); cniBinDir != "" {
+			ciliumDbg := filepath.Join(cniBinDir, "cilium-dbg")
+			if _, err := os.Stat(ciliumDbg); err == nil {
+				if err := exec.CommandContext(ctx, ciliumDbg, "post-uninstall-cleanup", "--all-state", "--force").Run(); err != nil {
+					errs = append(errs, fmt.Errorf("cilium-dbg cleanup failed: %w", err))
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return errors.Join(append(errs, ctxErr)...)
+					}
+				}
+			}
 		}
 	}
 
@@ -77,27 +83,4 @@ func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
 	}
 
 	return errors.Join(errs...)
-}
-
-// cleanupCiliumState runs cilium-dbg post-uninstall-cleanup, which removes Cilium's network
-// interfaces, BPF state and state directories from the host.
-func cleanupCiliumState(ctx context.Context, snap snap.Snap) error {
-	if snap == nil || snap.CNIBinDir() == "" {
-		return nil
-	}
-	ciliumDbg := filepath.Join(snap.CNIBinDir(), "cilium-dbg")
-	if _, err := os.Stat(ciliumDbg); err != nil {
-		return nil
-	}
-
-	// cilium-dbg refuses to run while the agent's pid file exists. The agent was killed during
-	// container cleanup, so it never removed the file itself.
-	if err := os.Remove(ciliumPidFile); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("failed to remove %s: %w", ciliumPidFile, err)
-	}
-
-	if out, err := exec.CommandContext(ctx, ciliumDbg, "post-uninstall-cleanup", "--all-state", "--force").CombinedOutput(); err != nil {
-		return fmt.Errorf("cilium-dbg cleanup failed: %w: %s", err, bytes.TrimSpace(out))
-	}
-	return nil
 }

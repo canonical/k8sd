@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -16,12 +17,13 @@ const containerExitTimeout = 10 * time.Second
 
 // RemoveContainers kills every process in the k8s snap's containerd shim trees and waits for
 // them to exit, so that the network and mount cleanup that follows does not race them.
-func RemoveContainers(ctx context.Context) {
+// It returns the network namespaces the processes were running in.
+func RemoveContainers(ctx context.Context) NetworkNamespaces {
 	log := log.FromContext(ctx)
 	pids, err := shims.RunningContainerdShimPIDs(ctx)
 	if err != nil {
 		log.Error(err, "failed to get containerd shim PIDs")
-		return
+		return nil
 	}
 
 	intPids := make([]int, 0, len(pids))
@@ -34,14 +36,15 @@ func RemoveContainers(ctx context.Context) {
 		intPids = append(intPids, intPid)
 	}
 
-	killProcesses(ctx, intPids, containerExitTimeout)
+	return killProcesses(ctx, intPids, containerExitTimeout)
 }
 
-// killProcesses SIGKILLs the given processes and waits up to timeout for them to exit.
-// Processes are signalled and waited for through pidfds, which keep referring to the same
-// process even after it exits and its PID is reused.
-func killProcesses(ctx context.Context, pids []int, timeout time.Duration) {
+// killProcesses SIGKILLs the given processes, waits up to timeout for them to exit, and returns
+// their network namespaces. Processes are signalled and waited for through pidfds, which keep
+// referring to the same process even after it exits and its PID is reused.
+func killProcesses(ctx context.Context, pids []int, timeout time.Duration) NetworkNamespaces {
 	log := log.FromContext(ctx)
+	netns := NetworkNamespaces{}
 
 	var pidfds []int
 	defer func() {
@@ -59,6 +62,7 @@ func killProcesses(ctx context.Context, pids []int, timeout time.Duration) {
 			continue
 		}
 		pidfds = append(pidfds, fd)
+		netns.add(fmt.Sprintf("/proc/%d/ns/net", pid))
 
 		if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
 			log.Error(err, "failed to kill container process", "pid", pid)
@@ -75,6 +79,7 @@ func killProcesses(ctx context.Context, pids []int, timeout time.Duration) {
 	if running > 0 {
 		log.Info("Container processes did not exit in time, continuing cleanup", "running", running, "timeout", timeout)
 	}
+	return netns
 }
 
 // waitForExit reports whether the process behind pidfd exited before deadline.
