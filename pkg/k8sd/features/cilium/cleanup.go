@@ -82,18 +82,18 @@ func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
 // cleanupCiliumState runs cilium-dbg post-uninstall-cleanup, which removes Cilium's network
 // interfaces, BPF state and state directories from the host.
 func cleanupCiliumState(ctx context.Context, snap snap.Snap) error {
+	// cilium-dbg refuses to run while the agent's pid file exists. The agent was killed during
+	// container cleanup, so it never removed the file itself.
+	if err := os.Remove(ciliumPidFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("failed to remove %s: %w", ciliumPidFile, err)
+	}
+
 	if snap == nil || snap.CNIBinDir() == "" {
 		return nil
 	}
 	ciliumDbg := filepath.Join(snap.CNIBinDir(), "cilium-dbg")
 	if _, err := os.Stat(ciliumDbg); err != nil {
 		return nil
-	}
-
-	// cilium-dbg refuses to run while the agent's pid file exists. The agent was killed during
-	// container cleanup, so it never removed the file itself.
-	if err := os.Remove(ciliumPidFile); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("failed to remove %s: %w", ciliumPidFile, err)
 	}
 
 	if out, err := exec.CommandContext(ctx, ciliumDbg, "post-uninstall-cleanup", "--all-state", "--force").CombinedOutput(); err != nil {
