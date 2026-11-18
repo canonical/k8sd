@@ -38,7 +38,6 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	var opts struct {
 		logDebug   bool
 		logVerbose bool
-		stateDir   string
 	}
 	cmd := &cobra.Command{
 		Use:   "k8s",
@@ -50,13 +49,9 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 	cmd.SetOut(env.Stdout)
 	cmd.SetErr(env.Stderr)
 
-	cmd.PersistentFlags().StringVar(&opts.stateDir, "state-dir", "", "directory with the datastore")
 	cmd.PersistentFlags().BoolVarP(&opts.logDebug, "debug", "d", false, "show all debug messages")
 	cmd.PersistentFlags().BoolVarP(&opts.logVerbose, "verbose", "v", true, "show all information messages")
 
-	// By default, the state dir is set to a fixed directory in the snap.
-	// This shouldn't be overwritten by the user.
-	cmd.PersistentFlags().MarkHidden("state-dir")
 	cmd.PersistentFlags().MarkHidden("debug")
 	cmd.PersistentFlags().MarkHidden("verbose")
 
@@ -99,7 +94,6 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		newLocalNodeStatusCommand(env),
 		newGenerateDocsCmd(env),
 		newHelmCmd(env),
-		xPrintShimPidsCmd,
 		newXSnapdConfigCmd(env),
 		newXWaitForCmd(env),
 		newXCAPICmd(env),

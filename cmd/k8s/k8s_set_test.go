@@ -12,7 +12,6 @@ import (
 )
 
 type mapstructureTestCase struct {
-	name       string
 	val        string
 	expectErr  bool
 	assertions []types.GomegaMatcher
