@@ -42,6 +42,41 @@ func TestParseProcessListAndShimChildren(t *testing.T) {
 	}
 }
 
+func TestParseProcessListAndShimChildren_DetachedSnapMount(t *testing.T) {
+	g := NewWithT(t)
+
+	raw := `    1     0 /sbin/init
+  500     1 /snap/k8s/5832/bin/containerd-shim-runc-v2 -namespace k8s.io -id c1
+  501   500 /pause
+  502   501 /usr/bin/app
+  600     1 /snap/k8s/5832/bin/containerd-shim-runc-v2 -namespace k8s.io -id c2
+  601   600 /pause
+  700     1 /usr/bin/containerd-shim-runc-v2 -namespace k8s.io
+  701   700 /pause
+`
+
+	procs := parseProcessList(raw)
+	readlink := func(path string) (string, error) {
+		switch path {
+		case "/proc/500/exe":
+			return "/bin/containerd-shim-runc-v2", nil
+		case "/proc/600/exe":
+			return "/bin/containerd-shim-runc-v2 (deleted)", nil
+		case "/proc/700/exe":
+			return "/usr/bin/containerd-shim-runc-v2", nil
+		default:
+			return "", os.ErrNotExist
+		}
+	}
+
+	shimPIDs := findShimPIDsWithReadlink(procs, readlink)
+	g.Expect(shimPIDs).To(Equal([]string{"500", "600"}))
+
+	allPIDs := findAllChildren(shimPIDs, makeShallowChildPIDs(procs))
+	// post-order: descendants before parent shim
+	g.Expect(allPIDs).To(Equal([]string{"502", "501", "500", "601", "600"}))
+}
+
 func TestRunningContainerdShimPIDsDoesNotInvokeBash(t *testing.T) {
 	psPath, err := exec.LookPath("ps")
 	if err != nil {
@@ -254,6 +289,71 @@ func TestFindShimPIDsWithReadlink(t *testing.T) {
 			},
 			readlinks: map[string]string{
 				"/proc/301/exe": "/usr/bin/python3",
+			},
+			wantPIDs: nil,
+		},
+		{
+			name: "matches detached snap mount when readlink returns /bin/containerd-shim-runc-v2",
+			procs: map[string]processInfo{
+				"501": {
+					command:   "/snap/k8s/5832/bin/containerd-shim-runc-v2 -namespace k8s.io -id c1",
+					parentPID: "1",
+				},
+			},
+			readlinks: map[string]string{
+				"/proc/501/exe": "/bin/containerd-shim-runc-v2",
+			},
+			wantPIDs: []string{"501"},
+		},
+		{
+			name: "matches detached snap mount when readlink returns /bin/containerd-shim-runc-v2 with deleted suffix",
+			procs: map[string]processInfo{
+				"502": {
+					command:   "/snap/k8s/5832/bin/containerd-shim-runc-v2 -namespace k8s.io -id c2",
+					parentPID: "1",
+				},
+			},
+			readlinks: map[string]string{
+				"/proc/502/exe": "/bin/containerd-shim-runc-v2 (deleted)",
+			},
+			wantPIDs: []string{"502"},
+		},
+		{
+			name: "does not match host containerd on /usr/bin/containerd-shim-runc-v2 with host command line",
+			procs: map[string]processInfo{
+				"503": {
+					command:   "/bin/containerd-shim-runc-v2 -namespace k8s.io -id c3",
+					parentPID: "1",
+				},
+			},
+			readlinks: map[string]string{
+				"/proc/503/exe": "/usr/bin/containerd-shim-runc-v2",
+			},
+			wantPIDs: nil,
+		},
+		{
+			name: "does not match host containerd on /usr/bin/containerd-shim-runc-v2 even with spoofed snap command line",
+			procs: map[string]processInfo{
+				"504": {
+					command:   "/snap/k8s/5832/bin/containerd-shim-runc-v2 -namespace k8s.io -id c4",
+					parentPID: "1",
+				},
+			},
+			readlinks: map[string]string{
+				"/proc/504/exe": "/usr/bin/containerd-shim-runc-v2",
+			},
+			wantPIDs: nil,
+		},
+		{
+			name: "does not match plain containerd-shim-runc-v2 command line with exe /bin/containerd-shim-runc-v2",
+			procs: map[string]processInfo{
+				"505": {
+					command:   "containerd-shim-runc-v2 -namespace k8s.io -id c5",
+					parentPID: "1",
+				},
+			},
+			readlinks: map[string]string{
+				"/proc/505/exe": "/bin/containerd-shim-runc-v2",
 			},
 			wantPIDs: nil,
 		},

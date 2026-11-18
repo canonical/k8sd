@@ -127,7 +127,7 @@ func findShimPIDsWithReadlink(procs map[string]processInfo, readlink func(string
 		}
 
 		exe = strings.TrimSuffix(exe, " (deleted)")
-		if reBinaryExe.MatchString(exe) {
+		if reBinaryExe.MatchString(exe) || (reBinaryCmd.MatchString(info.command) && exe == "/bin/containerd-shim-runc-v2") {
 			result = append(result, pid)
 		}
 	}
