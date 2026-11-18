@@ -105,6 +105,19 @@ E1118 14:56:07.580760 2222854 run.go:72] "command failed" err="encountered an er
 		g.Expect(err.Error()).To(ContainSubstring("iptables: Permission denied"))
 	})
 
+	t.Run("NonKlogStderr_NonKlogIPVSError_ReturnsError", func(t *testing.T) {
+		g := NewWithT(t)
+		binDir := t.TempDir()
+		stderr := "Error flushing ipvs rules: operation not permitted\n"
+		createFakeKubeProxy(t, binDir, 1, "", stderr)
+		s := &mock.Snap{Mock: mock.Mock{K8sBinDir: binDir}}
+
+		err := internal.TryRemoveKubeProxyRules(ctx, s)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("kube-proxy --cleanup failed"))
+		g.Expect(err.Error()).To(ContainSubstring("Error flushing ipvs rules: operation not permitted"))
+	})
+
 	t.Run("RemoveKubeProxyRules_NoErrorLogsOnIgnoredIPVS", func(t *testing.T) {
 		binDir := t.TempDir()
 		stderr := `I1118 14:56:07.483606 2222854 server_linux.go:53] "Using iptables proxy"
@@ -197,6 +210,11 @@ func TestIsIgnorableIPVSContainerCleanupError(t *testing.T) {
 			stderr: "E1118 14:56:07.518091 2222854 proxier.go:722] \"Error flushing ipvs rules\" err=\"operation not permitted\"\n" +
 				"panic: runtime error: invalid memory address or nil pointer dereference\n" +
 				"[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x12345]\n",
+			expected: false,
+		},
+		{
+			name:     "NonKlogIPVSErrorLineFailsClosed",
+			stderr:   "Error flushing ipvs rules: operation not permitted\n",
 			expected: false,
 		},
 	}

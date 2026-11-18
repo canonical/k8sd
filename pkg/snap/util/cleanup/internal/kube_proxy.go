@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	klogInfoRegex = regexp.MustCompile(`^I[0-9]{4}\s`)
-	klogWarnRegex = regexp.MustCompile(`^W[0-9]{4}\s`)
-	execCommand   = exec.CommandContext
+	klogInfoRegex  = regexp.MustCompile(`^I[0-9]{4}\s`)
+	klogWarnRegex  = regexp.MustCompile(`^W[0-9]{4}\s`)
+	klogErrorRegex = regexp.MustCompile(`^E[0-9]{4}\s`)
+	execCommand    = exec.CommandContext
 )
 
 func isIgnorableIPVSContainerCleanupError(stderr string) bool {
@@ -34,18 +35,18 @@ func isIgnorableIPVSContainerCleanupError(stderr string) bool {
 			continue
 		}
 
-		// Must contain at least one klog error line (strings.HasPrefix(line, "E"))
+		// Must contain at least one klog error line (^E[0-9]{4}\s)
 		// reporting "Error flushing ipvs rules" together with "operation not permitted".
-		if strings.HasPrefix(trimmed, "E") &&
+		if klogErrorRegex.MatchString(trimmed) &&
 			strings.Contains(trimmed, "Error flushing ipvs rules") &&
 			strings.Contains(strings.ToLower(trimmed), "operation not permitted") {
 			foundIPVSError = true
 			continue
 		}
 
-		// Every other klog error line or fatal/error line in stderr (and any non-klog
-		// non-empty error line) must ONLY be kube-proxy's generic wrapper summary lines.
-		if strings.Contains(trimmed, "encountered an error while tearing down rules") &&
+		// Every other klog error line must ONLY be kube-proxy's generic wrapper summary lines.
+		if klogErrorRegex.MatchString(trimmed) &&
+			strings.Contains(trimmed, "encountered an error while tearing down rules") &&
 			(strings.Contains(trimmed, "Error running ProxyServer") || strings.Contains(trimmed, "command failed")) {
 			continue
 		}
