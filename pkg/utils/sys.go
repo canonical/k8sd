@@ -211,6 +211,11 @@ func HostCommandContext(ctx context.Context, name string, arg ...string) *exec.C
 		if cmd.Err == nil && isSnapPath(cmd.Path, os.Getenv("SNAP")) {
 			return cmd
 		}
+		// Only snap-staged binaries may bypass the sanitized host PATH; anything
+		// else found via the unsanitized PATH would escape the REAL_PATH restriction.
+		if cmd.Err == nil {
+			cmd.Err = &exec.Error{Name: name, Err: exec.ErrNotFound}
+		}
 		cmd.Env = env
 		return cmd
 	}

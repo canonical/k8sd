@@ -2,7 +2,9 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -206,6 +208,35 @@ func TestHostCommandContext_FallsBackToSnapBinaryWithSnapEnvWhenAbsentOnHost(t *
 	}
 	if cmd.Env != nil {
 		t.Fatalf("expected nil cmd.Env (preserving snap LD_LIBRARY_PATH) for snap-staged fallback binary, got %v", cmd.Env)
+	}
+}
+
+func TestHostCommandContext_RejectsNonSnapBinaryOutsideRealPath(t *testing.T) {
+	root := t.TempDir()
+	snapRoot := filepath.Join(root, "snap", "k8s", "x1")
+	hostBin := filepath.Join(root, "usr", "bin")
+	otherBin := filepath.Join(root, "opt", "other")
+	for _, dir := range []string{snapRoot, hostBin, otherBin} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(otherBin, "other-tool"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SNAP", snapRoot)
+	t.Setenv("REAL_LD_LIBRARY_PATH", "")
+	t.Setenv("LD_LIBRARY_PATH", filepath.Join(snapRoot, "lib"))
+	t.Setenv("REAL_PATH", hostBin)
+	t.Setenv("PATH", otherBin+":"+hostBin)
+
+	cmd := HostCommandContext(context.Background(), "other-tool")
+	if !errors.Is(cmd.Err, exec.ErrNotFound) {
+		t.Fatalf("expected exec.ErrNotFound for binary outside REAL_PATH, got cmd.Path=%q cmd.Err=%v", cmd.Path, cmd.Err)
+	}
+	if err := cmd.Run(); err == nil {
+		t.Fatal("expected Run to fail for binary outside REAL_PATH")
 	}
 }
 
