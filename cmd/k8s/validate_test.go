@@ -96,7 +96,6 @@ func TestValidateConfig(t *testing.T) {
 			g.Expect(err).To(Not(HaveOccurred()))
 
 			internalToken := types.InternalWorkerNodeToken{
-				Token:  "foo",
 				Secret: "lish",
 			}
 			tokenString, err := internalToken.Encode()
@@ -129,7 +128,6 @@ func TestValidateConfig(t *testing.T) {
 			g.Expect(err).To(Not(HaveOccurred()))
 
 			internalToken := types.InternalWorkerNodeToken{
-				Token:  "foo",
 				Secret: "lish",
 			}
 			tokenString, err := internalToken.Encode()
