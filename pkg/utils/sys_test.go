@@ -193,6 +193,49 @@ func TestHostCommandContext_ResolvesHostBinaryOverStagedSnapBinary(t *testing.T)
 	}
 }
 
+func TestHostCommandContext_SkipsRelativePathEntries(t *testing.T) {
+	root := t.TempDir()
+	snapRoot := filepath.Join(root, "snap", "k8s", "x1")
+	hostBin := filepath.Join(root, "usr", "bin")
+	if err := os.MkdirAll(hostBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A relative entry resolves against the process working directory; it must
+	// not be used, or a slash-containing result would bypass exec.ErrDot.
+	relDir := "tools"
+	if err := os.MkdirAll(filepath.Join(root, relDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, relDir, "systemctl"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(cwd) }()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("SNAP", snapRoot)
+	t.Setenv("REAL_LD_LIBRARY_PATH", "")
+	t.Setenv("LD_LIBRARY_PATH", "")
+	t.Setenv("REAL_PATH", relDir)
+	t.Setenv("PATH", relDir)
+
+	cmd := HostCommandContext(context.Background(), "systemctl")
+	// The binary must not resolve: either the sanitized lookup refused the
+	// relative entry (exec.ErrNotFound) or the raw lookup hit exec.ErrDot.
+	if cmd.Err == nil {
+		t.Fatalf("expected lookup error when only a relative PATH entry has the binary, got cmd.Path=%q", cmd.Path)
+	}
+	if err := cmd.Run(); err == nil {
+		t.Fatal("expected Run to fail for a binary only reachable via a relative PATH entry")
+	}
+}
+
 func TestHostCommandContext_FallsBackToSnapBinaryWithSnapEnvWhenAbsentOnHost(t *testing.T) {
 	root := t.TempDir()
 	snapRoot := filepath.Join(root, "snap", "k8s", "x1")
