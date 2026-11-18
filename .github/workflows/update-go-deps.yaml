@@ -6,7 +6,7 @@ on:
     - cron: "0 11 * * *"
   pull_request:
     paths:
-      - .github/workflows/update-k8sd-go-deps.yaml
+      - .github/workflows/update-go-deps.yaml
 
 permissions:
   contents: read
