@@ -87,6 +87,8 @@ func TestClusterConfig(t *testing.T) {
 				},
 			}
 			expectedClusterConfig.SetDefaults()
+			// The service IP comes from a request, so it counts as chosen by the user.
+			expectedClusterConfig.DNS.ServiceIPPinned = utils.Pointer(true)
 
 			err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
 				returnedConfig, err := database.SetClusterConfig(context.Background(), tx, types.ClusterConfig{
@@ -110,6 +112,53 @@ func TestClusterConfig(t *testing.T) {
 				return nil
 			})
 			g.Expect(err).To(Not(HaveOccurred()))
+		})
+
+		t.Run("SetClusterDNS", func(t *testing.T) {
+			setClusterDNS := func(g Gomega, expected string, ip string) bool {
+				var updated bool
+				err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
+					var err error
+					updated, err = database.SetClusterDNS(ctx, tx, expected, ip)
+					return err
+				})
+				g.Expect(err).To(Not(HaveOccurred()))
+				return updated
+			}
+			getClusterConfig := func(g Gomega) types.ClusterConfig {
+				var config types.ClusterConfig
+				err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
+					var err error
+					config, err = database.GetClusterConfig(ctx, tx)
+					return err
+				})
+				g.Expect(err).To(Not(HaveOccurred()))
+				return config
+			}
+
+			t.Run("StoredIPChanged", func(t *testing.T) {
+				g := NewWithT(t)
+				before := getClusterConfig(g)
+
+				g.Expect(setClusterDNS(g, "10.152.183.99", "10.152.183.20")).To(BeFalse())
+				g.Expect(getClusterConfig(g)).To(Equal(before))
+			})
+
+			t.Run("Update", func(t *testing.T) {
+				g := NewWithT(t)
+				expected := getClusterConfig(g)
+				expected.Kubelet.ClusterDNS = utils.Pointer("10.152.183.20")
+
+				// The update is allowed although the IP was pinned, and does not alter the pin.
+				g.Expect(setClusterDNS(g, "10.152.183.10", "10.152.183.20")).To(BeTrue())
+				g.Expect(getClusterConfig(g)).To(Equal(expected))
+			})
+
+			t.Run("AlreadySet", func(t *testing.T) {
+				g := NewWithT(t)
+
+				g.Expect(setClusterDNS(g, "10.152.183.99", "10.152.183.20")).To(BeTrue())
+			})
 		})
 	})
 }

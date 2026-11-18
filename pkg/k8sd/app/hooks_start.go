@@ -113,16 +113,23 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 			func() mctypes.State {
 				return s
 			},
-			func(ctx context.Context, dnsIP string) error {
+			func(ctx context.Context, previousIP string, dnsIP string) error {
+				var updated bool
 				if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
-					if _, err := database.SetClusterConfig(ctx, tx, types.ClusterConfig{
-						Kubelet: types.Kubelet{ClusterDNS: utils.Pointer(dnsIP)},
-					}); err != nil {
+					var err error
+					if updated, err = database.SetClusterDNS(ctx, tx, previousIP, dnsIP); err != nil {
 						return fmt.Errorf("failed to update cluster configuration for dns=%s: %w", dnsIP, err)
 					}
 					return nil
 				}); err != nil {
 					return fmt.Errorf("database transaction to update cluster configuration failed: %w", err)
+				}
+
+				if !updated {
+					// The DNS service IP was changed while CoreDNS was being deployed, deploy again.
+					log.FromContext(ctx).Info("DNS service IP changed during reconcile, retrying", "deployed", dnsIP)
+					a.NotifyDNS()
+					return nil
 				}
 
 				// DNS IP has changed, notify node config controller

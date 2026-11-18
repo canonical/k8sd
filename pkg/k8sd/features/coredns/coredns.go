@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
@@ -21,6 +23,8 @@ const (
 // ApplyDNS will uninstall CoreDNS from the cluster if dns.Enabled is false.
 // ApplyDNS will install or refresh CoreDNS if dns.Enabled is true.
 // ApplyDNS will return the ClusterIP address of the coredns service, if successful.
+// ApplyDNS will let Kubernetes allocate a new ClusterIP if the stored one was taken by another Service,
+// unless the user chose the stored one (dns.ServiceIPPinned), in which case it returns an error.
 // ApplyDNS will always return a FeatureStatus indicating the current status of the
 // deployment.
 // ApplyDNS returns an error if anything fails. The error is also wrapped in the .Message field of the
@@ -44,6 +48,25 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		}, "", nil
 	}
 
+	client, err := snap.KubernetesClient("")
+	if err != nil {
+		err = fmt.Errorf("failed to create kubernetes client: %w", err)
+		return types.FeatureStatus{
+			Enabled: false,
+			Version: ImageTag,
+			Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+		}, "", err
+	}
+
+	clusterIP, err := serviceIP(ctx, client, dns, kubelet)
+	if err != nil {
+		return types.FeatureStatus{
+			Enabled: false,
+			Version: ImageTag,
+			Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+		}, "", err
+	}
+
 	values := map[string]any{
 		"image": map[string]any{
 			"repository": imageRepo,
@@ -51,7 +74,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		},
 		"service": map[string]any{
 			"name":      "coredns",
-			"clusterIP": kubelet.GetClusterDNS(),
+			"clusterIP": clusterIP,
 		},
 		"serviceAccount": map[string]any{
 			"create": true,
@@ -196,15 +219,6 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		}, "", err
 	}
 
-	client, err := snap.KubernetesClient("")
-	if err != nil {
-		err = fmt.Errorf("failed to create kubernetes client: %w", err)
-		return types.FeatureStatus{
-			Enabled: false,
-			Version: ImageTag,
-			Message: fmt.Sprintf(deployFailedMsgTmpl, err),
-		}, "", err
-	}
 	dnsIP, err := client.GetServiceClusterIP(ctx, "coredns", "kube-system")
 	if err != nil {
 		err = fmt.Errorf("failed to retrieve the coredns service: %w", err)
@@ -220,4 +234,29 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		Version: ImageTag,
 		Message: fmt.Sprintf(enabledMsgTmpl, dnsIP),
 	}, dnsIP, err
+}
+
+// serviceIP returns the ClusterIP to request for the coredns service. The stored IP is kept unless
+// another Service took it while DNS was disabled. In that case, an auto-assigned IP is dropped so
+// that Kubernetes allocates a new one, while an IP the user chose is reported as an error.
+func serviceIP(ctx context.Context, client *kubernetes.Client, dns types.DNS, kubelet types.Kubelet) (string, error) {
+	ip := kubelet.GetClusterDNS()
+	if ip == "" {
+		return "", nil
+	}
+
+	svc, found, err := client.FindServiceByClusterIP(ctx, ip)
+	if err != nil {
+		return "", fmt.Errorf("failed to check whether DNS service IP %s is in use: %w", ip, err)
+	}
+	if !found || (svc.Namespace == "kube-system" && svc.Name == "coredns") {
+		return ip, nil
+	}
+
+	owner := svc.Namespace + "/" + svc.Name
+	if dns.GetServiceIPPinned() {
+		return "", fmt.Errorf("DNS service IP %s is already allocated to Service %s; delete that Service, or disable DNS and set a different dns.service-ip (an empty value lets Kubernetes pick one)", ip, owner)
+	}
+	log.FromContext(ctx).Info("DNS service IP is taken by another Service, allocating a new one", "ip", ip, "service", owner)
+	return "", nil
 }

@@ -28,18 +28,50 @@ func SetClusterConfig(ctx context.Context, tx *sql.Tx, new types.ClusterConfig) 
 		return types.ClusterConfig{}, fmt.Errorf("failed to merge new cluster configuration options: %w", err)
 	}
 
+	if err := insertClusterConfig(ctx, tx, config); err != nil {
+		return types.ClusterConfig{}, err
+	}
+	return config, nil
+}
+
+// SetClusterDNS records the ClusterIP that Kubernetes allocated to the CoreDNS service.
+// Unlike SetClusterConfig, it may change the IP while DNS is enabled, because it records what is
+// deployed rather than a user request. The stored IP is only replaced if it still equals expected,
+// so a concurrent user change is never overwritten.
+// SetClusterDNS reports whether the stored IP equals ip afterwards.
+func SetClusterDNS(ctx context.Context, tx *sql.Tx, expected string, ip string) (bool, error) {
+	config, err := GetClusterConfig(ctx, tx)
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch existing cluster config: %w", err)
+	}
+	current := config.Kubelet.GetClusterDNS()
+	if current == ip {
+		return true, nil
+	}
+	if current != expected {
+		return false, nil
+	}
+
+	config.Kubelet.ClusterDNS = &ip
+	if err := insertClusterConfig(ctx, tx, config); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func insertClusterConfig(ctx context.Context, tx *sql.Tx, config types.ClusterConfig) error {
 	b, err := json.Marshal(config)
 	if err != nil {
-		return types.ClusterConfig{}, fmt.Errorf("failed to encode cluster config: %w", err)
+		return fmt.Errorf("failed to encode cluster config: %w", err)
 	}
 	insertTxStmt, err := db.Stmt(tx, clusterConfigsStmts["insert-v1alpha2"])
 	if err != nil {
-		return types.ClusterConfig{}, fmt.Errorf("failed to prepare insert statement: %w", err)
+		return fmt.Errorf("failed to prepare insert statement: %w", err)
 	}
 	if _, err := insertTxStmt.ExecContext(ctx, string(b)); err != nil {
-		return types.ClusterConfig{}, fmt.Errorf("failed to insert v1alpha2 config: %w", err)
+		return fmt.Errorf("failed to insert v1alpha2 config: %w", err)
 	}
-	return config, nil
+	return nil
 }
 
 // GetClusterConfig retrieves the cluster configuration from the database.
