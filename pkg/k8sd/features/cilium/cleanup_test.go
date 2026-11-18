@@ -152,6 +152,29 @@ exit 0
 	g.Expect(strings.ToLower(string(restored))).NotTo(ContainSubstring("cilium"))
 }
 
+func TestCleanupNetwork_CiliumDbgFails_NoOutput(t *testing.T) {
+	g := NewWithT(t)
+
+	tmpDir := t.TempDir()
+	cniDir := filepath.Join(tmpDir, "cni")
+	g.Expect(os.MkdirAll(cniDir, 0o755)).To(Succeed())
+
+	createFakeExe(t, cniDir, "cilium-dbg", `#!/bin/sh
+exit 1
+`)
+	setupTestPath(t, tmpDir)
+
+	s := &snapmock.Snap{
+		Mock: snapmock.Mock{
+			CNIBinDir: cniDir,
+		},
+	}
+
+	err := cilium.CleanupNetwork(context.Background(), s)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(Equal("cilium-dbg cleanup failed: exit status 1"))
+}
+
 func TestCleanupNetwork_ContinuingAcrossVariantsAndJoiningErrors(t *testing.T) {
 	g := NewWithT(t)
 

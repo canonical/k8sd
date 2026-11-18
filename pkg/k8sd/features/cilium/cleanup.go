@@ -97,7 +97,10 @@ func cleanupCiliumState(ctx context.Context, snap snap.Snap) error {
 	}
 
 	if out, err := exec.CommandContext(ctx, ciliumDbg, "post-uninstall-cleanup", "--all-state", "--force").CombinedOutput(); err != nil {
-		return fmt.Errorf("cilium-dbg cleanup failed: %w: %s", err, bytes.TrimSpace(out))
+		if out := bytes.TrimSpace(out); len(out) > 0 {
+			return fmt.Errorf("cilium-dbg cleanup failed: %w: %s", err, out)
+		}
+		return fmt.Errorf("cilium-dbg cleanup failed: %w", err)
 	}
 	return nil
 }
