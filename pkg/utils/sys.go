@@ -181,7 +181,10 @@ func lookPathInEnviron(file string, environ []string) string {
 		}
 	}
 	for _, dir := range filepath.SplitList(pathEnv) {
-		if dir == "" {
+		// Skip relative entries: joining them would produce a slash-containing
+		// path that bypasses exec.ErrDot protection and could execute a binary
+		// from a writable working-directory subtree with the caller's privileges.
+		if !filepath.IsAbs(dir) {
 			continue
 		}
 		candidate := filepath.Join(dir, file)
