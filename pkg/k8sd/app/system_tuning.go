@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -80,7 +79,7 @@ func (a *App) tuneSystemSettings(ctx context.Context, s mctypes.State) error {
 		log.Error(err, fmt.Sprintf("failed to update system configuration file %s", confPath[0]))
 	}
 
-	if err := exec.CommandContext(ctx, "sysctl", "--system").Run(); err != nil {
+	if err := utils.HostCommandContext(ctx, "sysctl", "--system").Run(); err != nil {
 		return fmt.Errorf("failed to apply system parameters: %w", err)
 	}
 	return nil
