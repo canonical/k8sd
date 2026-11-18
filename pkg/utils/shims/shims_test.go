@@ -130,7 +130,7 @@ func TestRunningContainerdShimPIDsDoesNotInvokeBash(t *testing.T) {
 	}
 }
 
-func TestReBinaryName(t *testing.T) {
+func TestReBinaryCmd(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
@@ -196,7 +196,7 @@ func TestReBinaryName(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
-			g.Expect(reBinaryName.MatchString(tc.input)).To(Equal(tc.want))
+			g.Expect(reBinaryCmd.MatchString(tc.input)).To(Equal(tc.want))
 		})
 	}
 }
