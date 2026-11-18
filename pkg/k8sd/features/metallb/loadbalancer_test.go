@@ -58,7 +58,7 @@ func TestDisabled(t *testing.T) {
 			Enabled: ptr.To(false),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).To(MatchError(applyErr))
 		g.Expect(status.Enabled).To(BeFalse())
@@ -84,7 +84,7 @@ func TestDisabled(t *testing.T) {
 			Enabled: ptr.To(false),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeFalse())
@@ -121,7 +121,7 @@ func TestEnabled(t *testing.T) {
 			Enabled: ptr.To(true),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).To(MatchError(applyErr))
 		g.Expect(status.Enabled).To(BeFalse())
@@ -184,7 +184,7 @@ func TestEnabled(t *testing.T) {
 			}),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -242,7 +242,7 @@ func TestEnabled(t *testing.T) {
 			CIDRs:        ptr.To([]string{"192.0.2.0/24"}),
 		}
 
-		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 		g.Expect(err).ToNot(HaveOccurred())
 
 		// Unlike the speaker DaemonSet, the controller Deployment carries no
@@ -292,7 +292,7 @@ func TestEnabled(t *testing.T) {
 
 		errCh := make(chan error, 1)
 		go func() {
-			_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+			_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 			errCh <- err
 		}()
 
@@ -356,7 +356,7 @@ func TestEnabled(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		defer cancel()
 
-		status, err := ApplyLoadBalancer(ctx, snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(ctx, snapM, lbCfg, nil)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err).To(MatchError(ContainSubstring("failed to wait for MetalLB webhook service endpoints")))
 		g.Expect(status.Enabled).To(BeFalse())
@@ -794,7 +794,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 `,
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -831,7 +831,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 `,
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -907,7 +907,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 				BGPLocalASN: ptr.To(64512),
 				CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
 			}
-			status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, tc.annotations)
+			status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, tc.annotations)
 			g.Expect(err).To(HaveOccurred(), tc.name)
 			g.Expect(err.Error()).To(ContainSubstring(tc.wantErr), tc.name)
 			g.Expect(status.Enabled).To(BeFalse(), tc.name)
@@ -936,7 +936,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			"k8sd/v1alpha1/metallb/advertise-all-pools": "true",
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -968,7 +968,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 `,
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -1030,7 +1030,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 `,
 		}
 
-		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
@@ -1057,7 +1057,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			CIDRs:          ptr.To([]string{"192.0.2.0/24"}),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -1084,7 +1084,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			"k8sd/v1alpha1/metallb/bgp-peers": "- peerAddress: 10.0.0.1\n  peerASN: 65001\n  bfdProfile: fast-failover\n",
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("bfdProfile"))
