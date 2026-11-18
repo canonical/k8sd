@@ -59,13 +59,3 @@ func ListVXLANInterfaces() ([]VXLANInterface, error) {
 
 	return vxlanDevices, nil
 }
-
-func RemoveLink(name string) error {
-	cmd := exec.Command("ip", "link", "delete", name)
-
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("running ip command failed: %s", string(out))
-	}
-
-	return nil
-}
