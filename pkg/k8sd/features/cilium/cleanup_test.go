@@ -113,6 +113,7 @@ func TestCleanupNetwork_CiliumDbgFails_ContinuesIptables(t *testing.T) {
 	g.Expect(os.MkdirAll(cniDir, 0o755)).To(Succeed())
 
 	createFakeExe(t, cniDir, "cilium-dbg", `#!/bin/sh
+echo "Failed to remove link cilium_host" >&2
 exit 1
 `)
 
@@ -142,6 +143,7 @@ exit 0
 	err := cilium.CleanupNetwork(context.Background(), s)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("cilium-dbg cleanup failed"))
+	g.Expect(err.Error()).To(ContainSubstring("Failed to remove link cilium_host"))
 
 	// iptables rules must still be cleaned despite cilium-dbg failure
 	restored, err := os.ReadFile(iptablesRestoreLog)
