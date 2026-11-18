@@ -4,242 +4,117 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/utils/shims"
 	"golang.org/x/sys/unix"
 )
 
-type containerProcess struct {
-	pid       int
-	startTime string
-}
+// containerExitTimeout bounds how long RemoveContainers waits for killed processes to exit.
+const containerExitTimeout = 10 * time.Second
 
-func signalContainerPID(pid int, startTime string, identity func(int) (string, error)) error {
-	fd, err := unix.PidfdOpen(pid, 0)
-	if err != nil {
-		if errors.Is(err, unix.ESRCH) {
-			return nil
-		}
-		return fmt.Errorf("open pidfd for container PID %d: %w", pid, err)
-	}
-	defer unix.Close(fd)
-	start, idErr := identity(pid)
-	if idErr != nil {
-		return idErr
-	}
-	if start != startTime {
-		return fmt.Errorf("container PID %d replaced before pidfd signal", pid)
-	}
-	if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
-		return fmt.Errorf("kill container PID %d via pidfd: %w", pid, err)
-	}
-	return nil
-}
-
-// RemoveContainers kills snap-owned shim descendants before releasing their
-// named network namespaces.
-func RemoveContainers(ctx context.Context) (map[string]bool, error) {
+// RemoveContainers kills every process in the k8s snap's containerd shim trees, waits for them
+// to exit, and returns the network namespaces they were running in.
+func RemoveContainers(ctx context.Context) NetworkNamespaces {
+	log := log.FromContext(ctx)
 	pids, err := shims.RunningContainerdShimPIDs(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list container processes: %w", err)
-	}
-	processes, identityErr := captureContainerProcesses(pids)
-	pidToNamespaces, nsErr := processNetworkNamespaces(processes, "/proc", "/run/netns")
-	exitedPIDs, killErr := killContainerProcesses(ctx, processes, signalContainerPID, containerProcessIdentity)
-
-	exitedSet := make(map[int]bool, len(exitedPIDs))
-	for _, pid := range exitedPIDs {
-		exitedSet[pid] = true
+		log.Error(err, "failed to get containerd shim PIDs")
+		return nil
 	}
 
-	namespaceToPIDs := make(map[string][]int)
-	for pid, namespaces := range pidToNamespaces {
-		for _, ns := range namespaces {
-			namespaceToPIDs[ns] = append(namespaceToPIDs[ns], pid)
-		}
-	}
-
-	owned := make(map[string]bool)
-	for ns, memberPIDs := range namespaceToPIDs {
-		allExited := true
-		for _, memberPID := range memberPIDs {
-			if !exitedSet[memberPID] {
-				allExited = false
-				break
-			}
-		}
-		if allExited && len(memberPIDs) > 0 {
-			owned[ns] = true
-		}
-	}
-	if err := errors.Join(identityErr, nsErr, killErr); err != nil {
-		return nil, err
-	}
-	return owned, nil
-}
-
-func captureContainerProcesses(pids []string) ([]containerProcess, error) {
-	var processes []containerProcess
-	var errs []error
+	intPids := make([]int, 0, len(pids))
 	for _, pid := range pids {
-		n, err := strconv.Atoi(pid)
-		if err != nil || n <= 1 {
-			errs = append(errs, fmt.Errorf("invalid container PID %q", pid))
-			continue
-		}
-		start, err := containerProcessIdentity(n)
+		intPid, err := strconv.Atoi(pid)
 		if err != nil {
-			errs = append(errs, err)
+			log.Error(err, "failed to convert PID to integer", "pid", pid)
 			continue
 		}
-		if start != "" {
-			processes = append(processes, containerProcess{n, start})
-		}
+		intPids = append(intPids, intPid)
 	}
-	return processes, errors.Join(errs...)
+
+	return killProcesses(ctx, intPids, shims.IsSnapOwned, containerExitTimeout)
 }
 
-func killContainerProcesses(
-	ctx context.Context,
-	processes []containerProcess,
-	kill func(pid int, startTime string, identity func(int) (string, error)) error,
-	identity func(int) (string, error),
-) ([]int, error) {
-	var errs []error
-	var killed []containerProcess
-	for _, process := range processes {
+// killProcesses SIGKILLs the given processes that isOwned accepts, waits up to timeout for them
+// to exit, and returns their network namespaces.
+//
+// Each process is pinned with a pidfd before isOwned checks it, so a PID that was recycled since
+// it was listed is never signalled. All processes are pinned before any is signalled, so the
+// ancestors isOwned walks through are still alive.
+func killProcesses(ctx context.Context, pids []int, isOwned func(pid int) bool, timeout time.Duration) NetworkNamespaces {
+	log := log.FromContext(ctx)
+	owned := NetworkNamespaces{}
+
+	pidfds := make([]int, 0, len(pids))
+	defer func() {
+		for _, fd := range pidfds {
+			_ = unix.Close(fd)
+		}
+	}()
+
+	for _, pid := range pids {
+		fd, err := unix.PidfdOpen(pid, 0)
+		if err != nil {
+			if !errors.Is(err, unix.ESRCH) {
+				log.Error(err, "failed to open pidfd", "pid", pid)
+			}
+			continue
+		}
+		if !isOwned(pid) {
+			_ = unix.Close(fd)
+			continue
+		}
+		owned.add(fmt.Sprintf("/proc/%d/ns/net", pid))
+		pidfds = append(pidfds, fd)
+	}
+
+	for _, fd := range pidfds {
+		if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {
+			log.Error(err, "failed to kill container process")
+		}
+	}
+
+	if err := waitForExit(ctx, pidfds, timeout); err != nil {
+		log.Error(err, "container processes did not exit, continuing cleanup")
+	}
+
+	return owned
+}
+
+// waitForExit blocks until every process referred to by pidfds has exited, timeout elapses,
+// or ctx is done. A pidfd becomes readable once its process has exited.
+func waitForExit(ctx context.Context, pidfds []int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	pending := make([]unix.PollFd, 0, len(pidfds))
+	for _, fd := range pidfds {
+		pending = append(pending, unix.PollFd{Fd: int32(fd), Events: unix.POLLIN})
+	}
+
+	for len(pending) > 0 {
 		if err := ctx.Err(); err != nil {
-			return nil, errors.Join(append(errs, err)...)
+			return err
 		}
-		if process.pid <= 1 || process.startTime == "" {
-			errs = append(errs, fmt.Errorf("invalid container identity %+v", process))
-			continue
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("%d processes still running after %s", len(pending), timeout)
 		}
-		if err := kill(process.pid, process.startTime, identity); err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		killed = append(killed, process)
-	}
-	var exitedPIDs []int
-	for _, process := range killed {
-		if err := waitContainerExit(ctx, process, identity); err != nil {
-			errs = append(errs, err)
-		} else {
-			exitedPIDs = append(exitedPIDs, process.pid)
-		}
-	}
-	return exitedPIDs, errors.Join(errs...)
-}
 
-func waitContainerExit(ctx context.Context, process containerProcess, identity func(int) (string, error)) error {
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		start, err := identity(process.pid)
-		if err != nil {
-			return fmt.Errorf("check container PID %d: %w", process.pid, err)
+		// Poll in short slices so that context cancellation is noticed promptly.
+		if _, err := unix.Poll(pending, int(min(remaining, 100*time.Millisecond).Milliseconds())); err != nil && !errors.Is(err, unix.EINTR) {
+			return fmt.Errorf("failed to poll pidfds: %w", err)
 		}
-		if start == "" {
-			return nil
-		}
-		if start != process.startTime {
-			return fmt.Errorf("container PID %d replaced by another process (start time %s != %s)", process.pid, start, process.startTime)
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("wait for container PID %d: %w", process.pid, ctx.Err())
-		case <-ticker.C:
-		}
-	}
-}
 
-func containerProcessIdentity(pid int) (string, error) {
-	stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
-	if errors.Is(err, os.ErrNotExist) {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	// comm can contain spaces and parentheses. State follows its final ')'.
-	end := strings.LastIndex(string(stat), ") ")
-	if end < 0 || len(stat) <= end+2 {
-		return "", fmt.Errorf("invalid process stat")
-	}
-	fields := strings.Fields(string(stat[end+2:]))
-	if len(fields) < 20 {
-		return "", fmt.Errorf("invalid process stat fields")
-	}
-	if fields[0] == "Z" || fields[0] == "X" {
-		return "", nil
-	}
-	return fields[19], nil
-}
-
-func processNetworkNamespaces(processes []containerProcess, procDir, netnsDir string) (map[int][]string, error) {
-	pidToNamespaces := make(map[int][]string)
-	type netnsInfo struct {
-		pid  int
-		info os.FileInfo
-	}
-	var namespaces []netnsInfo
-	var errs []error
-	for _, process := range processes {
-		info, err := os.Stat(filepath.Join(procDir, strconv.Itoa(process.pid), "ns", "net"))
-		if err != nil {
-			errs = append(errs, fmt.Errorf("stat netns for container PID %d: %w", process.pid, err))
-			continue
-		}
-		namespaces = append(namespaces, netnsInfo{pid: process.pid, info: info})
-	}
-	entries, err := os.ReadDir(netnsDir)
-	if errors.Is(err, os.ErrNotExist) {
-		return pidToNamespaces, errors.Join(errs...)
-	}
-	if err != nil {
-		return pidToNamespaces, errors.Join(append(errs, err)...)
-	}
-	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), "cni-") {
-			continue
-		}
-		info, err := os.Stat(filepath.Join(netnsDir, entry.Name()))
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		for _, ns := range namespaces {
-			if os.SameFile(ns.info, info) {
-				pidToNamespaces[ns.pid] = append(pidToNamespaces[ns.pid], entry.Name())
+		running := pending[:0]
+		for _, p := range pending {
+			if p.Revents == 0 {
+				running = append(running, p)
 			}
 		}
+		pending = running
 	}
-	return pidToNamespaces, errors.Join(errs...)
-}
-
-func containerNetworkNamespaces(pids []string, procDir, netnsDir string) (map[string]bool, error) {
-	var procs []containerProcess
-	for _, pid := range pids {
-		n, err := strconv.Atoi(pid)
-		if err == nil && n > 1 {
-			procs = append(procs, containerProcess{pid: n})
-		}
-	}
-	pidToNamespaces, err := processNetworkNamespaces(procs, procDir, netnsDir)
-	owned := make(map[string]bool)
-	for _, nss := range pidToNamespaces {
-		for _, ns := range nss {
-			owned[ns] = true
-		}
-	}
-	return owned, err
+	return nil
 }

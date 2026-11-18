@@ -71,9 +71,6 @@ type Snap struct {
 	StopServicesErr           error
 	RestartServicesCalledWith [][]string
 	RestartServicesErr        error
-	ActiveServicesResult      []string
-	ActiveServicesCalledWith  [][]string
-	ActiveServicesErr         error
 
 	RefreshCalledWith []types.RefreshOpts
 	RefreshErr        error
@@ -114,14 +111,6 @@ func (s *Snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 		s.StopServicesCalledWith = append(s.StopServicesCalledWith, extraSnapArgs)
 	}
 	return s.StopServicesErr
-}
-
-func (s *Snap) ActiveServices(ctx context.Context, names []string) ([]string, error) {
-	s.ActiveServicesCalledWith = append(s.ActiveServicesCalledWith, names)
-	if s.ActiveServicesErr != nil {
-		return nil, s.ActiveServicesErr
-	}
-	return append([]string(nil), s.ActiveServicesResult...), nil
 }
 
 func (s *Snap) RestartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {

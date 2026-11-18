@@ -24,7 +24,6 @@ type Snap interface {
 	StartServices(ctx context.Context, services []string, extraSnapArgs ...string) error   // snap start $service
 	StopServices(ctx context.Context, services []string, extraSnapArgs ...string) error    // snap stop $service
 	RestartServices(ctx context.Context, services []string, extraSnapArgs ...string) error // snap restart $service
-	ActiveServices(ctx context.Context, services []string) ([]string, error)               // subset of services currently active
 
 	SnapctlGet(ctx context.Context, args ...string) ([]byte, error) // snapctl get $args...
 	SnapctlSet(ctx context.Context, args ...string) error           // snapctl set $args...

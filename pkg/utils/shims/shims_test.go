@@ -482,3 +482,43 @@ func TestRunningContainerdShimPIDs_Error(t *testing.T) {
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("failed to list running host processes"))
 }
+
+func TestIsSnapOwned(t *testing.T) {
+	g := NewWithT(t)
+
+	// 1 -> 200 (k8s shim) -> 201 -> 202; 1 -> 300 (foreign shim) -> 301; 1 -> 400
+	parents := map[int]int{200: 1, 201: 200, 202: 201, 300: 1, 301: 300, 400: 1}
+	exes := map[string]string{
+		"/proc/200/exe": "/snap/k8s/1234/bin/containerd-shim-runc-v2 (deleted)",
+		"/proc/300/exe": "/usr/bin/containerd-shim-runc-v2",
+		"/proc/400/exe": "/usr/bin/podman",
+	}
+	origReadlink, origParentPID := osReadlink, parentPID
+	t.Cleanup(func() { osReadlink, parentPID = origReadlink, origParentPID })
+	osReadlink = func(path string) (string, error) {
+		if exe, ok := exes[path]; ok {
+			return exe, nil
+		}
+		return "", os.ErrNotExist
+	}
+	parentPID = func(pid int) (int, error) {
+		if ppid, ok := parents[pid]; ok {
+			return ppid, nil
+		}
+		return 0, os.ErrNotExist
+	}
+
+	for _, pid := range []int{200, 201, 202} {
+		g.Expect(IsSnapOwned(pid)).To(BeTrue(), "pid %d", pid)
+	}
+	for _, pid := range []int{1, 300, 301, 400, 999} {
+		g.Expect(IsSnapOwned(pid)).To(BeFalse(), "pid %d", pid)
+	}
+}
+
+func TestReadParentPID(t *testing.T) {
+	g := NewWithT(t)
+	ppid, err := readParentPID(os.Getpid())
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(ppid).To(Equal(os.Getppid()))
+}

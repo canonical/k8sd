@@ -137,8 +137,6 @@ func (s *snap) StartServices(ctx context.Context, names []string, extraSnapArgs 
 		switch arg {
 		case "--enable":
 			opts.Enable = true
-		case "--no-enable":
-			opts.Enable = false
 		case "--no-wait":
 			wait = false
 		default:
@@ -171,8 +169,6 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 		switch arg {
 		case "--disable":
 			opts.Disable = true
-		case "--no-disable":
-			opts.Disable = false
 		case "--no-wait":
 			wait = false
 		default:
@@ -193,49 +189,6 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 		return nil
 	}
 	return client.WaitChange(ctx, changeID)
-}
-
-// ActiveServices returns the subset of names whose snap daemons are currently active.
-func (s *snap) ActiveServices(ctx context.Context, names []string) ([]string, error) {
-	client, err := s.newSnapdClient()
-	if err != nil {
-		return nil, err
-	}
-
-	instanceName := s.snapInstanceName
-	if instanceName == "" {
-		instanceName = "k8s"
-	}
-	info, err := client.GetSnapInfoWithContext(ctx, instanceName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get snap info: %w", err)
-	}
-	if info.StatusCode != 200 {
-		return nil, fmt.Errorf("failed to get snap info: snapd returned with error code %d", info.StatusCode)
-	}
-
-	activeSet := make(map[string]bool, len(info.Result.Apps))
-	for _, app := range info.Result.Apps {
-		if app.Daemon != "" && app.Active {
-			appBase := app.Name
-			if idx := strings.IndexByte(appBase, '.'); idx >= 0 {
-				appBase = appBase[idx+1:]
-			}
-			activeSet[appBase] = true
-		}
-	}
-
-	var active []string
-	for _, name := range names {
-		base := name
-		if idx := strings.IndexByte(name, '.'); idx >= 0 {
-			base = name[idx+1:]
-		}
-		if activeSet[base] {
-			active = append(active, name)
-		}
-	}
-	return active, nil
 }
 
 // RestartServices restarts k8s services. The names can be either prefixed or not.

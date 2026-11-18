@@ -3,7 +3,6 @@ package cleanup
 import (
 	"context"
 
-	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/snap/util/cleanup/internal"
 	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
@@ -21,13 +20,8 @@ func TryCleanupContainers(ctx context.Context, s snap.Snap) {
 	mountHelper := mountutils.NewUnixMountHelper()
 	netnsHelper := netnsutils.NewUnixNetworkNSHelper()
 
-	ownedNamespaces, err := internal.RemoveContainers(ctx)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "failed to remove containers")
-	}
-	if err := internal.RemoveNetworkNamespaces(ctx, netnsHelper, ownedNamespaces); err != nil {
-		log.FromContext(ctx).Error(err, "failed to remove network namespaces")
-	}
+	ownedNetns := internal.RemoveContainers(ctx)
+	internal.RemoveNetworkNamespaces(ctx, netnsHelper, ownedNetns)
 
 	sidsToLogout := internal.GetISCSISessionsToLogout(ctx, s, mountHelper)
 
