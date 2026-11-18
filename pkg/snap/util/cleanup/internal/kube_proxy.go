@@ -63,7 +63,7 @@ func TryRemoveKubeProxyRules(ctx context.Context, s snap.Snap) error {
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		stderrStr := stderr.String()
-		if isIgnorableIPVSContainerCleanupError(stderrStr) {
+		if onLXD, err := s.OnLXD(ctx); err == nil && onLXD && isIgnorableIPVSContainerCleanupError(stderrStr) {
 			log.FromContext(ctx).Info("Ignoring IPVS flush EPERM during kube-proxy cleanup in container environment")
 			return nil
 		}

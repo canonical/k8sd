@@ -55,10 +55,27 @@ E1118 14:56:07.580716 2222854 server.go:134] "Error running ProxyServer" err="en
 E1118 14:56:07.580760 2222854 run.go:72] "command failed" err="encountered an error while tearing down rules"
 `
 		createFakeKubeProxy(t, binDir, 1, "", stderr)
-		s := &mock.Snap{Mock: mock.Mock{K8sBinDir: binDir}}
+		s := &mock.Snap{Mock: mock.Mock{K8sBinDir: binDir, OnLXD: true}}
 
 		err := internal.TryRemoveKubeProxyRules(ctx, s)
 		g.Expect(err).ToNot(HaveOccurred())
+	})
+
+	t.Run("ContainerIPVS_EPERM_OnNonLXDHost_ReturnsError", func(t *testing.T) {
+		g := NewWithT(t)
+		binDir := t.TempDir()
+		stderr := `I1118 14:56:07.483606 2222854 server_linux.go:53] "Using iptables proxy"
+E1118 14:56:07.518091 2222854 proxier.go:722] "Error flushing ipvs rules" err="operation not permitted"
+E1118 14:56:07.580716 2222854 server.go:134] "Error running ProxyServer" err="encountered an error while tearing down rules"
+E1118 14:56:07.580760 2222854 run.go:72] "command failed" err="encountered an error while tearing down rules"
+`
+		createFakeKubeProxy(t, binDir, 1, "", stderr)
+		s := &mock.Snap{Mock: mock.Mock{K8sBinDir: binDir, OnLXD: false}}
+
+		err := internal.TryRemoveKubeProxyRules(ctx, s)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("kube-proxy --cleanup failed"))
+		g.Expect(err.Error()).To(ContainSubstring("operation not permitted"))
 	})
 
 	t.Run("ContainerIPVS_EPERM_WithIPTablesError_ReturnsError", func(t *testing.T) {
@@ -126,7 +143,7 @@ E1118 14:56:07.580716 2222854 server.go:134] "Error running ProxyServer" err="en
 E1118 14:56:07.580760 2222854 run.go:72] "command failed" err="encountered an error while tearing down rules"
 `
 		createFakeKubeProxy(t, binDir, 1, "", stderr)
-		s := &mock.Snap{Mock: mock.Mock{K8sBinDir: binDir}}
+		s := &mock.Snap{Mock: mock.Mock{K8sBinDir: binDir, OnLXD: true}}
 
 		// Should not panic or fail
 		internal.RemoveKubeProxyRules(ctx, s)
