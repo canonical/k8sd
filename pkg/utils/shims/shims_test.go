@@ -1,15 +1,19 @@
 package shims
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"golang.org/x/sys/unix"
 )
 
 func TestParseProcessListAndShimChildren(t *testing.T) {
@@ -54,6 +58,35 @@ func TestParseProcessListAndShimChildren_DetachedSnapMount(t *testing.T) {
   700     1 /usr/bin/containerd-shim-runc-v2 -namespace k8s.io
   701   700 /pause
 `
+
+	snapFile, err := os.CreateTemp(t.TempDir(), "snap-shim-*")
+	g.Expect(err).NotTo(HaveOccurred())
+	_ = snapFile.Close()
+	snapInfo, err := os.Stat(snapFile.Name())
+	g.Expect(err).NotTo(HaveOccurred())
+
+	origStat := osStat
+	origStatfsType := statfsType
+	t.Cleanup(func() {
+		osStat = origStat
+		statfsType = origStatfsType
+	})
+	osStat = func(path string) (os.FileInfo, error) {
+		if path == "/proc/500/exe" || path == "/proc/600/exe" {
+			return snapInfo, nil
+		}
+		return nil, os.ErrNotExist
+	}
+	statfsType = func(path string) (int64, error) {
+		switch path {
+		case "/proc/500/exe":
+			return unix.SQUASHFS_MAGIC, nil
+		case "/proc/600/exe":
+			return unix.FUSE_SUPER_MAGIC, nil
+		default:
+			return 0, os.ErrNotExist
+		}
+	}
 
 	procs := parseProcessList(raw)
 	readlink := func(path string) (string, error) {
@@ -215,11 +248,33 @@ func TestReBinaryExe(t *testing.T) {
 }
 
 func TestFindShimPIDsWithReadlink(t *testing.T) {
+	snapFile, err := os.CreateTemp(t.TempDir(), "snap-shim-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = snapFile.Close()
+	snapInfo, err := os.Stat(snapFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hostFile, err := os.CreateTemp(t.TempDir(), "host-shim-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = hostFile.Close()
+	hostInfo, err := os.Stat(hostFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name       string
 		procs      map[string]processInfo
 		readlinks  map[string]string
 		readErrors map[string]error
+		stats      map[string]os.FileInfo
+		fsTypes    map[string]int64
 		wantPIDs   []string
 	}{
 		{
@@ -252,6 +307,77 @@ func TestFindShimPIDsWithReadlink(t *testing.T) {
 				"/proc/103/exe": "/snap/k8s/123/bin/containerd-shim-runc-v2 (deleted)",
 			},
 			wantPIDs: []string{"103"},
+		},
+		{
+			name: "matches k8s and instance shims on lazy-unmounted snap revision",
+			procs: map[string]processInfo{
+				"104": {
+					command:   "/snap/k8s/5834/bin/containerd-shim-runc-v2 -namespace k8s.io -id c5 -address /run/containerd/containerd.sock",
+					parentPID: "1",
+				},
+				"105": {
+					command:   "/var/lib/snapd/snap/k8s_worker-1/5822/bin/containerd-shim-runc-v2 -id c6",
+					parentPID: "1",
+				},
+			},
+			readlinks: map[string]string{
+				"/proc/104/exe": "/bin/containerd-shim-runc-v2",
+				"/proc/105/exe": "/bin/containerd-shim-runc-v2 (deleted)",
+			},
+			stats: map[string]os.FileInfo{
+				"/proc/104/exe": snapInfo,
+				"/proc/105/exe": snapInfo,
+			},
+			fsTypes: map[string]int64{
+				"/proc/104/exe": unix.SQUASHFS_MAGIC,
+				"/proc/105/exe": unix.FUSE_SUPER_MAGIC,
+			},
+			wantPIDs: []string{"104", "105"},
+		},
+		{
+			name: "does not match non-k8s shim with detached /bin/containerd-shim-runc-v2 exe",
+			procs: map[string]processInfo{
+				"203": {
+					command:   "/snap/microk8s/5834/bin/containerd-shim-runc-v2 -namespace k8s.io -id c7",
+					parentPID: "1",
+				},
+				"204": {
+					command:   "/bin/containerd-shim-runc-v2 -namespace default -id c8",
+					parentPID: "1",
+				},
+			},
+			readlinks: map[string]string{
+				"/proc/203/exe": "/bin/containerd-shim-runc-v2",
+				"/proc/204/exe": "/bin/containerd-shim-runc-v2",
+			},
+			wantPIDs: nil,
+		},
+		{
+			name: "does not match host /bin/containerd-shim-runc-v2 spoofing snap argv0",
+			procs: map[string]processInfo{
+				"205": {
+					command:   "/snap/k8s/5834/bin/containerd-shim-runc-v2 -namespace k8s.io -id spoof-ext4",
+					parentPID: "1",
+				},
+				"206": {
+					command:   "/snap/k8s/5834/bin/containerd-shim-runc-v2 -namespace k8s.io -id spoof-samefile",
+					parentPID: "1",
+				},
+			},
+			readlinks: map[string]string{
+				"/proc/205/exe": "/bin/containerd-shim-runc-v2",
+				"/proc/206/exe": "/bin/containerd-shim-runc-v2",
+			},
+			stats: map[string]os.FileInfo{
+				"/proc/205/exe":                snapInfo,
+				"/proc/206/exe":                hostInfo,
+				"/bin/containerd-shim-runc-v2": hostInfo,
+			},
+			fsTypes: map[string]int64{
+				"/proc/205/exe": unix.EXT4_SUPER_MAGIC,
+				"/proc/206/exe": unix.SQUASHFS_MAGIC,
+			},
+			wantPIDs: nil,
 		},
 		{
 			name: "does not match unrelated pause process",
@@ -291,32 +417,6 @@ func TestFindShimPIDsWithReadlink(t *testing.T) {
 				"/proc/301/exe": "/usr/bin/python3",
 			},
 			wantPIDs: nil,
-		},
-		{
-			name: "matches detached snap mount when readlink returns /bin/containerd-shim-runc-v2",
-			procs: map[string]processInfo{
-				"501": {
-					command:   "/snap/k8s/5832/bin/containerd-shim-runc-v2 -namespace k8s.io -id c1",
-					parentPID: "1",
-				},
-			},
-			readlinks: map[string]string{
-				"/proc/501/exe": "/bin/containerd-shim-runc-v2",
-			},
-			wantPIDs: []string{"501"},
-		},
-		{
-			name: "matches detached snap mount when readlink returns /bin/containerd-shim-runc-v2 with deleted suffix",
-			procs: map[string]processInfo{
-				"502": {
-					command:   "/snap/k8s/5832/bin/containerd-shim-runc-v2 -namespace k8s.io -id c2",
-					parentPID: "1",
-				},
-			},
-			readlinks: map[string]string{
-				"/proc/502/exe": "/bin/containerd-shim-runc-v2 (deleted)",
-			},
-			wantPIDs: []string{"502"},
 		},
 		{
 			name: "does not match host containerd on /usr/bin/containerd-shim-runc-v2 with host command line",
@@ -415,9 +515,29 @@ func TestFindShimPIDsWithReadlink(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			g := NewWithT(t)
 
+			origStat := osStat
+			origStatfsType := statfsType
+			t.Cleanup(func() {
+				osStat = origStat
+				statfsType = origStatfsType
+			})
+
+			osStat = func(path string) (os.FileInfo, error) {
+				if info, ok := tc.stats[path]; ok {
+					return info, nil
+				}
+				return nil, os.ErrNotExist
+			}
+			statfsType = func(path string) (int64, error) {
+				if fst, ok := tc.fsTypes[path]; ok {
+					return fst, nil
+				}
+				return 0, os.ErrNotExist
+			}
+
 			mockReadlink := func(path string) (string, error) {
-				if err, ok := tc.readErrors[path]; ok {
-					return "", err
+				if rlErr, ok := tc.readErrors[path]; ok {
+					return "", rlErr
 				}
 				if target, ok := tc.readlinks[path]; ok {
 					return target, nil
@@ -581,4 +701,116 @@ func TestRunningContainerdShimPIDs_Error(t *testing.T) {
 	_, err := RunningContainerdShimPIDs(context.Background())
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("failed to list running host processes"))
+}
+
+func TestRunningContainerdShimPIDs_DetachedSnapMount(t *testing.T) {
+	if _, err := os.Stat("/snap"); err != nil {
+		t.Skipf("/snap directory not present: %v", err)
+	}
+	unsharePath, err := exec.LookPath("unshare")
+	if err != nil {
+		t.Skipf("unshare binary not available: %v", err)
+	}
+	mksquashfsPath, err := exec.LookPath("mksquashfs")
+	if err != nil {
+		t.Skipf("mksquashfs binary not available: %v", err)
+	}
+	snapfusePath, err := exec.LookPath("snapfuse")
+	if err != nil {
+		t.Skipf("snapfuse binary not available: %v", err)
+	}
+	sleepPath, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skipf("sleep binary not available: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	srcDir := filepath.Join(tmpDir, "snapsrc")
+	if err := os.MkdirAll(filepath.Join(srcDir, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sleepBytes, err := os.ReadFile(sleepPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "bin", "containerd-shim-runc-v2"), sleepBytes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	snapImg := filepath.Join(tmpDir, "k8s.snap")
+	if out, mkErr := exec.CommandContext(t.Context(), mksquashfsPath, srcDir, snapImg, "-noappend", "-quiet").CombinedOutput(); mkErr != nil {
+		t.Fatalf("mksquashfs failed: %v (%s)", mkErr, string(out))
+	}
+
+	script := fmt.Sprintf(`set -eu
+mount -t tmpfs tmpfs /snap
+mkdir -p /snap/k8s/5834 /snap/k8s/9999
+%q %q /snap/k8s/5834
+/snap/k8s/5834/bin/containerd-shim-runc-v2 60 &
+snap_pid=$!
+umount -l /snap/k8s/5834
+
+mount --bind %q /snap/k8s/9999
+/snap/k8s/9999/bin/containerd-shim-runc-v2 60 &
+spoof_pid=$!
+umount -l /snap/k8s/9999
+
+echo "PIDS=$snap_pid,$spoof_pid"
+wait "$snap_pid" "$spoof_pid" || true
+`, snapfusePath, snapImg, srcDir)
+
+	cmd := exec.CommandContext(t.Context(), unsharePath, "-Umr", "sh", "-c", script)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Skipf("failed to start unshare: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+
+	scanner := bufio.NewScanner(stdout)
+	if !scanner.Scan() {
+		_ = cmd.Wait()
+		t.Skipf("unprivileged user/mount/fuse unavailable: %s", stderr.String())
+	}
+	line := scanner.Text()
+	rawPIDs, ok := strings.CutPrefix(line, "PIDS=")
+	parts := strings.Split(rawPIDs, ",")
+	if !ok || len(parts) != 2 {
+		t.Fatalf("unexpected helper output %q (stderr=%s)", line, stderr.String())
+	}
+	snapPID, spoofPID := parts[0], parts[1]
+	t.Cleanup(func() {
+		for _, pid := range []string{snapPID, spoofPID} {
+			if p, findErr := os.FindProcess(mustAtoi(t, pid)); findErr == nil {
+				_ = p.Kill()
+			}
+		}
+	})
+
+	g := NewWithT(t)
+	for _, pid := range []string{snapPID, spoofPID} {
+		exeTarget, readErr := os.Readlink(fmt.Sprintf("/proc/%s/exe", pid))
+		g.Expect(readErr).NotTo(HaveOccurred())
+		g.Expect(exeTarget).To(Equal("/bin/containerd-shim-runc-v2"))
+	}
+
+	pids, err := RunningContainerdShimPIDs(t.Context())
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(pids).To(ContainElement(snapPID))
+	g.Expect(pids).NotTo(ContainElement(spoofPID))
+}
+
+func mustAtoi(t *testing.T, s string) int {
+	t.Helper()
+	var n int
+	if _, err := fmt.Sscanf(s, "%d", &n); err != nil {
+		t.Fatalf("invalid pid %q: %v", s, err)
+	}
+	return n
 }
