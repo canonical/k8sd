@@ -1,7 +1,6 @@
 package utils_test
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -76,7 +75,7 @@ func TestParseAddressString(t *testing.T) {
 	g := NewWithT(t)
 
 	// Seed the default address
-	defaultIPv4, defaultIPv6, err := utils.GetDefaultAddress()
+	defaultIPv4, defaultIPv6, err := getDefaultAddress()
 	g.Expect(err).ToNot(HaveOccurred())
 
 	ip4 := net.ParseIP(defaultIPv4)
@@ -225,33 +224,55 @@ func TestToIPString(t *testing.T) {
 	}
 }
 
-// getInterfaceNameForIP returns the network interface name associated with the given IP.
-func getInterfaceNameForIP(ip net.IP) (string, error) {
+// getDefaultAddress returns the default IPv4 and IPv6 addresses of the host.
+func getDefaultAddress() (ipv4, ipv6 string, err error) {
+	// Get a list of network interfaces.
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return "", err
+		return "", "", fmt.Errorf("failed to get network interfaces: %w", err)
 	}
 
+	// Loop through each network interface
 	for _, iface := range interfaces {
+		// Skip interfaces that are down or loopback interfaces
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		// Get a list of addresses for the current interface.
 		addrs, err := iface.Addrs()
 		if err != nil {
-			return "", err
+			return "", "", fmt.Errorf("failed to get addresses for interface %q: %w", iface.Name, err)
 		}
 
+		// Loop through each address
 		for _, addr := range addrs {
-			var ipAddr net.IP
+			// Parse the address to get the IP
+			var ip net.IP
 			switch v := addr.(type) {
 			case *net.IPNet:
-				ipAddr = v.IP
+				ip = v.IP
 			case *net.IPAddr:
-				ipAddr = v.IP
+				ip = v.IP
 			}
 
-			if ipAddr.Equal(ip) {
-				return iface.Name, nil
+			// Check if it's an IPv4 or IPv6 address and not a loopback
+			if ip.IsLoopback() {
+				continue
+			}
+
+			if ip.To4() != nil && ipv4 == "" {
+				ipv4 = ip.String()
+			} else if ip.To4() == nil && ipv6 == "" {
+				ipv6 = ip.String()
+			}
+
+			// Break early if both IPv4 and IPv6 addresses are found
+			if ipv4 != "" && ipv6 != "" {
+				return ipv4, ipv6, nil
 			}
 		}
 	}
 
-	return "", errors.New("no interface found for the given IP")
+	return ipv4, ipv6, nil
 }
