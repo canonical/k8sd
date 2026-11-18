@@ -119,13 +119,10 @@ func CleanHostEnviron(environ []string) []string {
 	var emitPath bool
 	switch {
 	case hasRealPath:
-		if cleaned := stripSnapPaths(realPath, snapDir, ""); cleaned != "" {
-			targetPath = cleaned
-			emitPath = true
-		} else if hasP {
-			targetPath = stripSnapPaths(existingP, snapDir, "")
-			emitPath = targetPath != ""
-		}
+		// REAL_PATH is authoritative when present: never widen it with entries
+		// from the process PATH, even if it sanitizes to empty.
+		targetPath = stripSnapPaths(realPath, snapDir, "")
+		emitPath = targetPath != ""
 	case inSnap && hasP:
 		targetPath = stripSnapPaths(existingP, snapDir, "")
 		emitPath = targetPath != ""
