@@ -491,9 +491,8 @@ func TestKubeProxyEnabled(t *testing.T) {
 			g.Fail("Time out while waiting for the reconcile to complete")
 		}
 
-		// Verify kube-proxy stop was called
-		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
-		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+		// Verify kube-proxy stop was NOT called because kube-proxy was already disabled
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
 		g.Expect(updateKubeProxyCalled).To(Receive(BeFalse()))
 		g.Expect(updateKubeProxyCalled).ToNot(Receive())
 
@@ -738,8 +737,10 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 			g.Fail("Timed out waiting for reconcile")
 		}
 		g.Expect(cleanupCh).ToNot(Receive())
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
 
-		// Restarting kube-proxy clears the disabled marker so the next reconcile cleans up rules again.
+		// Restarting kube-proxy clears the disabled marker so the next reconcile cleans up rules and stops kube-proxy again.
+		s.StopServicesCalledWith = nil
 		g.Expect(s.RestartServices(ctx, []string{"kube-proxy"})).To(Succeed())
 		w.Modify(disableCM)
 		keyCh <- nil
@@ -749,5 +750,33 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 			g.Fail("Timed out waiting for post-restart reconcile")
 		}
 		g.Expect(cleanupCh).To(Receive())
+		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+
+		// Steady-state reconcile after disable skips both stop and cleanup.
+		s.StopServicesCalledWith = nil
+		w.Modify(disableCM)
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for post-disable steady-state reconcile")
+		}
+		g.Expect(cleanupCh).ToNot(Receive())
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
+
+		// Starting kube-proxy also clears the disabled marker so the next reconcile cleans up rules and stops kube-proxy again.
+		s.StopServicesCalledWith = nil
+		g.Expect(s.StartServices(ctx, []string{"kube-proxy"})).To(Succeed())
+		w.Modify(disableCM)
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for post-start reconcile")
+		}
+		g.Expect(cleanupCh).To(Receive())
+		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
 	})
 }

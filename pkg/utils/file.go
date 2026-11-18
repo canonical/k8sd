@@ -1,18 +1,14 @@
 package utils
 
 import (
-	"archive/tar"
 	"bufio"
-	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strings"
 
@@ -246,92 +242,6 @@ func GetMountPropagationType(path string) (MountPropagationType, error) {
 	return MountPropagationPrivate, nil
 }
 
-// CreateTarball creates tarball at tarballPath, rooted at rootDir and including
-// all files in walkDir except those paths found in excludeFiles.
-// walkDir and excludeFiles elements are relative to rootDir.
-func CreateTarball(tarballPath string, rootDir string, walkDir string, excludeFiles []string) error {
-	tarball, err := os.Create(tarballPath)
-	if err != nil {
-		return err
-	}
-
-	gzWriter := gzip.NewWriter(tarball)
-	tarWriter := tar.NewWriter(gzWriter)
-
-	filesys := os.DirFS(rootDir)
-
-	err = fs.WalkDir(filesys, walkDir, func(filepath string, stat fs.DirEntry, err error) error {
-		if err != nil {
-			msg := fmt.Sprintf("failed to read file while creating tarball; skipping, file: %s, error: %v", filepath, err)
-			log.L().Info(msg)
-			return nil
-		}
-
-		if slices.Contains(excludeFiles, filepath) {
-			return nil
-		}
-
-		info, err := stat.Info()
-		if err != nil {
-			return err
-		}
-
-		header, err := tar.FileInfoHeader(info, filepath)
-		if err != nil {
-			return fmt.Errorf("create tar header for %q, error: %w", filepath, err)
-		}
-
-		// header.Name is the basename of `stat` by default
-		header.Name = filepath
-
-		err = tarWriter.WriteHeader(header)
-		if err != nil {
-			return fmt.Errorf("failed to write tar header, error: %w", err)
-		}
-
-		// Only write contents for regular files
-		if header.Typeflag == tar.TypeReg {
-			fullPath := path.Join(rootDir, filepath)
-			file, err := os.Open(fullPath)
-			if err != nil {
-				return fmt.Errorf("could not open file: %s, error: %w", fullPath, err)
-			}
-
-			_, err = io.Copy(tarWriter, file)
-			if err != nil {
-				return fmt.Errorf("tar write failure: %s, error: %w", fullPath, err)
-			}
-
-			err = file.Close()
-			if err != nil {
-				return fmt.Errorf("could not close file: %s, error: %w", fullPath, err)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("tar walk failed: %s, error: %w", walkDir, err)
-	}
-
-	err = tarWriter.Close()
-	if err != nil {
-		return fmt.Errorf("could not close tar writer, error: %w", err)
-	}
-
-	err = gzWriter.Close()
-	if err != nil {
-		return fmt.Errorf("could not close gz writer, error: %w", err)
-	}
-
-	err = tarball.Close()
-	if err != nil {
-		return fmt.Errorf("could not close tarball, error: %w", err)
-	}
-
-	return nil
-}
-
 // WriteFile writes data to a file with the given name and permissions.
 // The file is written to a temporary file in the same directory as the target file
 // and then renamed to the target file to avoid partial writes in case of a crash.
@@ -362,9 +272,4 @@ func WriteFile(name string, data []byte, perm fs.FileMode) error {
 	}
 
 	return nil
-}
-
-// IsYaml returns true if the file has a yaml or yml extension.
-func IsYaml(file string) bool {
-	return filepath.Ext(strings.ToLower(file)) == ".yaml" || filepath.Ext(strings.ToLower(file)) == ".yml"
 }

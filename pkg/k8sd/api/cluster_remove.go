@@ -51,7 +51,7 @@ func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.
 		return mctypes.InternalError(fmt.Errorf("failed to get cluster config: %w", err))
 	}
 
-	isControlPlane, err := node.IsControlPlaneNode(ctx, s, req.Name, e.provider.Snap())
+	isControlPlane, err := node.IsControlPlaneNode(ctx, req.Name, e.provider.Snap())
 	if err != nil {
 		if req.Force {
 			log.Error(err, "Failed to determine if node is control-plane, but continuing due to force=true")
@@ -81,7 +81,7 @@ func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.
 	// if force=true, regardless of the role of the node.
 	if isControlPlane || req.Force {
 		log.Info("Remove node from datastore")
-		if err := removeNodeFromDatastore(ctx, s, snap, req.Name, cfg); err != nil {
+		if err := removeNodeFromDatastore(ctx, snap, req.Name, cfg); err != nil {
 			if req.Force {
 				// With force=true, we want to cleanup all out-of-sync mentions of this node.
 				// So we log the error, but continue.
@@ -104,10 +104,10 @@ func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.
 	return mctypes.SyncResponse(true, &apiv2.RemoveNodeResponse{})
 }
 
-func removeNodeFromDatastore(ctx context.Context, s mctypes.State, snap snap.Snap, nodeName string, clusterConfig types.ClusterConfig) error {
+func removeNodeFromDatastore(ctx context.Context, snap snap.Snap, nodeName string, clusterConfig types.ClusterConfig) error {
 	switch clusterConfig.Datastore.GetType() {
 	case "etcd":
-		if err := removeNodeFromEtcd(ctx, snap, s, clusterConfig, nodeName); err != nil {
+		if err := removeNodeFromEtcd(ctx, snap, clusterConfig, nodeName); err != nil {
 			return fmt.Errorf("failed to remove node from etcd cluster: %w", err)
 		}
 	case "external":
@@ -118,7 +118,7 @@ func removeNodeFromDatastore(ctx context.Context, s mctypes.State, snap snap.Sna
 	return nil
 }
 
-func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, s mctypes.State, cfg types.ClusterConfig, nodeName string) error {
+func removeNodeFromEtcd(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, nodeName string) error {
 	c, err := snap.K8sdClient("")
 	if err != nil {
 		return fmt.Errorf("failed to get k8sd client: %w", err)

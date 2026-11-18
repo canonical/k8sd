@@ -12,11 +12,6 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 )
 
-// GetRefreshStatus fetches the status of a snapd change.
-func (c *Client) GetRefreshStatus(changeID string) (*types.RefreshStatus, error) {
-	return c.GetRefreshStatusWithContext(context.Background(), changeID)
-}
-
 // GetRefreshStatusWithContext fetches the status of a snapd change using ctx.
 func (c *Client) GetRefreshStatusWithContext(ctx context.Context, changeID string) (*types.RefreshStatus, error) {
 	if changeID == "" {

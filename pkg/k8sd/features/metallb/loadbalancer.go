@@ -260,9 +260,9 @@ func validateBFDProfiles(profiles []bfdProfile, frrk8sEnabled bool) error {
 // deployment.
 // ApplyLoadBalancer returns an error if anything fails. The error is also wrapped in the .Message field of the
 // returned FeatureStatus.
-func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) (types.FeatureStatus, error) {
+func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, annotations types.Annotations) (types.FeatureStatus, error) {
 	if !loadbalancer.GetEnabled() {
-		if err := disableLoadBalancer(ctx, snap, network); err != nil {
+		if err := disableLoadBalancer(ctx, snap); err != nil {
 			err = fmt.Errorf("failed to disable LoadBalancer: %w", err)
 			return types.FeatureStatus{
 				Enabled: false,
@@ -277,7 +277,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		}, nil
 	}
 
-	if err := enableLoadBalancer(ctx, snap, loadbalancer, network, annotations); err != nil {
+	if err := enableLoadBalancer(ctx, snap, loadbalancer, annotations); err != nil {
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
 			Enabled: false,
@@ -326,7 +326,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	}
 }
 
-func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Network) error {
+func disableLoadBalancer(ctx context.Context, snap snap.Snap) error {
 	m := snap.HelmClient()
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StateDeleted, nil); err != nil {
@@ -419,7 +419,7 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 	}
 }
 
-func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) error {
+func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, annotations types.Annotations) error {
 	m := snap.HelmClient()
 
 	nativeBackend, err := isNativeBGPBackend(annotations)

@@ -47,6 +47,3 @@ func (c Certificates) GetAdminClientCert() string { return getField(c.AdminClien
 func (c Certificates) GetAdminClientKey() string  { return getField(c.AdminClientKey) }
 func (c Certificates) GetK8sdPublicKey() string   { return getField(c.K8sdPublicKey) }
 func (c Certificates) GetK8sdPrivateKey() string  { return getField(c.K8sdPrivateKey) }
-
-// Empty returns true if all Certificates fields are unset.
-func (c Certificates) Empty() bool { return c == Certificates{} }

@@ -156,16 +156,16 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 			return nil
 		}
 
-		if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
-			return c.snap.StopServices(ctx, []string{"kube-proxy"})
-		}); err != nil {
-			return fmt.Errorf("failed to stop kube-proxy: %w", err)
-		}
 		alreadyDisabled, err := snaputil.IsKubeProxyDisabled(c.snap)
 		if err != nil {
 			return fmt.Errorf("failed to check kube-proxy disabled state: %w", err)
 		}
 		if !alreadyDisabled {
+			if err := control.RetryFor(ctx, 5, 5*time.Second, func() error {
+				return c.snap.StopServices(ctx, []string{"kube-proxy"})
+			}); err != nil {
+				return fmt.Errorf("failed to stop kube-proxy: %w", err)
+			}
 			removeKubeProxyRules := c.removeKubeProxyRules
 			if removeKubeProxyRules == nil {
 				removeKubeProxyRules = cleanup.TryRemoveKubeProxyRules

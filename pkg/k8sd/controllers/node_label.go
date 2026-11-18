@@ -33,7 +33,7 @@ func NewNodeLabelController(snap snap.Snap, waitReady func(), getNodeName func(c
 	}
 }
 
-func (c *NodeLabelController) Run(ctx context.Context, getDatastoreType func(ctx context.Context) (string, error)) {
+func (c *NodeLabelController) Run(ctx context.Context) {
 	ctx = log.NewContext(ctx, log.FromContext(ctx).WithValues("controller", "node-label"))
 	log := log.FromContext(ctx)
 
@@ -56,7 +56,7 @@ func (c *NodeLabelController) Run(ctx context.Context, getDatastoreType func(ctx
 
 		if err := client.WatchNode(
 			ctx, nodeName, func(node *v1.Node) error {
-				err := c.reconcile(ctx, client, node, getDatastoreType)
+				err := c.reconcile(ctx, client, node)
 				c.notifyReconciled()
 				return err
 			}); err != nil {
@@ -72,7 +72,7 @@ func (c *NodeLabelController) Run(ctx context.Context, getDatastoreType func(ctx
 	}
 }
 
-func (c *NodeLabelController) reconcileFailureDomain(ctx context.Context, node *v1.Node, getDatastoreType func(ctx context.Context) (string, error)) error {
+func (c *NodeLabelController) reconcileFailureDomain(ctx context.Context, node *v1.Node) error {
 	azLabel, azFound := node.Labels["topology.kubernetes.io/zone"]
 	var failureDomain uint64
 	if azFound && azLabel != "" {
@@ -83,7 +83,7 @@ func (c *NodeLabelController) reconcileFailureDomain(ctx context.Context, node *
 		failureDomain = 0
 	}
 
-	if err := c.updateDqliteFailureDomain(ctx, failureDomain, azLabel, getDatastoreType); err != nil {
+	if err := c.updateDqliteFailureDomain(ctx, failureDomain, azLabel); err != nil {
 		return fmt.Errorf("failed to update failure-domain, error: %w", err)
 	}
 
@@ -125,7 +125,7 @@ func (c *NodeLabelController) reconcileVersionAnnotation(ctx context.Context, cl
 	return nil
 }
 
-func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, failureDomain uint64, availabilityZone string, getDatastoreType func(ctx context.Context) (string, error)) error {
+func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, failureDomain uint64, availabilityZone string) error {
 	log := log.FromContext(ctx)
 
 	k8sdDbStateDir := filepath.Join(c.snap.K8sdStateDir(), "database")
@@ -147,7 +147,7 @@ func (c *NodeLabelController) updateDqliteFailureDomain(ctx context.Context, fai
 	return nil
 }
 
-func (c *NodeLabelController) reconcile(ctx context.Context, client *kubernetes.Client, node *v1.Node, getDatastoreType func(ctx context.Context) (string, error)) error {
+func (c *NodeLabelController) reconcile(ctx context.Context, client *kubernetes.Client, node *v1.Node) error {
 	isWorker, err := snaputil.IsWorker(c.snap)
 	if err != nil {
 		return fmt.Errorf("failed to check if node is a worker: %w", err)
@@ -157,7 +157,7 @@ func (c *NodeLabelController) reconcile(ctx context.Context, client *kubernetes.
 
 	if !isWorker {
 		log.FromContext(ctx).Info("Reconciling node failure domain", "nodeName", node.Name)
-		if err := c.reconcileFailureDomain(ctx, node, getDatastoreType); err != nil {
+		if err := c.reconcileFailureDomain(ctx, node); err != nil {
 			errs = append(errs, fmt.Errorf("failed to reconcile failure domain: %w", err))
 		}
 	}

@@ -32,7 +32,7 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 
 	// tune system settings if enabled and necessary
 	if !a.snap.Strict() {
-		if err := a.tuneSystemSettings(ctx, s); err != nil {
+		if err := a.tuneSystemSettings(ctx); err != nil {
 			log.FromContext(ctx).Error(err, "failed to tune system settings")
 		}
 	}
@@ -74,19 +74,7 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 
 	// start node label controller
 	if a.nodeLabelController != nil {
-		go a.nodeLabelController.Run(ctx, func(ctx context.Context) (string, error) {
-			cfg, err := databaseutil.GetClusterConfig(ctx, s)
-			if err != nil {
-				return "", fmt.Errorf("failed to retrieve cluster config: %w", err)
-			}
-
-			datastoreType := cfg.Datastore.Type
-			if datastoreType == nil {
-				return "", fmt.Errorf("datastore type is not set in cluster config")
-			}
-
-			return *datastoreType, nil
-		})
+		go a.nodeLabelController.Run(ctx)
 	}
 
 	// start control plane config controller

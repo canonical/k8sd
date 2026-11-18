@@ -9,7 +9,6 @@ import (
 
 func TestWorkerTokenEncode(t *testing.T) {
 	token := &types.InternalWorkerNodeToken{
-		Token:         "token1",
 		Secret:        "mysecret",
 		JoinAddresses: []string{"addr1:1010", "addr2:1212"},
 		Fingerprint:   "fingerprint",
@@ -28,7 +27,6 @@ func TestWorkerTokenEncode(t *testing.T) {
 
 func TestWorkerTokenEncodeWithPadding(t *testing.T) {
 	token := &types.InternalWorkerNodeToken{
-		Token:         "padded-token",
 		Secret:        "padded-secret",
 		JoinAddresses: []string{"192.168.1.23:6400"},
 		Fingerprint:   "6bf8e523089120059a4e4be99ae1250545e755d66cfa0cc32d438ea49e7575d3",

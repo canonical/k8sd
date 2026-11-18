@@ -53,7 +53,7 @@ func (e *Endpoints) getCertificatesStatus(s mctypes.State, r *http.Request) mcty
 		return mctypes.InternalError(fmt.Errorf("failed to check if node is a worker: %w", err))
 	}
 	if isWorker {
-		return getCertsStatusWorker(s, r, snap)
+		return getCertsStatusWorker(r, snap)
 	}
 	return getCertsStatusControlPlane(s, r, snap)
 }
@@ -102,7 +102,7 @@ func getCertsStatusControlPlane(s mctypes.State, r *http.Request, snap snap.Snap
 
 // getCertsStatusWorker collects certificate status information for worker
 // nodes. It reads worker certificates and kubeconfig certificates.
-func getCertsStatusWorker(s mctypes.State, r *http.Request, snap snap.Snap) mctypes.Response {
+func getCertsStatusWorker(r *http.Request, snap snap.Snap) mctypes.Response {
 	nodeCerts, err := loadCertificateStatusesFromDir(snap.KubernetesPKIDir(), workerCertificateNames)
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to read node certificates: %w", err))

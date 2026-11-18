@@ -10,84 +10,60 @@ import (
 
 // Mock is a mock implementation of k8sd.Client.
 type Mock struct {
-	// k8sd.ClusterClient
-	BootstrapClusterCalledWith      apiv2.BootstrapClusterRequest
 	BootstrapClusterResponse        apiv2.BootstrapClusterResponse
 	BootstrapClusterErr             error
-	GetJoinTokenCalledWith          apiv2.GetJoinTokenRequest
 	GetJoinTokenResponse            apiv2.GetJoinTokenResponse
 	GetJoinTokenErr                 error
-	JoinClusterCalledWith           apiv2.JoinClusterRequest
 	JoinClusterErr                  error
-	RemoveNodeCalledWith            apiv2.RemoveNodeRequest
 	RemoveNodeErr                   error
 	GetClusterMembersResponse       []mctypes.ClusterMember
 	GetClusterMembersErr            error
-	GetClusterMemberCalledWith      string
 	GetClusterMemberCalledWithNames []string
 	GetClusterMemberFn              func(ctx context.Context, name string) (mctypes.ClusterMember, error)
 	GetClusterMemberResponse        mctypes.ClusterMember
 	GetClusterMemberErr             error
-	RemoveClusterMemberName         string
-	RemoveClusterMemberAddr         string
-	RemoveClusterMemberForce        bool
 	RemoveClusterMemberErr          error
 
-	// k8sd.StatusClient
 	NodeStatusResponse    apiv2.NodeStatusResponse
 	NodeStatusInitialized bool
 	NodeStatusErr         error
 	ClusterStatusResponse apiv2.ClusterStatusResponse
 	ClusterStatusErr      error
 
-	// k8sd.ConfigClient
 	GetClusterConfigResponse   apiv2.GetClusterConfigResponse
 	GetClusterConfigErr        error
 	SetClusterConfigCalledWith apiv2.SetClusterConfigRequest
 	SetClusterConfigErr        error
 
-	// k8sd.ClusterMaintenanceClient
-	RefreshCertificatesPlanCalledWith   apiv2.RefreshCertificatesPlanRequest
-	RefreshCertificatesPlanResponse     apiv2.RefreshCertificatesPlanResponse
-	RefreshCertificatesPlanErr          error
-	RefreshCertificatesRunCalledWith    apiv2.RefreshCertificatesRunRequest
-	RefreshCertificatesRunResponse      apiv2.RefreshCertificatesRunResponse
-	RefreshCertificatesRunErr           error
-	RefreshCertificatesUpdateCalledWith apiv2.RefreshCertificatesUpdateRequest
-	RefreshCertificatesUpdateResponse   apiv2.RefreshCertificatesUpdateResponse
-	RefreshCertificatesUpdateErr        error
+	RefreshCertificatesPlanResponse   apiv2.RefreshCertificatesPlanResponse
+	RefreshCertificatesPlanErr        error
+	RefreshCertificatesRunResponse    apiv2.RefreshCertificatesRunResponse
+	RefreshCertificatesRunErr         error
+	RefreshCertificatesUpdateResponse apiv2.RefreshCertificatesUpdateResponse
+	RefreshCertificatesUpdateErr      error
 
-	CertificatesStatusCalledWith apiv2.CertificatesStatusRequest
-	CertificatesStatusResponse   apiv2.CertificatesStatusResponse
-	CertificatesStatusErr        error
+	CertificatesStatusResponse apiv2.CertificatesStatusResponse
+	CertificatesStatusErr      error
 
-	// k8sd.UserClient
-	KubeConfigCalledWith apiv2.KubeConfigRequest
-	KubeConfigResponse   apiv2.KubeConfigResponse
-	KubeConfigErr        error
+	KubeConfigResponse apiv2.KubeConfigResponse
+	KubeConfigErr      error
 
-	// k8sd.ClusterAPIClient
-	SetClusterAPIAuthTokenCalledWith apiv2.ClusterAPISetAuthTokenRequest
-	SetClusterAPIAuthTokenErr        error
+	SetClusterAPIAuthTokenErr error
 }
 
-func (m *Mock) BootstrapCluster(_ context.Context, request apiv2.BootstrapClusterRequest) (apiv2.BootstrapClusterResponse, error) {
-	m.BootstrapClusterCalledWith = request
+func (m *Mock) BootstrapCluster(_ context.Context, _ apiv2.BootstrapClusterRequest) (apiv2.BootstrapClusterResponse, error) {
 	return m.BootstrapClusterResponse, m.BootstrapClusterErr
 }
 
-func (m *Mock) GetJoinToken(_ context.Context, request apiv2.GetJoinTokenRequest) (apiv2.GetJoinTokenResponse, error) {
-	m.GetJoinTokenCalledWith = request
+func (m *Mock) GetJoinToken(_ context.Context, _ apiv2.GetJoinTokenRequest) (apiv2.GetJoinTokenResponse, error) {
 	return m.GetJoinTokenResponse, m.GetJoinTokenErr
 }
 
-func (m *Mock) JoinCluster(_ context.Context, request apiv2.JoinClusterRequest) error {
-	m.JoinClusterCalledWith = request
+func (m *Mock) JoinCluster(_ context.Context, _ apiv2.JoinClusterRequest) error {
 	return m.JoinClusterErr
 }
 
-func (m *Mock) RemoveNode(_ context.Context, request apiv2.RemoveNodeRequest) error {
-	m.RemoveNodeCalledWith = request
+func (m *Mock) RemoveNode(_ context.Context, _ apiv2.RemoveNodeRequest) error {
 	return m.RemoveNodeErr
 }
 
@@ -99,21 +75,19 @@ func (m *Mock) ClusterStatus(_ context.Context, waitReady bool) (apiv2.ClusterSt
 	return m.ClusterStatusResponse, m.ClusterStatusErr
 }
 
-func (m *Mock) RefreshCertificatesPlan(_ context.Context, request apiv2.RefreshCertificatesPlanRequest) (apiv2.RefreshCertificatesPlanResponse, error) {
+func (m *Mock) RefreshCertificatesPlan(_ context.Context, _ apiv2.RefreshCertificatesPlanRequest) (apiv2.RefreshCertificatesPlanResponse, error) {
 	return m.RefreshCertificatesPlanResponse, m.RefreshCertificatesPlanErr
 }
 
-func (m *Mock) RefreshCertificatesRun(_ context.Context, request apiv2.RefreshCertificatesRunRequest) (apiv2.RefreshCertificatesRunResponse, error) {
+func (m *Mock) RefreshCertificatesRun(_ context.Context, _ apiv2.RefreshCertificatesRunRequest) (apiv2.RefreshCertificatesRunResponse, error) {
 	return m.RefreshCertificatesRunResponse, m.RefreshCertificatesRunErr
 }
 
-func (m *Mock) RefreshCertificatesUpdate(_ context.Context, request apiv2.RefreshCertificatesUpdateRequest) (apiv2.RefreshCertificatesUpdateResponse, error) {
-	m.RefreshCertificatesUpdateCalledWith = request
+func (m *Mock) RefreshCertificatesUpdate(_ context.Context, _ apiv2.RefreshCertificatesUpdateRequest) (apiv2.RefreshCertificatesUpdateResponse, error) {
 	return m.RefreshCertificatesUpdateResponse, m.RefreshCertificatesUpdateErr
 }
 
-func (m *Mock) CertificatesStatus(_ context.Context, request apiv2.CertificatesStatusRequest) (apiv2.CertificatesStatusResponse, error) {
-	m.CertificatesStatusCalledWith = request
+func (m *Mock) CertificatesStatus(_ context.Context, _ apiv2.CertificatesStatusRequest) (apiv2.CertificatesStatusResponse, error) {
 	return m.CertificatesStatusResponse, m.CertificatesStatusErr
 }
 
@@ -126,13 +100,11 @@ func (m *Mock) SetClusterConfig(_ context.Context, request apiv2.SetClusterConfi
 	return m.SetClusterConfigErr
 }
 
-func (m *Mock) KubeConfig(_ context.Context, request apiv2.KubeConfigRequest) (apiv2.KubeConfigResponse, error) {
-	m.KubeConfigCalledWith = request
+func (m *Mock) KubeConfig(_ context.Context, _ apiv2.KubeConfigRequest) (apiv2.KubeConfigResponse, error) {
 	return m.KubeConfigResponse, m.KubeConfigErr
 }
 
-func (m *Mock) SetClusterAPIAuthToken(_ context.Context, request apiv2.ClusterAPISetAuthTokenRequest) error {
-	m.SetClusterAPIAuthTokenCalledWith = request
+func (m *Mock) SetClusterAPIAuthToken(_ context.Context, _ apiv2.ClusterAPISetAuthTokenRequest) error {
 	return m.SetClusterAPIAuthTokenErr
 }
 
@@ -141,7 +113,6 @@ func (m *Mock) GetClusterMembers(_ context.Context) ([]mctypes.ClusterMember, er
 }
 
 func (m *Mock) GetClusterMember(ctx context.Context, name string) (mctypes.ClusterMember, error) {
-	m.GetClusterMemberCalledWith = name
 	m.GetClusterMemberCalledWithNames = append(m.GetClusterMemberCalledWithNames, name)
 	if m.GetClusterMemberFn != nil {
 		return m.GetClusterMemberFn(ctx, name)
@@ -149,10 +120,7 @@ func (m *Mock) GetClusterMember(ctx context.Context, name string) (mctypes.Clust
 	return m.GetClusterMemberResponse, m.GetClusterMemberErr
 }
 
-func (m *Mock) RemoveClusterMember(_ context.Context, name string, addr string, force bool) error {
-	m.RemoveClusterMemberName = name
-	m.RemoveClusterMemberAddr = addr
-	m.RemoveClusterMemberForce = force
+func (m *Mock) RemoveClusterMember(_ context.Context, _ string, _ string, _ bool) error {
 	return m.RemoveClusterMemberErr
 }
 

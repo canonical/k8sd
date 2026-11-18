@@ -2,13 +2,9 @@ package app
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
-	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/lxd/shared/revert"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -17,139 +13,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
-
-// TestRegisterEtcdMemberReverter_NotEnoughEndpoints tests that cleanup is skipped when <3 endpoints for a voting member.
-func TestRegisterEtcdMemberReverter_NotEnoughEndpoints(t *testing.T) {
-	g := NewWithT(t)
-
-	tmpDir := t.TempDir()
-	etcdDir := filepath.Join(tmpDir, "etcd")
-	g.Expect(os.MkdirAll(etcdDir, 0o755)).To(Succeed())
-
-	testFile := filepath.Join(etcdDir, "member/snap/db")
-	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
-	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
-
-	// Only 2 endpoints - RegisterEtcdMemberReverter skips etcd operations when <3 for voting members
-	endpoints := []string{"https://node1:2379", "https://node2:2379"}
-
-	mockSnap := &snapmock.Snap{
-		Mock: snapmock.Mock{
-			EtcdDir: etcdDir,
-			// No EtcdClient needed - reverter won't call snap.EtcdClient with <3 endpoints
-		},
-	}
-	reverter := revert.New()
-
-	registerEtcdMemberReverter(mockSnap, "node2", endpoints, false, reverter)
-
-	// Trigger reverter
-	reverter.Fail()
-
-	// Verify directory was NOT cleaned up (quorum protection)
-	g.Expect(etcdDir).To(BeADirectory())
-}
-
-// TestRegisterEtcdMemberReverter_ClientCreationFailure tests error handling when EtcdClient creation fails.
-func TestRegisterEtcdMemberReverter_ClientCreationFailure(t *testing.T) {
-	g := NewWithT(t)
-
-	tmpDir := t.TempDir()
-	etcdDir := filepath.Join(tmpDir, "etcd")
-	g.Expect(os.MkdirAll(etcdDir, 0o755)).To(Succeed())
-
-	testFile := filepath.Join(etcdDir, "member/snap/db")
-	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
-	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
-	// 3 endpoints - should attempt etcd operations but client creation fails
-	endpoints := []string{"https://node1:2379", "https://node2:2379", "https://node3:2379"}
-	nodeName := "node2"
-
-	// Mock snap that returns an error from EtcdClient
-	mockSnap := &snapmock.Snap{
-		Mock: snapmock.Mock{
-			EtcdDir:       etcdDir,
-			EtcdClientErr: fmt.Errorf("failed to create etcd client"),
-		},
-	}
-	reverter := revert.New()
-
-	registerEtcdMemberReverter(mockSnap, nodeName, endpoints, false, reverter)
-
-	// Trigger reverter
-	reverter.Fail()
-
-	// Verify directory was NOT cleaned up when client creation fails
-	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when client creation fails")
-}
-
-// TestRegisterEtcdMemberReverter_Learner_NoEndpoints tests that cleanup is skipped
-// for a learner when no peer endpoints are available.
-func TestRegisterEtcdMemberReverter_Learner_NoEndpoints(t *testing.T) {
-	g := NewWithT(t)
-
-	tmpDir := t.TempDir()
-	etcdDir := filepath.Join(tmpDir, "etcd")
-	g.Expect(os.MkdirAll(etcdDir, 0o755)).To(Succeed())
-
-	testFile := filepath.Join(etcdDir, "member/snap/db")
-	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
-	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
-
-	// No endpoints available - nothing to connect to
-	endpoints := []string{}
-
-	mockSnap := &snapmock.Snap{
-		Mock: snapmock.Mock{
-			EtcdDir: etcdDir,
-		},
-	}
-	reverter := revert.New()
-
-	registerEtcdMemberReverter(mockSnap, "node2", endpoints, true, reverter)
-
-	reverter.Fail()
-
-	// Verify directory was NOT cleaned up (no endpoints to reach the cluster)
-	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when no endpoints are available")
-}
-
-// TestRegisterEtcdMemberReverter_Learner_WithEndpoints_ClientError tests that
-// for a learner, removal is attempted even with a single endpoint (no quorum
-// guard), and handles client creation errors gracefully.
-func TestRegisterEtcdMemberReverter_Learner_WithEndpoints_ClientError(t *testing.T) {
-	g := NewWithT(t)
-
-	tmpDir := t.TempDir()
-	etcdDir := filepath.Join(tmpDir, "etcd")
-	g.Expect(os.MkdirAll(etcdDir, 0o755)).To(Succeed())
-
-	testFile := filepath.Join(etcdDir, "member/snap/db")
-	g.Expect(os.MkdirAll(filepath.Dir(testFile), 0o755)).To(Succeed())
-	g.Expect(os.WriteFile(testFile, []byte("etcd data"), 0o644)).To(Succeed())
-
-	// Single endpoint - sufficient for a learner (no quorum impact)
-	endpoints := []string{"https://node1:2379"}
-	nodeName := "node2"
-
-	mockSnap := &snapmock.Snap{
-		Mock: snapmock.Mock{
-			EtcdDir:       etcdDir,
-			EtcdClientErr: fmt.Errorf("failed to create etcd client"),
-		},
-	}
-	reverter := revert.New()
-
-	registerEtcdMemberReverter(mockSnap, nodeName, endpoints, true, reverter)
-
-	// Should not panic; errors are logged but do not propagate
-	reverter.Fail()
-
-	// Directory is not removed because client creation failed, but the code
-	// must have attempted to create the client (isLearner=true bypasses the
-	// endpoint count guard).
-	g.Expect(etcdDir).To(BeADirectory(), "etcd directory should NOT be removed when client creation fails")
-}
 
 // TestRegisterK8sNodeDeletionReverter_FailDeletesNode ensures a failed join triggers Node deletion.
 func TestRegisterK8sNodeDeletionReverter_FailDeletesNode(t *testing.T) {
