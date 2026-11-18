@@ -7,16 +7,22 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/canonical/k8sd/pkg/log"
 	"helm.sh/helm/v3/pkg/action"
+	chartpkg "helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/chartutil"
 	releasepkg "helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
+
+// upgradeRunner runs a Helm upgrade action.
+type upgradeRunner func(ctx context.Context, u *action.Upgrade, name string, ch *chartpkg.Chart, vals map[string]any) (*releasepkg.Release, error)
 
 // client implements Client using Helm.
 type client struct {
@@ -28,6 +34,8 @@ type client struct {
 	// be retained, including the most recent release. Values of 0 or less are
 	// ignored (meaning no limits are imposed).
 	maxHistory int
+	// upgradeRunner executes an upgrade action. Defaults to u.RunWithContext.
+	upgradeRunner upgradeRunner
 }
 
 // ensure *client implements Client.
@@ -164,17 +172,9 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 			log.Info("both chart version and values changed, upgrading", "oldVersion", release.Chart.Metadata.Version, "newVersion", chart.Metadata.Version)
 		}
 
-		// there is already a release installed, so we must run an upgrade action
-		upgrade := action.NewUpgrade(cfg)
-		upgrade.Namespace = c.Namespace
-		upgrade.ResetThenReuseValues = true
-		upgrade.Timeout = h.timeout
-		// NOTE(Hue): We need to set the upgrade.MaxHistory here since it overwrites the
-		// cfg.Releases.MaxHistory value.
-		upgrade.MaxHistory = h.maxHistory
-
-		if _, err := upgrade.RunWithContext(ctx, c.Name, chart, sanitizedValues); err != nil {
-			return false, fmt.Errorf("failed to upgrade %s: %w", c.Name, err)
+		// there is already a release installed, so we must run an upgrade action.
+		if err := h.upgradeChart(ctx, cfg, c.Name, c.Namespace, chart, sanitizedValues); err != nil {
+			return false, err
 		}
 
 		return true, nil
@@ -232,4 +232,64 @@ func sanitizeHelmValues(values map[string]any) (map[string]any, error) {
 	}
 
 	return result, nil
+}
+
+// upgradeChart executes a Helm upgrade, retrying once with Force if the initial
+// attempt fails due to a rejected patch.
+func (h *client) upgradeChart(ctx context.Context, cfg *action.Configuration, name, namespace string, ch *chartpkg.Chart, vals map[string]any) error {
+	log := log.FromContext(ctx).WithName("helm").WithValues("chart", name)
+
+	newUpgrade := func() *action.Upgrade {
+		u := action.NewUpgrade(cfg)
+		u.Namespace = namespace
+		u.ResetThenReuseValues = true
+		u.Timeout = h.timeout
+		u.MaxHistory = h.maxHistory
+		return u
+	}
+
+	runner := h.upgradeRunner
+	if runner == nil {
+		runner = func(ctx context.Context, u *action.Upgrade, name string, ch *chartpkg.Chart, vals map[string]any) (*releasepkg.Release, error) {
+			return u.RunWithContext(ctx, name, ch, vals)
+		}
+	}
+
+	upgrade := newUpgrade()
+	if _, err := runner(ctx, upgrade, name, ch, vals); err != nil {
+		if !isInvalidPatchError(err) {
+			return fmt.Errorf("failed to upgrade %s: %w", name, err)
+		}
+
+		// Force full-replaces every resource in the release, not just the
+		// one that failed to patch; any out-of-band field on any of them
+		// is lost.
+		log.Info("upgrade failed with a rejected patch, retrying with force", "error", err)
+		forceUpgrade := newUpgrade()
+		forceUpgrade.Force = true
+		if _, forceErr := runner(ctx, forceUpgrade, name, ch, vals); forceErr != nil {
+			return fmt.Errorf("failed to upgrade %s (force retry also failed: %w): %w", name, forceErr, err)
+		}
+	}
+
+	return nil
+}
+
+// isInvalidPatchError returns true if err indicates the Kubernetes API server
+// rejected a 3-way merge patch during an upgrade.
+//
+// Helm's pkg/kube client collects patch errors as stringified error messages
+// and returns errors.New(strings.Join(updateErrors, " && ")), which strips the
+// underlying *apierrors.StatusError type. We therefore require Helm's "cannot patch"
+// operation context, combined with either apierrors.IsInvalid for structured errors
+// or string matching for Helm's wrapped "is invalid" error text.
+func isInvalidPatchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "cannot patch") {
+		return false
+	}
+	return apierrors.IsInvalid(err) || strings.Contains(msg, "is invalid")
 }
