@@ -26,12 +26,3 @@ func (f FeatureStatus) ToAPI() apiv2.FeatureStatus {
 		UpdatedAt: f.UpdatedAt,
 	}
 }
-
-func FeatureStatusFromAPI(apiFS apiv2.FeatureStatus) FeatureStatus {
-	return FeatureStatus{
-		Enabled:   apiFS.Enabled,
-		Message:   apiFS.Message,
-		Version:   apiFS.Version,
-		UpdatedAt: apiFS.UpdatedAt,
-	}
-}

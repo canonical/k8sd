@@ -40,7 +40,6 @@ func (c Datastore) GetEtcdAPIServerClientKey() string {
 }
 func (c Datastore) GetEtcdPort() int     { return getField(c.EtcdPort) }
 func (c Datastore) GetEtcdPeerPort() int { return getField(c.EtcdPeerPort) }
-func (c Datastore) Empty() bool          { return c == Datastore{} }
 
 // DatastorePathsProvider is to avoid circular dependency for snap.Snap in Datastore.ToKubeAPIServerArguments().
 type DatastorePathsProvider interface {
