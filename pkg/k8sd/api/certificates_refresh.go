@@ -40,7 +40,6 @@ type controlPlaneCertificateMarker struct {
 
 // csrDefinition holds the paramaters needed to generate and request a specific CSR.
 type csrDefinition struct {
-	CertName     string
 	CSRBaseName  string
 	CommonName   string
 	Organization []string
@@ -532,7 +531,6 @@ func getWorkerCSRDefinitions(hostname string) map[apiv2.CertificateName]*csrDefi
 	// nolint:exhaustive
 	return map[apiv2.CertificateName]*csrDefinition{
 		apiv2.CertificateKubelet: {
-			CertName:     string(apiv2.CertificateKubelet),
 			CSRBaseName:  "worker-kubelet-serving",
 			CommonName:   fmt.Sprintf("system:node:%s", hostname),
 			Organization: []string{"system:nodes"},
@@ -541,7 +539,6 @@ func getWorkerCSRDefinitions(hostname string) map[apiv2.CertificateName]*csrDefi
 			NeedsSANs:    true,
 		},
 		apiv2.CertificateKubeletClient: {
-			CertName:     string(apiv2.CertificateKubeletClient),
 			CSRBaseName:  "worker-kubelet-client",
 			CommonName:   fmt.Sprintf("system:node:%s", hostname),
 			Organization: []string{"system:nodes"},
@@ -550,7 +547,6 @@ func getWorkerCSRDefinitions(hostname string) map[apiv2.CertificateName]*csrDefi
 			NeedsSANs:    false,
 		},
 		apiv2.CertificateProxyClient: {
-			CertName:     string(apiv2.CertificateProxyClient),
 			CSRBaseName:  "worker-kube-proxy-client",
 			CommonName:   "system:kube-proxy",
 			Organization: []string{},
