@@ -152,7 +152,7 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 		if err := a.ensureSystemTuningConfigFile(ctx); err != nil {
 			log.Error(err, "failed to create system tuning file")
 		}
-		if err := a.tuneSystemSettings(ctx, s); err != nil {
+		if err := a.tuneSystemSettings(ctx); err != nil {
 			log.Error(err, "failed to tune system settings")
 		}
 	}
@@ -331,7 +331,7 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 		if err := a.ensureSystemTuningConfigFile(ctx); err != nil {
 			log.Error(err, "failed to create system tuning file")
 		}
-		if err := a.tuneSystemSettings(ctx, s); err != nil {
+		if err := a.tuneSystemSettings(ctx); err != nil {
 			log.Error(err, "failed to tune system settings")
 		}
 	}

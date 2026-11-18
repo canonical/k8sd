@@ -58,7 +58,7 @@ func TestAvailabilityZoneLabel(t *testing.T) {
 			func(context.Context) (string, error) { return nodeName, nil },
 		)
 
-		go ctrl.Run(ctx, func(context.Context) (string, error) { return "etcd", nil })
+		go ctrl.Run(ctx)
 		defer watcher.Stop()
 
 		expFailureDomain := uint64(7130520900010879344)
