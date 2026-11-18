@@ -12,6 +12,7 @@ import (
 
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/utils/shims"
+	"golang.org/x/sys/unix"
 )
 
 type processTarget struct {
@@ -50,24 +51,50 @@ func defaultReadProcessStat(pid int) (state byte, startTime uint64, exists bool)
 	return state, st, true
 }
 
-func defaultIsProcessAlive(target processTarget) bool {
-	state, startTime, exists := readProcStat(target.pid)
-	if !exists {
+func isTargetAlive(target processTarget, getStat func(int) (byte, uint64, bool)) bool {
+	state, startTime, exists := getStat(target.pid)
+	if !exists || startTime == 0 {
 		return false
 	}
 	// A zombie ('Z') or dead ('X') process has exited and released all namespaces/mounts.
 	if state == 'Z' || state == 'X' {
 		return false
 	}
-	// If the start time has changed, the PID has been recycled by another process.
-	if target.startTime != 0 && startTime != 0 && startTime != target.startTime {
+	// If the start time has changed or is unverified, the PID was recycled or cannot be proven.
+	if target.startTime != 0 && startTime != target.startTime {
 		return false
 	}
 	return true
 }
 
+func defaultIsProcessAlive(target processTarget) bool {
+	return isTargetAlive(target, readProcStat)
+}
+
 func defaultKillProcessTarget(target processTarget) error {
-	if !isProcessAlive(target) {
+	// Try Linux pidfd_open + pidfd_send_signal if available to bind the signal to the
+	// exact process instance, preventing races where a PID is reused before signal delivery.
+	fd, err := unix.PidfdOpen(target.pid, 0)
+	if err == nil {
+		defer unix.Close(fd)
+		// Verify start time matches before sending signal via pidfd
+		if target.startTime != 0 {
+			_, currentStartTime, exists := readProcStat(target.pid)
+			if !exists || currentStartTime != target.startTime {
+				return nil
+			}
+		}
+		if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil {
+			if errors.Is(err, unix.ESRCH) {
+				return nil
+			}
+			return fmt.Errorf("failed to send SIGKILL via pidfd: %w", err)
+		}
+		return nil
+	}
+
+	// Fallback to process search and kill if pidfd_open is unsupported
+	if !defaultIsProcessAlive(target) {
 		return nil
 	}
 	proc, err := os.FindProcess(target.pid)
@@ -130,7 +157,11 @@ func removeContainers(
 					continue
 				}
 				if _, ok := trackedTargets[intPid]; !ok {
-					_, startTime, _ := getStat(intPid)
+					_, startTime, exists := getStat(intPid)
+					if !exists || startTime == 0 {
+						// Process already disappeared between ps and stat read; do not track.
+						continue
+					}
 					trackedTargets[intPid] = processTarget{pid: intPid, startTime: startTime}
 					newPIDs = append(newPIDs, intPid)
 				}

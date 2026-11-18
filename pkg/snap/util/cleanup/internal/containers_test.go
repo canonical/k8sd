@@ -17,6 +17,10 @@ func defaultMockStat(pid int) (byte, uint64, bool) {
 	return 'S', 12345, true
 }
 
+func defaultMockIsAlive(target processTarget) bool {
+	return isTargetAlive(target, defaultMockStat)
+}
+
 func TestRemoveContainers_MultiPassConvergence(t *testing.T) {
 	g := NewWithT(t)
 
@@ -153,7 +157,6 @@ func TestRemoveContainers_TransientGetPIDsErrorRetainsTrackedPIDs(t *testing.T) 
 	}
 
 	ctx := context.Background()
-	// Should not terminate on pass 2 transient error because 100 is still tracked and alive!
 	removeContainers(ctx, mockGetPIDs, mockKill, mockIsAlive, defaultMockStat, 10*time.Millisecond, 2*time.Second)
 
 	mu.Lock()
@@ -167,8 +170,8 @@ func TestRemoveContainers_ChildrenKilledBeforeShim(t *testing.T) {
 	g := NewWithT(t)
 
 	var mu sync.Mutex
-	var killed []int
 	var calls int
+	var killed []int
 
 	mockGetPIDs := func(ctx context.Context) ([]string, error) {
 		mu.Lock()
@@ -228,15 +231,19 @@ func TestRemoveContainers_ReusedPIDNotKilled(t *testing.T) {
 	mockStat := func(pid int) (byte, uint64, bool) {
 		mu.Lock()
 		defer mu.Unlock()
-		if calls == 1 {
+		if len(killed) == 0 {
 			return 'S', 1000, true
 		}
-		// On pass 2, PID 400 was recycled with a new start time
+		// Once killed, PID 400 is recycled with a new start time
 		return 'S', 9999, true
 	}
 
+	mockIsAlive := func(target processTarget) bool {
+		return isTargetAlive(target, mockStat)
+	}
+
 	ctx := context.Background()
-	removeContainers(ctx, mockGetPIDs, mockKill, defaultIsProcessAlive, mockStat, 10*time.Millisecond, 2*time.Second)
+	removeContainers(ctx, mockGetPIDs, mockKill, mockIsAlive, mockStat, 10*time.Millisecond, 2*time.Second)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -250,6 +257,7 @@ func TestRemoveContainers_ZombieTreatedAsDead(t *testing.T) {
 
 	var mu sync.Mutex
 	var calls int
+	var killed bool
 
 	mockGetPIDs := func(ctx context.Context) ([]string, error) {
 		mu.Lock()
@@ -262,24 +270,70 @@ func TestRemoveContainers_ZombieTreatedAsDead(t *testing.T) {
 	}
 
 	mockKill := func(target processTarget) error {
+		mu.Lock()
+		defer mu.Unlock()
+		killed = true
 		return nil
 	}
 
-	// After kill, process enters Zombie ('Z') state
 	mockStat := func(pid int) (byte, uint64, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !killed {
+			return 'S', 1000, true
+		}
+		// After pass 1 kill, process enters Zombie ('Z') state
 		return 'Z', 1000, true
+	}
+
+	mockIsAlive := func(target processTarget) bool {
+		return isTargetAlive(target, mockStat)
 	}
 
 	ctx := context.Background()
 	start := time.Now()
 	// Should prune zombie immediately and not wait for the 5-second timeout
-	removeContainers(ctx, mockGetPIDs, mockKill, defaultIsProcessAlive, mockStat, 10*time.Millisecond, 5*time.Second)
+	removeContainers(ctx, mockGetPIDs, mockKill, mockIsAlive, mockStat, 10*time.Millisecond, 5*time.Second)
 	elapsed := time.Since(start)
 
 	g.Expect(elapsed).To(BeNumerically("<", 500*time.Millisecond))
 	mu.Lock()
 	defer mu.Unlock()
 	g.Expect(calls).To(Equal(2))
+}
+
+func TestRemoveContainers_UnverifiedStatNotTracked(t *testing.T) {
+	g := NewWithT(t)
+
+	var mu sync.Mutex
+	var calls int
+	var killed []int
+	mockGetPIDs := func(ctx context.Context) ([]string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		if calls == 1 {
+			return []string{"600"}, nil
+		}
+		return nil, nil
+	}
+	mockKill := func(target processTarget) error {
+		killed = append(killed, target.pid)
+		return nil
+	}
+	// stat read fails (process disappeared between ps and stat)
+	mockStat := func(pid int) (byte, uint64, bool) {
+		return 0, 0, false
+	}
+	mockIsAlive := func(target processTarget) bool {
+		return isTargetAlive(target, mockStat)
+	}
+
+	ctx := context.Background()
+	removeContainers(ctx, mockGetPIDs, mockKill, mockIsAlive, mockStat, 10*time.Millisecond, 2*time.Second)
+
+	// Since stat read failed, 600 was not tracked and not killed
+	g.Expect(killed).To(BeEmpty())
 }
 
 func TestRemoveContainers_ErrProcessDoneAndESRCHIgnored(t *testing.T) {
@@ -567,4 +621,14 @@ func TestDefaultIsProcessAliveAndStat(t *testing.T) {
 	// Non-existent PID
 	nonExistentTarget := processTarget{pid: 4194300, startTime: 100}
 	g.Expect(defaultIsProcessAlive(nonExistentTarget)).To(BeFalse())
+}
+
+func TestDefaultKillProcessTarget_RecycledPIDSkipped(t *testing.T) {
+	g := NewWithT(t)
+
+	// Target has mismatched start time -> defaultKillProcessTarget should return nil without error
+	selfPid := os.Getpid()
+	target := processTarget{pid: selfPid, startTime: 999999999}
+	err := defaultKillProcessTarget(target)
+	g.Expect(err).ToNot(HaveOccurred())
 }
