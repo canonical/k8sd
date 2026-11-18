@@ -104,24 +104,6 @@ func StartEtcdServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...str
 	return nil
 }
 
-// StopWorkerServices starts the worker services.
-// StopWorkerServices will return on the first failing service.
-func StopWorkerServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
-	if err := snap.StopServices(ctx, workerK8sServices, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to stop service %v: %w", workerK8sServices, err)
-	}
-	return nil
-}
-
-// StopControlPlaneServices stops the control plane services.
-// StopControlPlaneServices will return on the first failing service.
-func StopControlPlaneServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
-	if err := snap.StopServices(ctx, controlPlaneK8sServices, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to stop service %v: %w", controlPlaneK8sServices, err)
-	}
-	return nil
-}
-
 // StopEtcdServices stops the etcd datastore service.
 func StopEtcdServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
 	if err := snap.StopServices(ctx, []string{"etcd"}, extraSnapArgs...); err != nil {
@@ -144,21 +126,4 @@ func removeElement[S ~[]E, E comparable](s S, v E) S {
 		return slices.Delete(s, i, i+1)
 	}
 	return s
-}
-
-// ServiceArgsFromMap processes a map of string pointers and categorizes them into update and delete lists.
-// - If the value pointer is nil, it adds the argument name to the delete list.
-// - If the value pointer is not nil, it adds the argument and its value to the update map.
-func ServiceArgsFromMap(args map[string]*string) (map[string]string, []string) {
-	updateArgs := make(map[string]string)
-	deleteArgs := make([]string, 0)
-
-	for arg, val := range args {
-		if val == nil {
-			deleteArgs = append(deleteArgs, arg)
-		} else {
-			updateArgs[arg] = *val
-		}
-	}
-	return updateArgs, deleteArgs
 }
