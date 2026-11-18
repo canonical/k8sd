@@ -27,7 +27,7 @@ func (e *Endpoints) getClusterStatus(s mctypes.State, r *http.Request) mctypes.R
 		return mctypes.Unavailable(fmt.Errorf("daemon not yet initialized"))
 	}
 
-	members, err := impl.GetClusterMembers(ctx, s, e.provider.Snap())
+	members, err := impl.GetClusterMembers(ctx, e.provider.Snap())
 	if err != nil {
 		return mctypes.InternalError(fmt.Errorf("failed to get cluster members: %w", err))
 	}

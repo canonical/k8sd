@@ -13,7 +13,7 @@ import (
 
 // GetClusterMembers retrieves information about the members of the cluster.
 
-func GetClusterMembers(ctx context.Context, s mctypes.State, snap snap.Snap) ([]apiv2.NodeStatus, error) {
+func GetClusterMembers(ctx context.Context, snap snap.Snap) ([]apiv2.NodeStatus, error) {
 	c, err := snap.K8sdClient("")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get k8sd client: %w", err)
@@ -49,7 +49,7 @@ func GetLocalNodeStatus(ctx context.Context, s mctypes.State, snap snap.Snap) (a
 
 	if isWorker {
 		clusterRole = apiv2.ClusterRoleWorker
-	} else if node, err := nodeutil.GetControlPlaneNode(ctx, s, s.Name(), snap); err != nil {
+	} else if node, err := nodeutil.GetControlPlaneNode(ctx, s.Name(), snap); err != nil {
 		clusterRole = apiv2.ClusterRoleUnknown
 	} else if node != nil {
 		return *node, nil
