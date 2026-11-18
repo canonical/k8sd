@@ -114,6 +114,20 @@ func TestCleanHostEnviron(t *testing.T) {
 			},
 		},
 		{
+			name: "snap environment with REAL_PATH sanitizing to empty omits PATH rather than widening from process PATH",
+			input: []string{
+				"SNAP=/snap/k8s/123",
+				"REAL_PATH=/snap/k8s/current/bin",
+				"PATH=/snap/k8s/current/bin:/opt/other/bin:/usr/bin",
+				"HOME=/root",
+			},
+			expected: []string{
+				"SNAP=/snap/k8s/123",
+				"REAL_PATH=/snap/k8s/current/bin",
+				"HOME=/root",
+			},
+		},
+		{
 			name: "outside snap environment preserves LD_LIBRARY_PATH and PATH",
 			input: []string{
 				"LD_LIBRARY_PATH=/custom/lib",
