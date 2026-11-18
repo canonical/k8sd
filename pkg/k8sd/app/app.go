@@ -67,7 +67,6 @@ type Config struct {
 type App struct {
 	config  Config
 	cluster *microcluster.MicroCluster
-	client  mctypes.Client
 	snap    snap.Snap
 
 	// profilingAddress
@@ -108,15 +107,10 @@ func New(cfg Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create microcluster app: %w", err)
 	}
-	client, err := cluster.LocalClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create microcluster local client: %w", err)
-	}
 
 	app := &App{
 		config:           cfg,
 		cluster:          cluster,
-		client:           client,
 		snap:             cfg.Snap,
 		profilingAddress: cfg.PprofAddress,
 	}
