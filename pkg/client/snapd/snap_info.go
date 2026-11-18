@@ -10,10 +10,18 @@ import (
 	"time"
 )
 
+type SnapAppInfo struct {
+	Name    string `json:"name"`
+	Daemon  string `json:"daemon"`
+	Active  bool   `json:"active"`
+	Enabled bool   `json:"enabled"`
+}
+
 type SnapInfoResult struct {
-	InstallDate time.Time `json:"install-date"`
-	Revision    string    `json:"revision"`
-	Version     string    `json:"version"`
+	InstallDate time.Time     `json:"install-date"`
+	Revision    string        `json:"revision"`
+	Version     string        `json:"version"`
+	Apps        []SnapAppInfo `json:"apps"`
 }
 
 type SnapInfoResponse struct {

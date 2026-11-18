@@ -2,22 +2,26 @@ package internal
 
 import (
 	"context"
-	"strings"
+	"errors"
 
-	"github.com/canonical/k8sd/pkg/log"
 	netnsutils "github.com/canonical/k8sd/pkg/utils/netns"
 )
 
-func RemoveNetworkNamespaces(ctx context.Context, netnsHelper netnsutils.NetworkNamespaceManager) {
-	log := log.FromContext(ctx)
-
+func RemoveNetworkNamespaces(ctx context.Context, netnsHelper netnsutils.NetworkNamespaceManager, owned map[string]bool) error {
+	if len(owned) == 0 {
+		return nil
+	}
+	var errs []error
 	err := netnsHelper.ForEachNetworkNamespace(ctx, func(ctx context.Context, namespace string) error {
-		if strings.HasPrefix(namespace, "cni-") {
-			return netnsHelper.DeleteNetworkNamespace(ctx, namespace)
+		if owned[namespace] {
+			if err := netnsHelper.DeleteNetworkNamespace(ctx, namespace); err != nil {
+				errs = append(errs, err)
+			}
 		}
 		return nil
 	})
 	if err != nil {
-		log.Error(err, "failed to iterate and delete network namespaces")
+		errs = append(errs, err)
 	}
+	return errors.Join(errs...)
 }

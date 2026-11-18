@@ -1,12 +1,14 @@
 package snap
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/canonical/k8sd/pkg/k8sd/types"
@@ -63,12 +65,53 @@ func (s *pebble) StartServices(ctx context.Context, names []string, extraPebbleA
 	if err := ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
 		return err
 	}
-	return s.runCommand(ctx, s.buildPebbleCommand("start", names, extraPebbleArgs...))
+	var filtered []string
+	for _, arg := range extraPebbleArgs {
+		if arg == "--enable" || arg == "--no-enable" {
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return s.runCommand(ctx, s.buildPebbleCommand("start", names, filtered...))
 }
 
 // StopServices stops a k8s service. The name can be either prefixed or not.
 func (s *pebble) StopServices(ctx context.Context, names []string, extraPebbleArgs ...string) error {
-	return s.runCommand(ctx, s.buildPebbleCommand("stop", names, extraPebbleArgs...))
+	var filtered []string
+	for _, arg := range extraPebbleArgs {
+		if arg == "--disable" || arg == "--no-disable" {
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return s.runCommand(ctx, s.buildPebbleCommand("stop", names, filtered...))
+}
+
+// ActiveServices returns the subset of names currently active under pebble.
+func (s *pebble) ActiveServices(ctx context.Context, names []string) ([]string, error) {
+	var out bytes.Buffer
+	cmd := s.buildPebbleCommand("services", nil)
+	if err := s.runCommand(ctx, cmd, func(c *exec.Cmd) { c.Stdout = &out }); err != nil {
+		return nil, fmt.Errorf("failed to query pebble services: %w", err)
+	}
+	activeSet := make(map[string]bool)
+	for _, line := range strings.Split(out.String(), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[2] == "active" {
+			activeSet[fields[0]] = true
+		}
+	}
+	var active []string
+	for _, name := range names {
+		base := name
+		if idx := strings.IndexByte(name, '.'); idx >= 0 {
+			base = name[idx+1:]
+		}
+		if activeSet[base] {
+			active = append(active, name)
+		}
+	}
+	return active, nil
 }
 
 // RestartServices restarts a k8s service. The name can be either prefixed or not.

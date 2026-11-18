@@ -93,7 +93,7 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 			cleanup.SyncISCSIDevices(ctx)
 
 			log.Info("Stopping all services except k8sd")
-			if err := snaputil.StopK8sServices(ctx, snap, "--no-wait"); err != nil {
+			if err := snaputil.StopK8sServices(ctx, snap); err != nil {
 				log.Error(err, "failed to stop k8s services")
 			}
 
