@@ -3,8 +3,8 @@ package mountutils
 import (
 	"context"
 	"fmt"
-	"os/exec"
 
+	"github.com/canonical/k8sd/pkg/utils"
 	"golang.org/x/sys/unix"
 )
 
@@ -22,7 +22,7 @@ func (h UnixMountManager) Unmount(ctx context.Context, mountPoint string, flags 
 }
 
 func (h UnixMountManager) DetachLoopDevice(ctx context.Context, device string) error {
-	cmd := exec.CommandContext(ctx, "losetup", "-d", device)
+	cmd := utils.HostCommandContext(ctx, "losetup", "-d", device)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to detach loop device using losetup %s: %w", device, err)
 	}

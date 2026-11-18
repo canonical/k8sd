@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -115,7 +114,7 @@ const (
 )
 
 func getUnitLoadState(ctx context.Context, unit string) (LoadState, error) {
-	out, err := exec.CommandContext(ctx, "systemctl", "show", unit, "--property=LoadState", "--value").Output()
+	out, err := HostCommandContext(ctx, "systemctl", "show", unit, "--property=LoadState", "--value").Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to query LoadState for unit %q: %w", unit, err)
 	}
@@ -138,7 +137,7 @@ const (
 )
 
 func getUnitActiveState(ctx context.Context, unit string) (ActiveState, error) {
-	out, err := exec.CommandContext(ctx, "systemctl", "show", unit, "--property=ActiveState", "--value").Output()
+	out, err := HostCommandContext(ctx, "systemctl", "show", unit, "--property=ActiveState", "--value").Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to query ActiveState for unit %q: %w", unit, err)
 	}
@@ -154,7 +153,7 @@ func getUnitActiveState(ctx context.Context, unit string) (ActiveState, error) {
 }
 
 func getUnitMainPID(ctx context.Context, unit string) (int, error) {
-	out, err := exec.CommandContext(ctx, "systemctl", "show", unit, "--property=MainPID", "--value").Output()
+	out, err := HostCommandContext(ctx, "systemctl", "show", unit, "--property=MainPID", "--value").Output()
 	if err != nil {
 		return 0, fmt.Errorf("failed to query MainPID for unit %q: %w", unit, err)
 	}
