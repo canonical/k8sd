@@ -57,8 +57,10 @@ type yamlFormatter struct {
 
 func (y yamlFormatter) Print(data any) {
 	enc := yaml.NewEncoder(y.writer)
-	defer enc.Close()
 	if err := enc.Encode(data); err != nil {
 		log.L().WithCallDepth(1).Error(err, "Failed to format YAML output")
+	}
+	if err := enc.Close(); err != nil {
+		log.L().WithCallDepth(1).Error(err, "Failed to close YAML encoder")
 	}
 }
