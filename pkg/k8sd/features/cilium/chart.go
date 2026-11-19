@@ -12,6 +12,7 @@ var (
 		Name:         "ck-network",
 		Namespace:    "kube-system",
 		ManifestPath: filepath.Join("charts", "cilium-1.20.0.tgz"),
+		RetainKeys:   []string{"ingressController", "gatewayAPI"},
 	}
 
 	// chartGateway represents manifests to deploy Gateway API CRDs.
