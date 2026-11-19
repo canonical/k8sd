@@ -5,11 +5,18 @@ on:
     paths:
       - "pkg/k8sd/database/sql/migrations/**"
       - "pkg/k8sd/database/schema.go"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
 
 jobs:
   create-comment:
+    name: Warn on schema change
     runs-on: ubuntu-latest
-
+    permissions:
+      pull-requests: write # Needed to post sticky schema warning comment
     steps:
       - name: Create Microcluster Warning Message
         if: github.event_name == 'pull_request'

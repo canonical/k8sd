@@ -9,7 +9,7 @@ on:
       - .github/workflows/tics.yaml
 
 permissions:
-  contents: read
+  contents: read # Needed to clone the repo
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,14 +17,16 @@ concurrency:
 
 jobs:
   TICS:
+    name: Run TICS analysis
     permissions:
-      contents: read
+      contents: read # Needed to clone the repo
     runs-on: [self-hosted, linux, amd64, tiobe, jammy]
 
     steps:
       - name: Checking out repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
+        with:
+          persist-credentials: false
       - name: Install Go
         uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
