@@ -37,10 +37,10 @@ jobs:
       )
     steps:
       - name: Checkout repository
+        # zizmor: ignore[artipacked] korthout/backport-action relies on persisted git credentials for git push; job uploads no artifacts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-          persist-credentials: false
 
       - name: Create backport pull requests
         id: create_backports
