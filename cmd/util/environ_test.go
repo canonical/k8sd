@@ -1,6 +1,7 @@
 package cmdutil_test
 
 import (
+	"context"
 	"testing"
 
 	cmdutil "github.com/canonical/k8sd/cmd/util"
@@ -83,4 +84,20 @@ func TestExistsInEnviron(t *testing.T) {
 			g.Expect(cmdutil.ExistsInEnviron(tc.env, tc.key)).To(Equal(tc.exists))
 		})
 	}
+}
+
+func TestDefaultExecutionEnvironment(t *testing.T) {
+	t.Run("SnapRevision", func(t *testing.T) {
+		g := NewWithT(t)
+
+		t.Setenv("K8SD_RUNTIME_ENVIRONMENT", "snap")
+		t.Setenv("SNAP_REVISION", "42")
+
+		env := cmdutil.DefaultExecutionEnvironment()
+		g.Expect(env.Snap).NotTo(BeNil())
+
+		rev, err := env.Snap.Revision(context.Background())
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(rev).To(Equal("42"))
+	})
 }

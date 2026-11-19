@@ -2,10 +2,14 @@ package snap_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/canonical/k8sd/pkg/k8sd/types"
@@ -13,6 +17,97 @@ import (
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
 )
+
+type recordedAppCall struct {
+	Action  string   `json:"action"`
+	Names   []string `json:"names"`
+	Enable  bool     `json:"enable"`
+	Disable bool     `json:"disable"`
+	Reload  bool     `json:"reload"`
+}
+
+type fakeSnapdServer struct {
+	mu           sync.Mutex
+	appCalls     []recordedAppCall
+	changePolls  int
+	failApps     bool
+	refreshCalls []map[string]any
+	sideloaded   string
+}
+
+func startFakeSnapdSocket(t *testing.T) (string, *fakeSnapdServer) {
+	t.Helper()
+	sockPath := filepath.Join(t.TempDir(), "snapd.sock")
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &fakeSnapdServer{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/apps", func(w http.ResponseWriter, r *http.Request) {
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		if state.failApps {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"type":"error","status-code":400,"result":{"message":"boom"}}`))
+			return
+		}
+		var call recordedAppCall
+		_ = json.NewDecoder(r.Body).Decode(&call)
+		state.appCalls = append(state.appCalls, call)
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"type":"async","status-code":202,"change":"10"}`))
+	})
+	mux.HandleFunc("/v2/changes/10", func(w http.ResponseWriter, r *http.Request) {
+		state.mu.Lock()
+		state.changePolls++
+		state.mu.Unlock()
+		_, _ = w.Write([]byte(`{"type":"sync","status-code":200,"result":{"status":"Done","ready":true}}`))
+	})
+	mux.HandleFunc("/v2/snaps/k8s", func(w http.ResponseWriter, r *http.Request) {
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state.refreshCalls = append(state.refreshCalls, body)
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"type":"async","status-code":202,"change":"21"}`))
+	})
+	mux.HandleFunc("/v2/snaps", func(w http.ResponseWriter, r *http.Request) {
+		mr, err := r.MultipartReader()
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		for {
+			p, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+			data, _ := io.ReadAll(p)
+			if p.FormName() == "snap" {
+				state.mu.Lock()
+				state.sideloaded = string(data)
+				state.mu.Unlock()
+			}
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"type":"async","status-code":202,"change":"22"}`))
+	})
+
+	srv := &http.Server{Handler: mux}
+	go func() {
+		_ = srv.Serve(ln)
+	}()
+	t.Cleanup(func() {
+		_ = srv.Close()
+		_ = ln.Close()
+	})
+	return sockPath, state
+}
 
 func TestSnap(t *testing.T) {
 	t.Run("NewSnap", func(t *testing.T) {
@@ -64,82 +159,127 @@ func TestSnap(t *testing.T) {
 
 	t.Run("Start", func(t *testing.T) {
 		g := NewWithT(t)
-		mockRunner := &mock.Runner{}
-		snap := snap.NewSnap(snap.SnapOpts{
-			SnapDir:       "testdir",
-			SnapCommonDir: "testdir",
-			RunCommand:    mockRunner.Run,
+		sockPath, srv := startFakeSnapdSocket(t)
+		s := snap.NewSnap(snap.SnapOpts{
+			SnapDir:         "testdir",
+			SnapCommonDir:   "testdir",
+			SnapdSocketPath: sockPath,
 		})
 
-		err := snap.StartServices(context.Background(), []string{"test-service"})
+		err := s.StartServices(context.Background(), []string{"test-service"})
 		g.Expect(err).To(Not(HaveOccurred()))
-		g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snap start k8s.test-service --enable"))
+		g.Expect(srv.appCalls).To(Equal([]recordedAppCall{{
+			Action: "start",
+			Names:  []string{"k8s.test-service"},
+			Enable: true,
+		}}))
+		g.Expect(srv.changePolls).To(Equal(1))
 
-		mockRunner.CalledWithCommand = []string{}
-		err = snap.StartServices(context.Background(), []string{"test-service"}, "--no-wait")
+		srv.appCalls = nil
+		srv.changePolls = 0
+		err = s.StartServices(context.Background(), []string{"test-service"}, "--no-wait")
 		g.Expect(err).To(Not(HaveOccurred()))
-		g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snap start k8s.test-service --enable --no-wait"))
+		g.Expect(srv.appCalls).To(HaveLen(1))
+		g.Expect(srv.changePolls).To(Equal(0))
 
 		t.Run("Fail", func(t *testing.T) {
 			g := NewWithT(t)
-			mockRunner.Err = fmt.Errorf("some error")
+			srv.failApps = true
 
-			err := snap.StartServices(context.Background(), []string{"test-service"})
+			err := s.StartServices(context.Background(), []string{"test-service"})
 			g.Expect(err).To(HaveOccurred())
 		})
 	})
 
 	t.Run("Stop", func(t *testing.T) {
 		g := NewWithT(t)
-		mockRunner := &mock.Runner{}
-		snap := snap.NewSnap(snap.SnapOpts{
-			SnapDir:       "testdir",
-			SnapCommonDir: "testdir",
-			RunCommand:    mockRunner.Run,
+		sockPath, srv := startFakeSnapdSocket(t)
+		s := snap.NewSnap(snap.SnapOpts{
+			SnapDir:         "testdir",
+			SnapCommonDir:   "testdir",
+			SnapdSocketPath: sockPath,
 		})
-		err := snap.StopServices(context.Background(), []string{"test-service"})
+		err := s.StopServices(context.Background(), []string{"test-service"})
 		g.Expect(err).To(Not(HaveOccurred()))
-		g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snap stop k8s.test-service --disable"))
+		g.Expect(srv.appCalls).To(Equal([]recordedAppCall{{
+			Action:  "stop",
+			Names:   []string{"k8s.test-service"},
+			Disable: true,
+		}}))
+		g.Expect(srv.changePolls).To(Equal(1))
 
-		mockRunner.CalledWithCommand = []string{}
-		err = snap.StopServices(context.Background(), []string{"test-service"}, "--no-wait")
+		srv.appCalls = nil
+		srv.changePolls = 0
+		err = s.StopServices(context.Background(), []string{"test-service"}, "--no-wait")
 		g.Expect(err).To(Not(HaveOccurred()))
-		g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snap stop k8s.test-service --disable --no-wait"))
+		g.Expect(srv.appCalls).To(HaveLen(1))
+		g.Expect(srv.changePolls).To(Equal(0))
 
 		t.Run("Fail", func(t *testing.T) {
 			g := NewWithT(t)
-			mockRunner.Err = fmt.Errorf("some error")
+			srv.failApps = true
 
-			err := snap.StartServices(context.Background(), []string{"test-service"})
+			err := s.StopServices(context.Background(), []string{"test-service"})
 			g.Expect(err).To(HaveOccurred())
 		})
 	})
 
 	t.Run("Restart", func(t *testing.T) {
 		g := NewWithT(t)
-		mockRunner := &mock.Runner{}
-		snap := snap.NewSnap(snap.SnapOpts{
-			SnapDir:       "testdir",
-			SnapCommonDir: "testdir",
-			RunCommand:    mockRunner.Run,
+		sockPath, srv := startFakeSnapdSocket(t)
+		s := snap.NewSnap(snap.SnapOpts{
+			SnapDir:         "testdir",
+			SnapCommonDir:   "testdir",
+			SnapdSocketPath: sockPath,
 		})
 
-		err := snap.RestartServices(context.Background(), []string{"test-service"})
+		err := s.RestartServices(context.Background(), []string{"test-service"})
 		g.Expect(err).To(Not(HaveOccurred()))
-		g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snap restart k8s.test-service"))
+		g.Expect(srv.appCalls).To(Equal([]recordedAppCall{{
+			Action: "restart",
+			Names:  []string{"k8s.test-service"},
+		}}))
+		g.Expect(srv.changePolls).To(Equal(1))
 
-		mockRunner.CalledWithCommand = []string{}
-		err = snap.RestartServices(context.Background(), []string{"test-service"}, "--no-wait")
+		srv.appCalls = nil
+		srv.changePolls = 0
+		err = s.RestartServices(context.Background(), []string{"test-service"}, "--no-wait")
 		g.Expect(err).To(Not(HaveOccurred()))
-		g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snap restart k8s.test-service --no-wait"))
+		g.Expect(srv.appCalls).To(HaveLen(1))
+		g.Expect(srv.changePolls).To(Equal(0))
 
 		t.Run("Fail", func(t *testing.T) {
 			g := NewWithT(t)
-			mockRunner.Err = fmt.Errorf("some error")
+			srv.failApps = true
 
-			err := snap.StartServices(context.Background(), []string{"service"})
+			err := s.RestartServices(context.Background(), []string{"service"})
 			g.Expect(err).To(HaveOccurred())
 		})
+	})
+
+	t.Run("Refresh", func(t *testing.T) {
+		g := NewWithT(t)
+		sockPath, srv := startFakeSnapdSocket(t)
+		s := snap.NewSnap(snap.SnapOpts{
+			SnapInstanceName: "k8s",
+			SnapDir:          "testdir",
+			SnapCommonDir:    "testdir",
+			SnapdSocketPath:  sockPath,
+		})
+
+		chg, err := s.Refresh(context.Background(), types.RefreshOpts{Channel: "1.36-classic/stable"})
+		g.Expect(err).To(Not(HaveOccurred()))
+		g.Expect(chg).To(Equal("21"))
+		g.Expect(srv.refreshCalls).To(HaveLen(1))
+		g.Expect(srv.refreshCalls[0]["channel"]).To(Equal("1.36-classic/stable"))
+		g.Expect(srv.refreshCalls[0]["amend"]).To(BeTrue())
+
+		localSnap := filepath.Join(t.TempDir(), "k8s.snap")
+		g.Expect(os.WriteFile(localSnap, []byte("snap-payload"), 0o644)).To(Succeed())
+		chg, err = s.Refresh(context.Background(), types.RefreshOpts{LocalPath: localSnap})
+		g.Expect(err).To(Not(HaveOccurred()))
+		g.Expect(chg).To(Equal("22"))
+		g.Expect(srv.sideloaded).To(Equal("snap-payload"))
 	})
 
 	t.Run("PreInitChecks", func(t *testing.T) {
@@ -262,6 +402,45 @@ func TestSnap(t *testing.T) {
 			})
 
 			_, err = snap.NodeKubernetesVersion(context.Background())
+			g.Expect(err).To(HaveOccurred())
+		})
+	})
+
+	t.Run("Revision", func(t *testing.T) {
+		t.Run("returns revision from SnapRevision", func(t *testing.T) {
+			g := NewWithT(t)
+
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapRevision: "42",
+			})
+
+			rev, err := s.Revision(context.Background())
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(rev).To(Equal("42"))
+		})
+
+		t.Run("trims whitespace from SnapRevision", func(t *testing.T) {
+			g := NewWithT(t)
+
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapRevision: "  1234\n",
+			})
+
+			rev, err := s.Revision(context.Background())
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(rev).To(Equal("1234"))
+		})
+
+		t.Run("falls back to snapd when SnapRevision is empty", func(t *testing.T) {
+			g := NewWithT(t)
+
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapRevision:     "",
+				SnapdSocketPath:  filepath.Join(t.TempDir(), "missing.sock"),
+				SnapInstanceName: "nonexistent-snap-name-xyz",
+			})
+
+			_, err := s.Revision(context.Background())
 			g.Expect(err).To(HaveOccurred())
 		})
 	})

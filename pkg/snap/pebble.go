@@ -60,6 +60,9 @@ func (s *pebble) buildPebbleCommand(subcommand string, names []string, extraPebb
 
 // StartServices starts a k8s service. The name can be either prefixed or not.
 func (s *pebble) StartServices(ctx context.Context, names []string, extraPebbleArgs ...string) error {
+	if err := ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
+		return err
+	}
 	return s.runCommand(ctx, s.buildPebbleCommand("start", names, extraPebbleArgs...))
 }
 
@@ -70,6 +73,9 @@ func (s *pebble) StopServices(ctx context.Context, names []string, extraPebbleAr
 
 // RestartServices restarts a k8s service. The name can be either prefixed or not.
 func (s *pebble) RestartServices(ctx context.Context, names []string, extraPebbleArgs ...string) error {
+	if err := ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
+		return err
+	}
 	return s.runCommand(ctx, s.buildPebbleCommand("restart", names, extraPebbleArgs...))
 }
 
@@ -92,11 +98,18 @@ func (s *pebble) Refresh(ctx context.Context, to types.RefreshOpts) (string, err
 			if err := s.runCommand(ctx, []string{"cp", "-f", to.LocalPath, filepath.Join(s.snapDir, "bin", "kubernetes")}); err != nil {
 				log.FromContext(ctx).Error(err, "Warning: failed to update the kubernetes binary")
 			}
-			// restart services if already running.
-			services := []string{"kube-apiserver", "kubelet", "kube-controller-manager", "kube-proxy", "kube-scheduler"}
-			if err := s.RestartServices(ctx, services); err != nil {
-				log.FromContext(ctx).WithValues("services", services).Error(err, "Warning: failed to restart after updating kubernetes binary")
-			}
+			// restart services if already running, coordinated with kube-proxy disable transitions.
+			_ = WithKubeProxyStateLock(func() error {
+				services := []string{"kube-apiserver", "kubelet", "kube-controller-manager", "kube-scheduler"}
+				disabledMarkerExists, err := utils.FileExists(filepath.Join(s.LockFilesDir(), KubeProxyDisabledLockFile))
+				if err != nil || !disabledMarkerExists {
+					services = append(services, "kube-proxy")
+				}
+				if err := s.RestartServices(ctx, services); err != nil {
+					log.FromContext(ctx).WithValues("services", services).Error(err, "Warning: failed to restart after updating kubernetes binary")
+				}
+				return nil
+			})
 		}()
 		return "0", nil
 	default:

@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/controllers"
 	"github.com/canonical/k8sd/pkg/k8sd/setup"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	snaputil "github.com/canonical/k8sd/pkg/snap/util"
 	. "github.com/onsi/gomega"
@@ -288,7 +290,12 @@ func TestKubeProxyEnabled(t *testing.T) {
 
 	g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
 
-	ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute)
+	removeKubeProxyCalled := make(chan struct{}, 100)
+
+	ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute).
+		WithRemoveKubeProxyRules(func(ctx context.Context, s snap.Snap) {
+			removeKubeProxyCalled <- struct{}{}
+		})
 
 	keyCh := make(chan *rsa.PublicKey)
 
@@ -337,6 +344,8 @@ func TestKubeProxyEnabled(t *testing.T) {
 		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
 		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
 		g.Expect(updateKubeProxyCalled).To(Receive(BeFalse()))
+		g.Expect(removeKubeProxyCalled).To(Receive())
+		g.Expect(removeKubeProxyCalled).ToNot(Receive())
 	})
 
 	t.Run("EnableKubeProxy", func(t *testing.T) {
@@ -367,6 +376,7 @@ func TestKubeProxyEnabled(t *testing.T) {
 		g.Expect(s.StartServicesCalledWith).ToNot(BeEmpty())
 		g.Expect(s.StartServicesCalledWith[0]).To(ContainElement("kube-proxy"))
 		g.Expect(updateKubeProxyCalled).To(Receive(BeTrue()))
+		g.Expect(removeKubeProxyCalled).ToNot(Receive())
 	})
 
 	// NOTE: these subtests share the controller goroutine, watcher, keyCh, and snap mock.
@@ -408,7 +418,7 @@ func TestKubeProxyEnabled(t *testing.T) {
 		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
 		g.Expect(updateKubeProxyCalled).To(Receive(BeTrue()))
 		g.Expect(updateKubeProxyCalled).ToNot(Receive())
-
+		g.Expect(removeKubeProxyCalled).ToNot(Receive())
 		watcher.Modify(configmap)
 		keyCh <- nil
 
@@ -424,7 +434,7 @@ func TestKubeProxyEnabled(t *testing.T) {
 		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
 		g.Expect(updateKubeProxyCalled).To(Receive(BeTrue()))
 		g.Expect(updateKubeProxyCalled).ToNot(Receive())
-
+		g.Expect(removeKubeProxyCalled).ToNot(Receive())
 		configmap = &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
 			Data: map[string]string{
@@ -448,5 +458,288 @@ func TestKubeProxyEnabled(t *testing.T) {
 		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
 		g.Expect(updateKubeProxyCalled).To(Receive(BeFalse()))
 		g.Expect(updateKubeProxyCalled).ToNot(Receive())
+		g.Expect(removeKubeProxyCalled).To(Receive())
+		g.Expect(removeKubeProxyCalled).ToNot(Receive())
+	})
+
+	t.Run("SteadyStateDisabledDoesNotCleanUpRules", func(t *testing.T) {
+		g := NewWithT(t)
+		s.StopServicesCalledWith = nil
+		for len(updateKubeProxyCalled) > 0 {
+			<-updateKubeProxyCalled
+		}
+		for len(removeKubeProxyCalled) > 0 {
+			<-removeKubeProxyCalled
+		}
+
+		// Send configmap with kube-proxy-enabled still set to false (steady state)
+		configmap := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data: map[string]string{
+				"kube-proxy-enabled": "false",
+			},
+		}
+
+		watcher.Modify(configmap)
+		keyCh <- nil
+
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Time out while waiting for the reconcile to complete")
+		}
+
+		// Verify kube-proxy stop was NOT called because kube-proxy was already disabled
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
+		g.Expect(updateKubeProxyCalled).To(Receive(BeFalse()))
+		g.Expect(updateKubeProxyCalled).ToNot(Receive())
+
+		// Verify RemoveKubeProxyRules was NOT called because kube-proxy was already disabled
+		g.Expect(removeKubeProxyCalled).ToNot(Receive())
+	})
+}
+
+func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
+	t.Run("MultiNodeIndependentCleanup", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		g := NewWithT(t)
+
+		var (
+			dbMu           sync.Mutex
+			sharedDBEnable = true
+		)
+		sharedUpdate := func(_ context.Context, enabled bool) error {
+			dbMu.Lock()
+			defer dbMu.Unlock()
+			sharedDBEnable = enabled
+			return nil
+		}
+
+		setupNode := func() (*watch.FakeWatcher, chan *rsa.PublicKey, *controllers.NodeConfigurationController, chan struct{}) {
+			dir := t.TempDir()
+			cs := fake.NewSimpleClientset(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			})
+			w := watch.NewFake()
+			cs.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(w, nil))
+			s := &mock.Snap{
+				Mock: mock.Mock{
+					ServiceArgumentsDir:  filepath.Join(dir, "args"),
+					LockFilesDir:         filepath.Join(dir, "lock"),
+					UID:                  os.Getuid(),
+					GID:                  os.Getgid(),
+					KubernetesNodeClient: &kubernetes.Client{Interface: cs},
+				},
+			}
+			g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
+			cleanupCh := make(chan struct{}, 10)
+			ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute).
+				WithRemoveKubeProxyRules(func(context.Context, snap.Snap) {
+					cleanupCh <- struct{}{}
+				})
+			kCh := make(chan *rsa.PublicKey)
+			go ctrl.Run(ctx, func(context.Context) (*rsa.PublicKey, error) { return <-kCh, nil }, sharedUpdate)
+			// Drain seed reconcile (empty configmap -> kube-proxy enabled).
+			kCh <- nil
+			select {
+			case <-ctrl.ReconciledCh():
+			case <-time.After(channelSendTimeout):
+				g.Fail("Timed out waiting for seed reconcile")
+			}
+			return w, kCh, ctrl, cleanupCh
+		}
+
+		w1, k1, c1, clean1 := setupNode()
+		defer w1.Stop()
+		w2, k2, c2, clean2 := setupNode()
+		defer w2.Stop()
+
+		disableCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data:       map[string]string{"kube-proxy-enabled": "false"},
+		}
+
+		// Node 1 reconciles first and updates shared DB to false.
+		w1.Modify(disableCM)
+		k1 <- nil
+		select {
+		case <-c1.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for node 1 reconcile")
+		}
+		g.Expect(clean1).To(Receive())
+
+		// Node 2 reconciles second; even though shared DB is already false, node 2 must still clean its local rules.
+		w2.Modify(disableCM)
+		k2 <- nil
+		select {
+		case <-c2.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for node 2 reconcile")
+		}
+		g.Expect(clean2).To(Receive())
+
+		dbMu.Lock()
+		g.Expect(sharedDBEnable).To(BeFalse())
+		dbMu.Unlock()
+	})
+
+	t.Run("CleanupFailureStillMarksDisabled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		g := NewWithT(t)
+
+		dir := t.TempDir()
+		cs := fake.NewSimpleClientset(&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+		})
+		w := watch.NewFake()
+		cs.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(w, nil))
+		defer w.Stop()
+
+		// Fake kube-proxy that records each invocation and fails like the real
+		// one does when there are no KUBE-* chains to remove.
+		binDir := filepath.Join(dir, "bin")
+		callsFile := filepath.Join(dir, "calls")
+		g.Expect(os.MkdirAll(binDir, 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(binDir, "kube-proxy"), []byte("#!/bin/sh\necho x >> "+callsFile+"\necho \"Couldn't find target \\`KUBE-SERVICES'\" >&2\nexit 1\n"), 0o755)).To(Succeed())
+
+		s := &mock.Snap{
+			Mock: mock.Mock{
+				ServiceArgumentsDir:  filepath.Join(dir, "args"),
+				LockFilesDir:         filepath.Join(dir, "lock"),
+				K8sBinDir:            binDir,
+				UID:                  os.Getuid(),
+				GID:                  os.Getgid(),
+				KubernetesNodeClient: &kubernetes.Client{Interface: cs},
+			},
+		}
+		g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
+
+		updateCh := make(chan bool, 10)
+		ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute)
+		keyCh := make(chan *rsa.PublicKey)
+		go ctrl.Run(ctx, func(context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil },
+			func(_ context.Context, enabled bool) error {
+				updateCh <- enabled
+				return nil
+			})
+
+		// Drain seed reconcile.
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for seed reconcile")
+		}
+		g.Expect(updateCh).To(Receive(BeTrue()))
+
+		disableCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data:       map[string]string{"kube-proxy-enabled": "false"},
+		}
+		w.Modify(disableCM)
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for disable reconcile")
+		}
+
+		// A failed cleanup must not block the transition.
+		g.Expect(updateCh).To(Receive(BeFalse()))
+		disabled, err := snaputil.IsKubeProxyDisabled(s)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(disabled).To(BeTrue())
+		calls, err := os.ReadFile(callsFile)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(string(calls)).To(Equal("x\n"))
+	})
+
+	t.Run("PreMarkedDisabledSkipsCleanup", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		g := NewWithT(t)
+
+		dir := t.TempDir()
+		disableCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data:       map[string]string{"kube-proxy-enabled": "false"},
+		}
+		cs := fake.NewSimpleClientset(disableCM)
+		w := watch.NewFake()
+		cs.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(w, nil))
+		defer w.Stop()
+
+		s := &mock.Snap{
+			Mock: mock.Mock{
+				ServiceArgumentsDir:  filepath.Join(dir, "args"),
+				LockFilesDir:         filepath.Join(dir, "lock"),
+				UID:                  os.Getuid(),
+				GID:                  os.Getgid(),
+				KubernetesNodeClient: &kubernetes.Client{Interface: cs},
+			},
+		}
+		g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
+		g.Expect(snaputil.MarkKubeProxyDisabled(s, true)).To(Succeed())
+
+		cleanupCh := make(chan struct{}, 10)
+		ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute).
+			WithRemoveKubeProxyRules(func(context.Context, snap.Snap) {
+				cleanupCh <- struct{}{}
+			})
+		keyCh := make(chan *rsa.PublicKey)
+		go ctrl.Run(ctx, func(context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil },
+			func(context.Context, bool) error { return nil })
+
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for reconcile")
+		}
+		g.Expect(cleanupCh).ToNot(Receive())
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
+
+		// Restarting kube-proxy clears the disabled marker so the next reconcile cleans up rules and stops kube-proxy again.
+		s.StopServicesCalledWith = nil
+		g.Expect(s.RestartServices(ctx, []string{"kube-proxy"})).To(Succeed())
+		w.Modify(disableCM)
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for post-restart reconcile")
+		}
+		g.Expect(cleanupCh).To(Receive())
+		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
+
+		// Steady-state reconcile after disable skips both stop and cleanup.
+		s.StopServicesCalledWith = nil
+		w.Modify(disableCM)
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for post-disable steady-state reconcile")
+		}
+		g.Expect(cleanupCh).ToNot(Receive())
+		g.Expect(s.StopServicesCalledWith).To(BeEmpty())
+
+		// Starting kube-proxy also clears the disabled marker so the next reconcile cleans up rules and stops kube-proxy again.
+		s.StopServicesCalledWith = nil
+		g.Expect(s.StartServices(ctx, []string{"kube-proxy"})).To(Succeed())
+		w.Modify(disableCM)
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for post-start reconcile")
+		}
+		g.Expect(cleanupCh).To(Receive())
+		g.Expect(s.StopServicesCalledWith).ToNot(BeEmpty())
+		g.Expect(s.StopServicesCalledWith[0]).To(ContainElement("kube-proxy"))
 	})
 }

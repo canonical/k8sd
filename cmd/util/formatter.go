@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/canonical/k8sd/pkg/log"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type Formatter interface {
@@ -56,7 +56,11 @@ type yamlFormatter struct {
 }
 
 func (y yamlFormatter) Print(data any) {
-	if err := yaml.NewEncoder(y.writer).Encode(data); err != nil {
+	enc := yaml.NewEncoder(y.writer)
+	if err := enc.Encode(data); err != nil {
 		log.L().WithCallDepth(1).Error(err, "Failed to format YAML output")
+	}
+	if err := enc.Close(); err != nil {
+		log.L().WithCallDepth(1).Error(err, "Failed to close YAML encoder")
 	}
 }

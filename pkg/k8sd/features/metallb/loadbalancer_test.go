@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
 	helmmock "github.com/canonical/k8sd/pkg/client/helm/mock"
@@ -12,11 +13,33 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/ptr"
 )
+
+func fakeWebhookEndpointSlice() *discoveryv1.EndpointSlice {
+	return &discoveryv1.EndpointSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "metallb-webhook-service",
+			Namespace: ChartMetalLB.Namespace,
+			Labels: map[string]string{
+				discoveryv1.LabelServiceName: webhookServiceName,
+			},
+		},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints: []discoveryv1.Endpoint{
+			{
+				Addresses: []string{"10.1.0.5"},
+				Conditions: discoveryv1.EndpointConditions{
+					Ready: ptr.To(true),
+				},
+			},
+		},
+	}
+}
 
 func TestDisabled(t *testing.T) {
 	t.Run("HelmApplyFails", func(t *testing.T) {
@@ -35,7 +58,7 @@ func TestDisabled(t *testing.T) {
 			Enabled: ptr.To(false),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).To(MatchError(applyErr))
 		g.Expect(status.Enabled).To(BeFalse())
@@ -61,7 +84,7 @@ func TestDisabled(t *testing.T) {
 			Enabled: ptr.To(false),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeFalse())
@@ -98,7 +121,7 @@ func TestEnabled(t *testing.T) {
 			Enabled: ptr.To(true),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).To(MatchError(applyErr))
 		g.Expect(status.Enabled).To(BeFalse())
@@ -117,7 +140,7 @@ func TestEnabled(t *testing.T) {
 		g := NewWithT(t)
 
 		helmM := &helmmock.Mock{}
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewSimpleClientset(fakeWebhookEndpointSlice())
 		fd, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
 		g.Expect(ok).To(BeTrue())
 		fd.Resources = []*metav1.APIResourceList{
@@ -161,7 +184,7 @@ func TestEnabled(t *testing.T) {
 			}),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -188,6 +211,117 @@ func TestEnabled(t *testing.T) {
 		validateLoadBalancerValues(g, secondCallArgs.Values, lbCfg, expectedNeighbors)
 	})
 	t.Run("ControlPlaneToleration", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		clientset := fake.NewSimpleClientset(fakeWebhookEndpointSlice())
+		fd, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		g.Expect(ok).To(BeTrue())
+		fd.Resources = []*metav1.APIResourceList{
+			{
+				GroupVersion: "metallb.io/v1beta1",
+				APIResources: []metav1.APIResource{
+					{Name: "ipaddresspools"},
+					{Name: "l2advertisements"},
+				},
+			},
+			{GroupVersion: "metallb.io/v1beta2"},
+		}
+		snapM := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient: helmM,
+				KubernetesClient: &kubernetes.Client{
+					Interface: clientset,
+				},
+			},
+		}
+		lbCfg := types.LoadBalancer{
+			Enabled:      ptr.To(true),
+			L2Mode:       ptr.To(true),
+			L2Interfaces: ptr.To([]string{"eth0"}),
+			CIDRs:        ptr.To([]string{"192.0.2.0/24"}),
+		}
+
+		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		// Unlike the speaker DaemonSet, the controller Deployment carries no
+		// toleration in the upstream chart, so it never schedules on a cluster
+		// whose only ready nodes are tainted control-plane nodes.
+		controller := helmM.ApplyCalledWith[0].Values["controller"].(map[string]any)
+		g.Expect(controller["tolerations"]).To(ConsistOf(SatisfyAll(
+			HaveKeyWithValue("key", "node-role.kubernetes.io/control-plane"),
+			HaveKeyWithValue("operator", "Exists"),
+			HaveKeyWithValue("effect", "NoSchedule"),
+		)))
+	})
+	t.Run("WebhookEndpointsWait", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM := &helmmock.Mock{}
+		unreadySlice := fakeWebhookEndpointSlice()
+		unreadySlice.Endpoints[0].Conditions.Ready = ptr.To(false)
+
+		clientset := fake.NewSimpleClientset(unreadySlice)
+		fd, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
+		g.Expect(ok).To(BeTrue())
+		fd.Resources = []*metav1.APIResourceList{
+			{
+				GroupVersion: "metallb.io/v1beta1",
+				APIResources: []metav1.APIResource{
+					{Name: "ipaddresspools"},
+					{Name: "l2advertisements"},
+				},
+			},
+			{GroupVersion: "metallb.io/v1beta2"},
+		}
+		snapM := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient: helmM,
+				KubernetesClient: &kubernetes.Client{
+					Interface: clientset,
+				},
+			},
+		}
+		lbCfg := types.LoadBalancer{
+			Enabled:      ptr.To(true),
+			L2Mode:       ptr.To(true),
+			L2Interfaces: ptr.To([]string{"eth0"}),
+			CIDRs:        ptr.To([]string{"192.0.2.0/24"}),
+		}
+
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
+			errCh <- err
+		}()
+
+		// Wait until ChartMetalLB is applied and ensure ChartMetalLBLoadBalancer is not yet applied.
+		g.Eventually(func() []helmmock.MockApplyArguments {
+			return helmM.Calls()
+		}, "3s", "100ms").Should(HaveLen(1))
+		g.Expect(helmM.Calls()[0].Chart).To(Equal(ChartMetalLB))
+
+		// Confirm it continues waiting while endpoints are unready.
+		g.Consistently(func() []helmmock.MockApplyArguments {
+			return helmM.Calls()
+		}, "500ms", "100ms").Should(HaveLen(1))
+		// Make webhook endpoint ready.
+		readySlice := fakeWebhookEndpointSlice()
+		_, err := clientset.DiscoveryV1().EndpointSlices(ChartMetalLB.Namespace).Update(
+			context.Background(),
+			readySlice,
+			metav1.UpdateOptions{},
+		)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		// Now ApplyLoadBalancer should complete successfully and apply ChartMetalLBLoadBalancer.
+		g.Eventually(errCh, "3s", "100ms").Should(Receive(BeNil()))
+		calls := helmM.Calls()
+		g.Expect(calls).To(HaveLen(2))
+		g.Expect(calls[1].Chart).To(Equal(ChartMetalLBLoadBalancer))
+	})
+	t.Run("WebhookEndpointsTimeout", func(t *testing.T) {
 		g := NewWithT(t)
 
 		helmM := &helmmock.Mock{}
@@ -219,18 +353,17 @@ func TestEnabled(t *testing.T) {
 			CIDRs:        ptr.To([]string{"192.0.2.0/24"}),
 		}
 
-		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
-		g.Expect(err).ToNot(HaveOccurred())
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
 
-		// Unlike the speaker DaemonSet, the controller Deployment carries no
-		// toleration in the upstream chart, so it never schedules on a cluster
-		// whose only ready nodes are tainted control-plane nodes.
-		controller := helmM.ApplyCalledWith[0].Values["controller"].(map[string]any)
-		g.Expect(controller["tolerations"]).To(ConsistOf(SatisfyAll(
-			HaveKeyWithValue("key", "node-role.kubernetes.io/control-plane"),
-			HaveKeyWithValue("operator", "Exists"),
-			HaveKeyWithValue("effect", "NoSchedule"),
-		)))
+		status, err := ApplyLoadBalancer(ctx, snapM, lbCfg, nil)
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err).To(MatchError(ContainSubstring("failed to wait for MetalLB webhook service endpoints")))
+		g.Expect(status.Enabled).To(BeFalse())
+
+		// ChartMetalLB was applied, but ChartMetalLBLoadBalancer was NOT applied.
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+		g.Expect(helmM.ApplyCalledWith[0].Chart).To(Equal(ChartMetalLB))
 	})
 }
 
@@ -601,7 +734,7 @@ func TestIsNativeBGPBackend(t *testing.T) {
 func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 	// Helper to build fake snap with helm and kubernetes mocks
 	buildFakeSnap := func(helmM *helmmock.Mock) *snapmock.Snap {
-		clientset := fake.NewSimpleClientset()
+		clientset := fake.NewSimpleClientset(fakeWebhookEndpointSlice())
 		fd, ok := clientset.Discovery().(*fakediscovery.FakeDiscovery)
 		if !ok {
 			panic("failed to cast to FakeDiscovery")
@@ -661,7 +794,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 `,
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -698,7 +831,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 `,
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -774,7 +907,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 				BGPLocalASN: ptr.To(64512),
 				CIDRs:       ptr.To([]string{"192.0.2.0/24"}),
 			}
-			status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, tc.annotations)
+			status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, tc.annotations)
 			g.Expect(err).To(HaveOccurred(), tc.name)
 			g.Expect(err.Error()).To(ContainSubstring(tc.wantErr), tc.name)
 			g.Expect(status.Enabled).To(BeFalse(), tc.name)
@@ -803,7 +936,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			"k8sd/v1alpha1/metallb/advertise-all-pools": "true",
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -835,7 +968,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 `,
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -897,7 +1030,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 `,
 		}
 
-		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		_, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
@@ -924,7 +1057,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			CIDRs:          ptr.To([]string{"192.0.2.0/24"}),
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, nil)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, nil)
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
@@ -951,7 +1084,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 			"k8sd/v1alpha1/metallb/bgp-peers": "- peerAddress: 10.0.0.1\n  peerASN: 65001\n  bfdProfile: fast-failover\n",
 		}
 
-		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, types.Network{}, annotations)
+		status, err := ApplyLoadBalancer(context.Background(), snapM, lbCfg, annotations)
 
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("bfdProfile"))

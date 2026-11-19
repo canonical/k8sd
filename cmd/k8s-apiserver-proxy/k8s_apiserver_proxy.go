@@ -39,7 +39,7 @@ func NewRootCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 			}
 
 			if err := p.Run(cmd.Context()); err != nil {
-				cmd.PrintErrf("Proxy failed with error: %v", err)
+				cmd.PrintErrf("Proxy failed with error: %v\n", err)
 				env.Exit(1)
 				return
 			}

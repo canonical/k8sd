@@ -69,7 +69,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
@@ -140,7 +140,7 @@ jobs:
           cat "${component_dir}/repository" "${component_dir}/version" "${component_dir}/pre-patch.sh"
 
       - name: Setup LXD
-        uses: canonical/setup-lxd@a3c85fc6fb7fff43fcfeae87659e41a8f635b7dd # v0.1.3
+        uses: canonical/setup-lxd@8c6a87bfb56aa48f3fb9b830baa18562d8bfd4ee # v1
 
       - name: Install snapcraft
         run: |
@@ -186,7 +186,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
@@ -197,7 +197,7 @@ jobs:
           path: ${{ github.workspace }}
 
       - name: Setup LXD
-        uses: canonical/setup-lxd@a3c85fc6fb7fff43fcfeae87659e41a8f635b7dd # v0.1.3
+        uses: canonical/setup-lxd@8c6a87bfb56aa48f3fb9b830baa18562d8bfd4ee # v1
         with:
           bridges: "lxdbr0,dualstack-br0,ipv6-br0,jumbo-br0,dual-nic-br0"
           channel: "5.21/stable"

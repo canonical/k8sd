@@ -41,7 +41,6 @@ type Mock struct {
 	ContainerdSocketDir         string
 	ContainerdSocketPath        string
 	ContainerdStateDir          string
-	K8sScriptsDir               string
 	K8sBinDir                   string
 	K8sInspectScriptPath        string
 	K8sdStateDir                string
@@ -87,6 +86,9 @@ type Snap struct {
 }
 
 func (s *Snap) StartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
+	if err := snap.ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
+		return err
+	}
 	if len(s.StartServicesCalledWith) == 0 {
 		s.StartServicesCalledWith = [][]string{names}
 	} else {
@@ -111,6 +113,9 @@ func (s *Snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 }
 
 func (s *Snap) RestartServices(ctx context.Context, names []string, extraSnapArgs ...string) error {
+	if err := snap.ClearKubeProxyDisabledIfTargeted(s.LockFilesDir(), names); err != nil {
+		return err
+	}
 	if len(s.RestartServicesCalledWith) == 0 {
 		s.RestartServicesCalledWith = [][]string{names}
 	} else {
@@ -209,10 +214,6 @@ func (s *Snap) ContainerdExtraConfigDir() string {
 
 func (s *Snap) ContainerdRegistryConfigDir() string {
 	return s.Mock.ContainerdRegistryConfigDir
-}
-
-func (s *Snap) K8sScriptsDir() string {
-	return s.Mock.K8sScriptsDir
 }
 
 func (s *Snap) K8sBinDir() string {

@@ -48,65 +48,58 @@ func ControlPlaneServices() []string { return append([]string(nil), controlPlane
 
 // RestartControlPlaneServices restarts the control plane services.
 // RestartControlPlaneServices will return on the first failing service.
-func RestartControlPlaneServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
-	svc := ControlPlaneServices()
-	if !cfg.Network.GetKubeProxyEnabled() {
-		svc = removeElement(ControlPlaneServices(), "kube-proxy")
-	}
-	if err := snap.RestartServices(ctx, svc, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to restart service %v: %w", svc, err)
-	}
-	return nil
+func RestartControlPlaneServices(ctx context.Context, s snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	return snap.WithKubeProxyStateLock(func() error {
+		svc := ControlPlaneServices()
+		if !cfg.Network.GetKubeProxyEnabled() {
+			svc = removeElement(ControlPlaneServices(), "kube-proxy")
+		} else {
+			disabled, err := IsKubeProxyDisabled(s)
+			if err == nil && disabled {
+				svc = removeElement(svc, "kube-proxy")
+			}
+		}
+		if err := s.RestartServices(ctx, svc, extraSnapArgs...); err != nil {
+			return fmt.Errorf("failed to restart service %v: %w", svc, err)
+		}
+		return nil
+	})
 }
 
 // StartWorkerServices starts the worker services.
 // StartWorkerServices will return on the first failing service.
-func StartWorkerServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
-	svc := WorkerServices()
-	if !cfg.Network.GetKubeProxyEnabled() {
-		svc = removeElement(WorkerServices(), "kube-proxy")
-	}
-	if err := snap.StartServices(ctx, svc, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to start service %v: %w", svc, err)
-	}
-	return nil
+func StartWorkerServices(ctx context.Context, s snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	return snap.WithKubeProxyStateLock(func() error {
+		svc := WorkerServices()
+		if !cfg.Network.GetKubeProxyEnabled() {
+			svc = removeElement(WorkerServices(), "kube-proxy")
+		}
+		if err := s.StartServices(ctx, svc, extraSnapArgs...); err != nil {
+			return fmt.Errorf("failed to start service %v: %w", svc, err)
+		}
+		return nil
+	})
 }
 
 // StartControlPlaneServices starts the control plane services.
 // StartControlPlaneServices will return on the first failing service.
-func StartControlPlaneServices(ctx context.Context, snap snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
-	svc := ControlPlaneServices()
-	if !cfg.Network.GetKubeProxyEnabled() {
-		svc = removeElement(ControlPlaneServices(), "kube-proxy")
-	}
-	if err := snap.StartServices(ctx, svc, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to start service %v: %w", svc, err)
-	}
-	return nil
+func StartControlPlaneServices(ctx context.Context, s snap.Snap, cfg types.ClusterConfig, extraSnapArgs ...string) error {
+	return snap.WithKubeProxyStateLock(func() error {
+		svc := ControlPlaneServices()
+		if !cfg.Network.GetKubeProxyEnabled() {
+			svc = removeElement(ControlPlaneServices(), "kube-proxy")
+		}
+		if err := s.StartServices(ctx, svc, extraSnapArgs...); err != nil {
+			return fmt.Errorf("failed to start service %v: %w", svc, err)
+		}
+		return nil
+	})
 }
 
 // StartEtcdServices starts the etcd datastore service.
 func StartEtcdServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
 	if err := snap.StartServices(ctx, []string{"etcd"}, extraSnapArgs...); err != nil {
 		return fmt.Errorf("failed to start service %v: %w", "etcd", err)
-	}
-	return nil
-}
-
-// StopWorkerServices starts the worker services.
-// StopWorkerServices will return on the first failing service.
-func StopWorkerServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
-	if err := snap.StopServices(ctx, workerK8sServices, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to stop service %v: %w", workerK8sServices, err)
-	}
-	return nil
-}
-
-// StopControlPlaneServices stops the control plane services.
-// StopControlPlaneServices will return on the first failing service.
-func StopControlPlaneServices(ctx context.Context, snap snap.Snap, extraSnapArgs ...string) error {
-	if err := snap.StopServices(ctx, controlPlaneK8sServices, extraSnapArgs...); err != nil {
-		return fmt.Errorf("failed to stop service %v: %w", controlPlaneK8sServices, err)
 	}
 	return nil
 }
@@ -133,21 +126,4 @@ func removeElement[S ~[]E, E comparable](s S, v E) S {
 		return slices.Delete(s, i, i+1)
 	}
 	return s
-}
-
-// ServiceArgsFromMap processes a map of string pointers and categorizes them into update and delete lists.
-// - If the value pointer is nil, it adds the argument name to the delete list.
-// - If the value pointer is not nil, it adds the argument and its value to the update map.
-func ServiceArgsFromMap(args map[string]*string) (map[string]string, []string) {
-	updateArgs := make(map[string]string)
-	deleteArgs := make([]string, 0)
-
-	for arg, val := range args {
-		if val == nil {
-			deleteArgs = append(deleteArgs, arg)
-		} else {
-			updateArgs[arg] = *val
-		}
-	}
-	return updateArgs, deleteArgs
 }

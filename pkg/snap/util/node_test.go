@@ -112,3 +112,59 @@ func TestMarkAsWorkerNode_ErrorCases(t *testing.T) {
 		g.Expect(err).To(HaveOccurred())
 	})
 }
+
+func TestMarkKubeProxyDisabled(t *testing.T) {
+	t.Run("SetAndClearMarker", func(t *testing.T) {
+		g := NewWithT(t)
+		dir := t.TempDir()
+		s := &mock.Snap{
+			Mock: mock.Mock{
+				LockFilesDir: dir,
+				UID:          os.Getuid(),
+				GID:          os.Getgid(),
+			},
+		}
+
+		disabled, err := snaputil.IsKubeProxyDisabled(s)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(disabled).To(BeFalse())
+
+		g.Expect(snaputil.MarkKubeProxyDisabled(s, true)).To(Succeed())
+		disabled, err = snaputil.IsKubeProxyDisabled(s)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(disabled).To(BeTrue())
+
+		g.Expect(snaputil.MarkKubeProxyDisabled(s, false)).To(Succeed())
+		disabled, err = snaputil.IsKubeProxyDisabled(s)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(disabled).To(BeFalse())
+
+		// Clearing an already absent marker is a no-op.
+		g.Expect(snaputil.MarkKubeProxyDisabled(s, false)).To(Succeed())
+	})
+
+	t.Run("FailedRenameCleansUpTempAndLeavesMarkerAbsent", func(t *testing.T) {
+		g := NewWithT(t)
+		dir := t.TempDir()
+		// Create a non-empty directory at the target marker path so os.Rename fails even when running as root.
+		targetDir := filepath.Join(dir, snaputil.KubeProxyDisabledLockFile)
+		g.Expect(os.MkdirAll(filepath.Join(targetDir, "nested"), 0o755)).To(Succeed())
+
+		s := &mock.Snap{
+			Mock: mock.Mock{
+				LockFilesDir: dir,
+				UID:          os.Getuid(),
+				GID:          os.Getgid(),
+			},
+		}
+
+		err := snaputil.MarkKubeProxyDisabled(s, true)
+		g.Expect(err).To(HaveOccurred())
+
+		// Ensure no temporary kube-proxy-disabled.* files remain behind.
+		entries, readErr := os.ReadDir(dir)
+		g.Expect(readErr).ToNot(HaveOccurred())
+		g.Expect(entries).To(HaveLen(1))
+		g.Expect(entries[0].Name()).To(Equal(snaputil.KubeProxyDisabledLockFile))
+	})
+}

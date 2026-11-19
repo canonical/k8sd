@@ -11,8 +11,9 @@ import (
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -21,6 +22,8 @@ const (
 	DisabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete MetalLB, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
+
+	webhookServiceName = "metallb-webhook-service"
 
 	// bgpBackendNative is the default BGP implementation (MetalLB's built-in one).
 	// Does not support BFD.
@@ -194,7 +197,7 @@ func bfdProfilesFromAnnotations(annotations types.Annotations) ([]bfdProfile, er
 		MinimumTTL       int    `yaml:"minimumTtl"`
 	}
 	var items []profileYAML
-	if err := yaml.UnmarshalStrict([]byte(profilesYAML), &items); err != nil {
+	if err := utils.UnmarshalStrict([]byte(profilesYAML), &items); err != nil {
 		return nil, fmt.Errorf("failed to parse bfd-profiles annotation: %w", err)
 	}
 
@@ -258,9 +261,9 @@ func validateBFDProfiles(profiles []bfdProfile, frrk8sEnabled bool) error {
 // deployment.
 // ApplyLoadBalancer returns an error if anything fails. The error is also wrapped in the .Message field of the
 // returned FeatureStatus.
-func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) (types.FeatureStatus, error) {
+func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, annotations types.Annotations) (types.FeatureStatus, error) {
 	if !loadbalancer.GetEnabled() {
-		if err := disableLoadBalancer(ctx, snap, network); err != nil {
+		if err := disableLoadBalancer(ctx, snap); err != nil {
 			err = fmt.Errorf("failed to disable LoadBalancer: %w", err)
 			return types.FeatureStatus{
 				Enabled: false,
@@ -275,7 +278,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		}, nil
 	}
 
-	if err := enableLoadBalancer(ctx, snap, loadbalancer, network, annotations); err != nil {
+	if err := enableLoadBalancer(ctx, snap, loadbalancer, annotations); err != nil {
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
 			Enabled: false,
@@ -324,7 +327,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	}
 }
 
-func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Network) error {
+func disableLoadBalancer(ctx context.Context, snap snap.Snap) error {
 	m := snap.HelmClient()
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StateDeleted, nil); err != nil {
@@ -417,7 +420,7 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 	}
 }
 
-func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) error {
+func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, annotations types.Annotations) error {
 	m := snap.HelmClient()
 
 	nativeBackend, err := isNativeBGPBackend(annotations)
@@ -538,6 +541,10 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		return fmt.Errorf("failed to wait for required MetalLB CRDs: %w", err)
 	}
 
+	if err := waitForWebhookEndpoints(ctx, snap); err != nil {
+		return fmt.Errorf("failed to wait for MetalLB webhook service endpoints: %w", err)
+	}
+
 	values := buildLoadBalancerValues(loadbalancer, neighbors, advertiseAll, bfdProfiles)
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StatePresent, values); err != nil {
@@ -595,5 +602,17 @@ func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMod
 		}
 
 		return requiredCount == 0, nil
+	})
+}
+
+// waitForWebhookEndpoints blocks until the MetalLB webhook service has at least one ready endpoint.
+func waitForWebhookEndpoints(ctx context.Context, snap snap.Snap) error {
+	client, err := snap.KubernetesClient("")
+	if err != nil {
+		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	return control.WaitUntilReady(ctx, func() (bool, error) {
+		return client.HasReadyEndpoints(ctx, ChartMetalLB.Namespace, webhookServiceName)
 	})
 }

@@ -152,7 +152,7 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 		if err := a.ensureSystemTuningConfigFile(ctx); err != nil {
 			log.Error(err, "failed to create system tuning file")
 		}
-		if err := a.tuneSystemSettings(ctx, s); err != nil {
+		if err := a.tuneSystemSettings(ctx); err != nil {
 			log.Error(err, "failed to tune system settings")
 		}
 	}
@@ -276,6 +276,9 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 	if err := snaputil.MarkAsWorkerNode(snap, true); err != nil {
 		return fmt.Errorf("failed to mark node as worker: %w", err)
 	}
+	if err := snaputil.MarkKubeProxyDisabled(snap, false); err != nil {
+		return fmt.Errorf("failed to clear kube-proxy disabled marker: %w", err)
+	}
 
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
@@ -328,7 +331,7 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 		if err := a.ensureSystemTuningConfigFile(ctx); err != nil {
 			log.Error(err, "failed to create system tuning file")
 		}
-		if err := a.tuneSystemSettings(ctx, s); err != nil {
+		if err := a.tuneSystemSettings(ctx); err != nil {
 			log.Error(err, "failed to tune system settings")
 		}
 	}
@@ -519,6 +522,10 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 
 	if err := snapdconfig.SetSnapdFromK8sd(ctx, cfg.ToUserFacing(), snap); err != nil {
 		return fmt.Errorf("failed to set snapd configuration from k8sd: %w", err)
+	}
+
+	if err := snaputil.MarkKubeProxyDisabled(snap, false); err != nil {
+		return fmt.Errorf("failed to clear kube-proxy disabled marker: %w", err)
 	}
 
 	// Start services

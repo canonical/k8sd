@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	k8sdclient "github.com/canonical/k8sd/pkg/client/k8sd"
@@ -18,6 +19,9 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/control"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 )
+
+// runtimeServicesStopTimeout bounds how long the pre-remove hook waits for kubelet and containerd to stop.
+const runtimeServicesStopTimeout = 10 * time.Second
 
 // NOTE(ben): the pre-remove performs a series of cleanup steps on a best-effort basis.
 // If any step fails, the error is logged, and the cleanup continues, skipping dependent tasks.
@@ -92,6 +96,17 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 			log.Info("Syncing iSCSI devices before stopping services")
 			cleanup.SyncISCSIDevices(ctx)
 
+			// kubelet and containerd must be down before containers are killed, otherwise kubelet
+			// restarts pods (including cilium-agent) during cleanup. The wait is bounded because
+			// microcluster gives the whole hook only 30 seconds. The remaining services are not
+			// waited for, as they can be slow to stop.
+			log.Info("Stopping kubelet and containerd")
+			stopCtx, cancel := context.WithTimeout(ctx, runtimeServicesStopTimeout)
+			if err := snap.StopServices(stopCtx, []string{"kubelet", "containerd"}); err != nil {
+				log.Error(err, "failed to stop kubelet and containerd")
+			}
+			cancel()
+
 			log.Info("Stopping all services except k8sd")
 			if err := snaputil.StopK8sServices(ctx, snap, "--no-wait"); err != nil {
 				log.Error(err, "failed to stop k8s services")
@@ -140,6 +155,11 @@ func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rer
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Error(err, "failed to unmark node as worker")
 		}
+	}
+
+	log.Info("Removing kube-proxy disabled mark")
+	if err := snaputil.MarkKubeProxyDisabled(snap, false); err != nil {
+		log.Error(err, "failed to clear kube-proxy disabled marker")
 	}
 
 	log.Info("Remove hook completed ")

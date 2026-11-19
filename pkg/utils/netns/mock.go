@@ -2,6 +2,7 @@ package netnsutils
 
 import (
 	"context"
+	"path/filepath"
 
 	mountutils "github.com/canonical/k8sd/pkg/utils/mount"
 )
@@ -17,6 +18,10 @@ func (h MockNetworkNamespaceManager) ForEachNetworkNamespace(ctx context.Context
 func (h MockNetworkNamespaceManager) DeleteNetworkNamespace(ctx context.Context, namespace string) error {
 	mountHelper := mountutils.MockMountManager{}
 	return deleteNetworkNamespace(ctx, mountHelper, h.netnsDir, namespace)
+}
+
+func (h MockNetworkNamespaceManager) Path(namespace string) string {
+	return filepath.Join(h.netnsDir, namespace)
 }
 
 func NewMockNetworkNSHelper(netnsDir string) NetworkNamespaceManager {

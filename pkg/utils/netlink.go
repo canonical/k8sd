@@ -5,7 +5,7 @@ import (
 	"net"
 	"os/exec"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type VXLANInterface struct {
@@ -58,14 +58,4 @@ func ListVXLANInterfaces() ([]VXLANInterface, error) {
 	}
 
 	return vxlanDevices, nil
-}
-
-func RemoveLink(name string) error {
-	cmd := exec.Command("ip", "link", "delete", name)
-
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("running ip command failed: %s", string(out))
-	}
-
-	return nil
 }
