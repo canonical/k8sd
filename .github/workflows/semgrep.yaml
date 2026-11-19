@@ -6,7 +6,7 @@ on:
             - "docs/**"
         branches:
             - main
-            - "release-[0-9]*.[0-9]*"
+            - "release-[0-9]+.[0-9]+"
 
     pull_request:
         paths-ignore:
@@ -46,9 +46,9 @@ jobs:
                     --config p/github-actions \
                     --error \
                     --sarif \
-                    --output semgrep-results.sarif \
+                    --output semgrep-raw.sarif \
                     .
-
+                  jq '.runs[0].results |= map(select((.suppressions // []) | length == 0))' semgrep-raw.sarif > semgrep-results.sarif
             - name: Upload SARIF results
               uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
               if: always()

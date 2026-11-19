@@ -20,8 +20,16 @@
       "matchBaseBranches": [
         "/^release-[0-9]+\\.[0-9]+$/"
       ],
-      "matchPackageNames": [
-        "*"
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch",
+        "pin",
+        "digest",
+        "pinDigest",
+        "lockFileMaintenance",
+        "rollback",
+        "replacement"
       ],
       "enabled": false
     },
