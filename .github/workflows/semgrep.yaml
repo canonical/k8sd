@@ -40,17 +40,22 @@ jobs:
               run: pip install semgrep==1.156.0
 
             - name: Run Semgrep scan
-              continue-on-error: true
               run: |
+                  rc=0
                   semgrep scan \
-                    --config p/go \
+                    --config p/golang \
                     --config p/github-actions \
+                    --error \
                     --sarif \
-                    --output semgrep-results.sarif \
-                    .
+                    --output semgrep-raw.sarif \
+                    . || rc=$?
+                  if [ -s semgrep-raw.sarif ]; then
+                    jq '.runs[0].results |= map(select((.suppressions // []) | length == 0))' semgrep-raw.sarif > semgrep-results.sarif
+                  fi
+                  exit "$rc"
 
             - name: Upload SARIF results
               uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-              if: always()
+              if: always() && hashFiles('semgrep-results.sarif') != ''
               with:
                   sarif_file: semgrep-results.sarif

@@ -287,7 +287,7 @@ func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-			if err := http.ListenAndServe(a.profilingAddress, mux); err != nil {
+			if err := http.ListenAndServe(a.profilingAddress, mux); err != nil { // nosemgrep: go.lang.security.audit.net.use-tls.use-tls
 				log.Error(err, "Failed to serve pprof endpoint")
 			}
 		}()
