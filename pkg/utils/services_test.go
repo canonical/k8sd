@@ -1,9 +1,14 @@
 package utils
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -163,5 +168,152 @@ func TestRunningServiceArgs(t *testing.T) {
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(errors.Is(err, ErrUnitNotRunning)).To(BeFalse())
 		g.Expect(err.Error()).To(ContainSubstring("was not found"))
+	})
+}
+
+func createMockProcessWithExe(t *testing.T, baseDir string, pid int, comm string, state byte, exeTarget string, cmdlineParts []string) {
+	t.Helper()
+	pidDir := filepath.Join(baseDir, strconv.Itoa(pid))
+	if err := os.MkdirAll(pidDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	statContent := fmt.Sprintf("%d (%s) %c 1 2 3\n", pid, comm, state)
+	if err := os.WriteFile(filepath.Join(pidDir, "stat"), []byte(statContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var cmdlineBuf bytes.Buffer
+	for _, part := range cmdlineParts {
+		cmdlineBuf.WriteString(part)
+		cmdlineBuf.WriteByte(0)
+	}
+	if err := os.WriteFile(filepath.Join(pidDir, "cmdline"), cmdlineBuf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if exeTarget != "" {
+		if err := os.Symlink(exeTarget, filepath.Join(pidDir, "exe")); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func createMockProcess(t *testing.T, baseDir string, pid int, state byte, cmdlineParts []string) {
+	t.Helper()
+	createMockProcessWithExe(t, baseDir, pid, filepath.Base(cmdlineParts[0]), state, cmdlineParts[0], cmdlineParts)
+}
+
+func TestRunningServiceArgs_ProcFallback(t *testing.T) {
+	oldProcDir := procDir
+	oldUID := expectedServiceUID
+	oldUsable := systemctlUsable.Load()
+	t.Cleanup(func() {
+		procDir = oldProcDir
+		expectedServiceUID = oldUID
+		systemctlUsable.Store(oldUsable)
+	})
+
+	t.Setenv("SNAP", "")
+	t.Setenv("SNAP_INSTANCE_NAME", "")
+	mockProc := t.TempDir()
+	procDir = mockProc
+	expectedServiceUID = uint32(os.Getuid())
+	systemctlUsable.Store(false)
+	ctx := context.Background()
+
+	t.Run("ActiveService", func(t *testing.T) {
+		g := NewWithT(t)
+		createMockProcess(t, mockProc, 100, 'S', []string{
+			"/snap/k8s/123/bin/kubelet",
+			"--cluster-dns=10.152.183.10",
+			"--port=10250",
+		})
+
+		args, err := RunningServiceArgs(ctx, "kubelet")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(args).To(Equal(map[string]string{
+			"--cluster-dns": "10.152.183.10",
+			"--port":        "10250",
+		}))
+	})
+
+	t.Run("NonRunningService", func(t *testing.T) {
+		g := NewWithT(t)
+		_, err := RunningServiceArgs(ctx, "nonexistent-service")
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(errors.Is(err, ErrUnitNotRunning)).To(BeTrue())
+	})
+
+	t.Run("ZombieSkipped", func(t *testing.T) {
+		g := NewWithT(t)
+		createMockProcess(t, mockProc, 200, 'Z', []string{
+			"/snap/k8s/123/bin/kube-proxy",
+			"--config=/var/lib/kube-proxy/config.yaml",
+		})
+
+		_, err := RunningServiceArgs(ctx, "kube-proxy")
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(errors.Is(err, ErrUnitNotRunning)).To(BeTrue())
+	})
+
+	t.Run("ParallelInstance", func(t *testing.T) {
+		g := NewWithT(t)
+		createMockProcess(t, mockProc, 300, 'S', []string{
+			"/snap/k8s_instance/x1/bin/kube-scheduler",
+			"--leader-elect=true",
+		})
+
+		args, err := RunningServiceArgs(ctx, "kube-scheduler")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(args).To(Equal(map[string]string{
+			"--leader-elect": "true",
+		}))
+	})
+
+	t.Run("UnrelatedBinaryIgnored", func(t *testing.T) {
+		g := NewWithT(t)
+		createMockProcess(t, mockProc, 400, 'S', []string{
+			"/usr/bin/containerd",
+			"--config=/etc/containerd/config.toml",
+		})
+		createMockProcess(t, mockProc, 401, 'S', []string{
+			"/snap/other/1/bin/containerd",
+			"--config=/etc/containerd/config.toml",
+		})
+
+		_, err := RunningServiceArgs(ctx, "containerd")
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(errors.Is(err, ErrUnitNotRunning)).To(BeTrue())
+	})
+
+	t.Run("SpoofedArgv0OrWrongInstanceRejected", func(t *testing.T) {
+		g := NewWithT(t)
+		t.Setenv("SNAP_INSTANCE_NAME", "k8s_target")
+		// Spoofed argv[0] pointing to k8s_target while actual /proc/<pid>/exe is /bin/sleep
+		createMockProcessWithExe(t, mockProc, 50, "sleep", 'S', "/bin/sleep", []string{
+			"/snap/k8s_target/10/bin/kube-apiserver",
+			"--secure-port=9999",
+		})
+		// Real binary belonging to a sibling parallel instance k8s_other
+		createMockProcessWithExe(t, mockProc, 51, "kube-apiserver", 'S', "/snap/k8s_other/10/bin/kube-apiserver", []string{
+			"/snap/k8s_other/10/bin/kube-apiserver",
+			"--secure-port=8888",
+		})
+		// Zombie with spaces and ')' in comm
+		createMockProcessWithExe(t, mockProc, 52, "kube (api) server", 'Z', "/var/lib/snapd/snap/k8s_target/10/bin/kube-apiserver", []string{
+			"/var/lib/snapd/snap/k8s_target/10/bin/kube-apiserver",
+			"--secure-port=7777",
+		})
+		// Real target instance under /var/lib/snapd/snap/...
+		createMockProcessWithExe(t, mockProc, 600, "kube-apiserver", 'S', "/var/lib/snapd/snap/k8s_target/10/bin/kube-apiserver", []string{
+			"/var/lib/snapd/snap/k8s_target/10/bin/kube-apiserver",
+			"--secure-port=6443",
+		})
+
+		args, err := RunningServiceArgs(ctx, "kube-apiserver")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(args).To(Equal(map[string]string{
+			"--secure-port": "6443",
+		}))
 	})
 }
