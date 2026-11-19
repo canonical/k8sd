@@ -585,6 +585,78 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 		dbMu.Unlock()
 	})
 
+	t.Run("CleanupFailureStillMarksDisabled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		g := NewWithT(t)
+
+		dir := t.TempDir()
+		cs := fake.NewSimpleClientset(&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+		})
+		w := watch.NewFake()
+		cs.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(w, nil))
+		defer w.Stop()
+
+		// Fake kube-proxy that records each invocation and fails like the real
+		// one does when there are no KUBE-* chains to remove.
+		binDir := filepath.Join(dir, "bin")
+		callsFile := filepath.Join(dir, "calls")
+		g.Expect(os.MkdirAll(binDir, 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(binDir, "kube-proxy"), []byte("#!/bin/sh\necho x >> "+callsFile+"\necho \"Couldn't find target \\`KUBE-SERVICES'\" >&2\nexit 1\n"), 0o755)).To(Succeed())
+
+		s := &mock.Snap{
+			Mock: mock.Mock{
+				ServiceArgumentsDir:  filepath.Join(dir, "args"),
+				LockFilesDir:         filepath.Join(dir, "lock"),
+				K8sBinDir:            binDir,
+				UID:                  os.Getuid(),
+				GID:                  os.Getgid(),
+				KubernetesNodeClient: &kubernetes.Client{Interface: cs},
+			},
+		}
+		g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
+
+		updateCh := make(chan bool, 10)
+		ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute)
+		keyCh := make(chan *rsa.PublicKey)
+		go ctrl.Run(ctx, func(context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil },
+			func(_ context.Context, enabled bool) error {
+				updateCh <- enabled
+				return nil
+			})
+
+		// Drain seed reconcile.
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for seed reconcile")
+		}
+		g.Expect(updateCh).To(Receive(BeTrue()))
+
+		disableCM := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
+			Data:       map[string]string{"kube-proxy-enabled": "false"},
+		}
+		w.Modify(disableCM)
+		keyCh <- nil
+		select {
+		case <-ctrl.ReconciledCh():
+		case <-time.After(channelSendTimeout):
+			g.Fail("Timed out waiting for disable reconcile")
+		}
+
+		// A failed cleanup must not block the transition.
+		g.Expect(updateCh).To(Receive(BeFalse()))
+		disabled, err := snaputil.IsKubeProxyDisabled(s)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(disabled).To(BeTrue())
+		calls, err := os.ReadFile(callsFile)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(string(calls)).To(Equal("x\n"))
+	})
+
 	t.Run("PreMarkedDisabledSkipsCleanup", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
