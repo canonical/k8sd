@@ -9,6 +9,7 @@ import (
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/snap/mock"
 	"github.com/canonical/k8sd/pkg/utils"
 	. "github.com/onsi/gomega"
 )
@@ -204,4 +205,27 @@ func TestNormalizeContainerdBaseDir(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(normalized).To(Equal("/opt/k8s-containerd"))
 	})
+}
+
+func TestBootstrapStrictSkipsMicroK8sCheck(t *testing.T) {
+	g := NewWithT(t)
+	stderr := &bytes.Buffer{}
+	mockSnap := &mock.Snap{
+		Mock: mock.Mock{Strict: true},
+	}
+	env := cmdutil.ExecutionEnvironment{
+		Stderr: stderr,
+		Getuid: func() int { return 0 },
+		Snap:   mockSnap,
+		Exit:   func(code int) {},
+	}
+
+	cmd := newBootstrapCmd(env)
+	cmd.SetErr(stderr)
+	cmd.SetArgs([]string{"--interactive", "--file", "conflict"})
+	_ = cmd.Execute()
+
+	g.Expect(stderr.String()).To(ContainSubstring("--interactive and --file flags cannot be set at the same time"))
+	g.Expect(stderr.String()).NotTo(ContainSubstring("failed to check if microk8s is installed"))
+	g.Expect(stderr.String()).NotTo(ContainSubstring("failed to create snapd client"))
 }
