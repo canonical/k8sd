@@ -34,7 +34,9 @@ func SplitIPAndDNSSANs(extraSANs []string) ([]net.IP, []string) {
 // The remoteCert is the public key of the server we are connecting to.
 // The rootCAs is the list of trusted CAs, allowing you to pass the clients existing trusted CAs.
 func TLSClientConfigWithTrustedCertificate(remoteCert *x509.Certificate, rootCAs *x509.CertPool) (*tls.Config, error) {
-	config := &tls.Config{}
+	config := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
 	if remoteCert == nil {
 		return nil, fmt.Errorf("invalid remote public key")
 	}
@@ -71,6 +73,7 @@ func GetRemoteCertificate(address string) (*x509.Certificate, error) {
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
+				MinVersion:         tls.VersionTLS12,
 			},
 		},
 	}

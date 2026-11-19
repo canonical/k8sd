@@ -1,12 +1,30 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "security:gomodIndirectSecurityUpdates"
   ],
+  "baseBranchPatterns": [
+    "$default",
+    "/^release-[0-9]+\\.[0-9]+$/"
+  ],
+  "osvVulnerabilityAlerts": true,
   "postUpdateOptions": [
     "gomodTidy"
   ],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
   "packageRules": [
+    {
+      "matchBaseBranches": [
+        "/^release-[0-9]+\\.[0-9]+$/"
+      ],
+      "matchPackageNames": [
+        "*"
+      ],
+      "enabled": false
+    },
     {
       "matchPackageNames": [
         "go.etcd.io/etcd/**"

@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
+	"math/rand/v2" // nosemgrep: go.lang.security.audit.crypto.math_random.math-random-used
 	"net"
 	"sync"
 	"time"
@@ -147,7 +147,7 @@ func (tp *tcpproxy) pick() *remote {
 		}
 	}
 	if weighted != nil {
-		if len(unweighted) > 0 && rand.Intn(100) == 1 {
+		if len(unweighted) > 0 && rand.IntN(100) == 1 {
 			// In the presence of records containing weights greater
 			// than 0, records with weight 0 should have a very small
 			// chance of being selected.
@@ -158,7 +158,7 @@ func (tp *tcpproxy) pick() *remote {
 		// choose a uniform random number between 0 and the sum computed
 		// (inclusive), and select the RR whose running sum value is the
 		// first in the selected order
-		choose := rand.Intn(w)
+		choose := rand.IntN(w)
 		for i := 0; i < len(weighted); i++ {
 			choose -= int(weighted[i].srv.Weight)
 			if choose <= 0 {

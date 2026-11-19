@@ -6,7 +6,7 @@ on:
             - "docs/**"
         branches:
             - main
-            - "release-[0-9]+.[0-9]+"
+            - "release-[0-9]*.[0-9]*"
 
     pull_request:
         paths-ignore:
@@ -40,11 +40,11 @@ jobs:
               run: pip install semgrep==1.156.0
 
             - name: Run Semgrep scan
-              continue-on-error: true
               run: |
                   semgrep scan \
-                    --config p/go \
+                    --config p/golang \
                     --config p/github-actions \
+                    --error \
                     --sarif \
                     --output semgrep-results.sarif \
                     .
