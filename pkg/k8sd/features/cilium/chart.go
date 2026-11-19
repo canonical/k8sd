@@ -12,6 +12,7 @@ var (
 		Name:         "ck-network",
 		Namespace:    "kube-system",
 		ManifestPath: filepath.Join("charts", "cilium-1.19.4.tgz"),
+		RetainKeys:   []string{"ingressController", "gatewayAPI"},
 	}
 
 	// ChartCiliumLoadBalancer represents manifests to deploy Cilium LoadBalancer resources.
