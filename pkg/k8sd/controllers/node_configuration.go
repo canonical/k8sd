@@ -21,7 +21,7 @@ type NodeConfigurationController struct {
 	// reconciledCh is used to notify that the controller has finished its reconciliation loop.
 	reconciledCh         chan struct{}
 	watchDuration        time.Duration
-	removeKubeProxyRules func(context.Context, snap.Snap) error
+	removeKubeProxyRules func(context.Context, snap.Snap)
 }
 
 func NewNodeConfigurationController(snap snap.Snap, waitReady func(),
@@ -32,12 +32,12 @@ func NewNodeConfigurationController(snap snap.Snap, waitReady func(),
 		waitReady:            waitReady,
 		reconciledCh:         make(chan struct{}, 1),
 		watchDuration:        watchDuration,
-		removeKubeProxyRules: cleanup.TryRemoveKubeProxyRules,
+		removeKubeProxyRules: cleanup.RemoveKubeProxyRules,
 	}
 }
 
 // WithRemoveKubeProxyRules sets the function used to remove kube-proxy iptables rules.
-func (c *NodeConfigurationController) WithRemoveKubeProxyRules(fn func(context.Context, snap.Snap) error) *NodeConfigurationController {
+func (c *NodeConfigurationController) WithRemoveKubeProxyRules(fn func(context.Context, snap.Snap)) *NodeConfigurationController {
 	c.removeKubeProxyRules = fn
 	return c
 }
@@ -166,13 +166,10 @@ func (c *NodeConfigurationController) reconcile(ctx context.Context, configMap *
 			}); err != nil {
 				return fmt.Errorf("failed to stop kube-proxy: %w", err)
 			}
-			removeKubeProxyRules := c.removeKubeProxyRules
-			if removeKubeProxyRules == nil {
-				removeKubeProxyRules = cleanup.TryRemoveKubeProxyRules
-			}
-			if err := removeKubeProxyRules(ctx, c.snap); err != nil {
-				return fmt.Errorf("failed to remove kube-proxy rules: %w", err)
-			}
+			// Rule cleanup is best effort: kube-proxy --cleanup exits non-zero even
+			// when there is nothing to remove, so its result must not block the
+			// disabled marker or the reconcile loop would retry forever.
+			c.removeKubeProxyRules(ctx, c.snap)
 			if err := snaputil.MarkKubeProxyDisabled(c.snap, true); err != nil {
 				return fmt.Errorf("failed to mark kube-proxy as disabled: %w", err)
 			}

@@ -3,77 +3,24 @@ package internal
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
-var (
-	klogInfoRegex  = regexp.MustCompile(`^I[0-9]{4}\s`)
-	klogWarnRegex  = regexp.MustCompile(`^W[0-9]{4}\s`)
-	klogErrorRegex = regexp.MustCompile(`^E[0-9]{4}\s`)
-	execCommand    = exec.CommandContext
-)
-
-func isIgnorableIPVSContainerCleanupError(stderr string) bool {
-	lines := strings.Split(stderr, "\n")
-	foundIPVSError := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-
-		// Klog info or warning lines are non-error lines.
-		if klogInfoRegex.MatchString(trimmed) || klogWarnRegex.MatchString(trimmed) {
-			continue
-		}
-
-		// Must contain at least one klog error line (^E[0-9]{4}\s)
-		// reporting "Error flushing ipvs rules" together with "operation not permitted".
-		if klogErrorRegex.MatchString(trimmed) &&
-			strings.Contains(trimmed, "Error flushing ipvs rules") &&
-			strings.Contains(strings.ToLower(trimmed), "operation not permitted") {
-			foundIPVSError = true
-			continue
-		}
-
-		// Every other klog error line must ONLY be kube-proxy's generic wrapper summary lines.
-		if klogErrorRegex.MatchString(trimmed) &&
-			strings.Contains(trimmed, "encountered an error while tearing down rules") &&
-			(strings.Contains(trimmed, "Error running ProxyServer") || strings.Contains(trimmed, "command failed")) {
-			continue
-		}
-
-		return false
-	}
-
-	return foundIPVSError
-}
-
-func TryRemoveKubeProxyRules(ctx context.Context, s snap.Snap) error {
-	cmd := execCommand(ctx, filepath.Join(s.K8sBinDir(), "kube-proxy"), "--cleanup")
+// RemoveKubeProxyRules runs "kube-proxy --cleanup" on a best-effort basis.
+// kube-proxy exits non-zero even when there was nothing to clean up (e.g. it
+// reports missing KUBE-* chains with the snap's static iptables build, or
+// cannot flush IPVS rules inside containers), so failures are logged, not
+// returned.
+func RemoveKubeProxyRules(ctx context.Context, s snap.Snap) {
+	cmd := exec.CommandContext(ctx, filepath.Join(s.K8sBinDir(), "kube-proxy"), "--cleanup")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		stderrStr := stderr.String()
-		if onLXD, err := s.OnLXD(ctx); err == nil && onLXD && isIgnorableIPVSContainerCleanupError(stderrStr) {
-			log.FromContext(ctx).Info("Ignoring IPVS flush EPERM during kube-proxy cleanup in container environment")
-			return nil
-		}
-		return fmt.Errorf("kube-proxy --cleanup failed: %w (stderr: %s)", err, strings.TrimSpace(stderrStr))
-	}
-	return nil
-}
-
-func RemoveKubeProxyRules(ctx context.Context, s snap.Snap) {
-	if err := TryRemoveKubeProxyRules(ctx, s); err != nil {
-		log.FromContext(ctx).Error(err, "failed to run kube-proxy cleanup")
+		log.FromContext(ctx).Error(err, "kube-proxy --cleanup reported errors; continuing", "stderr", strings.TrimSpace(stderr.String()))
 	}
 }
