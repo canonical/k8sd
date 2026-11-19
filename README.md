@@ -16,12 +16,6 @@ This project builds three main binaries:
 - **k8s**: The CLI tool for interacting with k8sd and managing the cluster
 - **k8s-apiserver-proxy**: A proxy component for the Kubernetes API server
 
-## CoreDNS rebalancing
-
-The DNS rebalancer waits for the deployment and its pods to settle before restarting co-located replicas. Node scheduling changes and CoreDNS pod events wake the controller; temporary rollout and pod states retry with backoff from 30 seconds to 16 minutes. Clusters with fewer than two schedulable nodes wait for a node event instead of polling.
-
-The controller issues at most one successful rollout restart per observed set of schedulable node names. Events from that rollout cannot trigger another restart unless the node set changes. This limit is kept in memory, so restarting k8sd permits a new attempt. CoreDNS placement remains a soft preference: the controller does not guarantee that replicas end up on different nodes.
-
 ## Building
 
 ### Dynamic builds

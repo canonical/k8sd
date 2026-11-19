@@ -1,13 +1,23 @@
+// Package dnsrebalancer restarts settled, co-located CoreDNS replicas.
+// Node, Pod and Deployment events share one work key; only pod age and restart
+// cooldown require timed requeues. Terminal pods do not participate in placement.
+// An in-memory guard prevents repeating an unsuccessful rollout, but permits a
+// new attempt after observed spreading, pod replacement or a deployment/node change.
+// Scheduling preferences remain soft, so a restart does not guarantee spreading.
 package dnsrebalancer
 
 import (
 	"context"
+	"time"
 
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
+	"github.com/canonical/k8sd/pkg/k8sd/features/coredns"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
-	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,42 +30,48 @@ type controller struct {
 	logger           logr.Logger
 	client           client.Client
 	getClusterConfig func(context.Context) (types.ClusterConfig, error)
-	snap             snap.Snap
-
-	// settleAttempts counts consecutive settle skips.
-	settleAttempts int
-	// rebalancedNodes limits restarts to one per observed schedulable node set.
-	rebalancedNodes map[string]struct{}
+	now              func() time.Time
+	rebalance        *rebalanceAttempt
 }
 
 func NewController(
 	logger logr.Logger,
 	client client.Client,
 	getClusterConfig func(context.Context) (types.ClusterConfig, error),
-	snap snap.Snap,
 ) *controller {
 	return &controller{
 		logger:           logger,
 		client:           client,
 		getClusterConfig: getClusterConfig,
-		snap:             snap,
+		now:              time.Now,
 	}
 }
 
 // SetupWithManager sets up the controller with the manager.
 func (r *controller) SetupWithManager(mgr ctrl.Manager) error {
-	// Node changes allow rebalancing; pod events wake checks waiting for settling.
+	// All watches reconcile the same cluster-wide CoreDNS placement.
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&corev1.Node{}, builder.WithPredicates(nodeEventPredicate())).
-		Watches(&corev1.Pod{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(coreDNSPodEventPredicate())).
+		Named("dns-rebalancer").
+		Watches(&corev1.Node{}, coreDNSRequestHandler(), builder.WithPredicates(nodeEventPredicate())).
+		Watches(&corev1.Pod{}, coreDNSRequestHandler(), builder.WithPredicates(coreDNSPodEventPredicate())).
+		Watches(&appsv1.Deployment{}, coreDNSRequestHandler(), builder.WithPredicates(coreDNSDeploymentEventPredicate())).
 		Complete(r)
+}
+
+func coreDNSRequestHandler() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(context.Context, client.Object) []ctrl.Request {
+		return []ctrl.Request{{NamespacedName: k8stypes.NamespacedName{
+			Namespace: coredns.Chart.Namespace,
+			Name:      coredns.DeploymentName,
+		}}}
+	})
 }
 
 func nodeEventPredicate() predicate.Funcs {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			node, ok := e.Object.(*corev1.Node)
-			return ok && isNodeReady(node)
+			return ok && nodeSchedulableForCoreDNS(node)
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldNode, ok := e.ObjectOld.(*corev1.Node)
@@ -66,25 +82,22 @@ func nodeEventPredicate() predicate.Funcs {
 			if !ok {
 				return false
 			}
-			if isNodeReady(oldNode) != isNodeReady(newNode) {
-				return true
-			}
-			if oldNode.Spec.Unschedulable != newNode.Spec.Unschedulable {
-				return true
-			}
-			return !taintsEqual(oldNode.Spec.Taints, newNode.Spec.Taints)
+			return nodeSchedulableForCoreDNS(oldNode) != nodeSchedulableForCoreDNS(newNode)
 		},
-		DeleteFunc:  func(event.DeleteEvent) bool { return true },
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			_, ok := e.Object.(*corev1.Node)
+			return ok
+		},
 		GenericFunc: func(event.GenericEvent) bool { return false },
 	}
 }
 
-// coreDNSPodEventPredicate ignores pod updates unrelated to scheduling or readiness.
+// coreDNSPodEventPredicate watches changes affecting placement or settling.
 func coreDNSPodEventPredicate() predicate.Funcs {
 	selector := labels.SelectorFromSet(corednsPodLabels)
 	isCoreDNSPod := func(obj client.Object) bool {
 		pod, ok := obj.(*corev1.Pod)
-		return ok && pod.Namespace == corednsNamespace && selector.Matches(labels.Set(pod.Labels))
+		return ok && pod.Namespace == coredns.Chart.Namespace && selector.Matches(labels.Set(pod.Labels))
 	}
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
@@ -92,16 +105,21 @@ func coreDNSPodEventPredicate() predicate.Funcs {
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldPod, ok := e.ObjectOld.(*corev1.Pod)
-			if !ok || !isCoreDNSPod(oldPod) {
+			if !ok {
 				return false
 			}
 			newPod, ok := e.ObjectNew.(*corev1.Pod)
 			if !ok {
 				return false
 			}
-			return oldPod.Spec.NodeName != newPod.Spec.NodeName ||
-				podReady(oldPod) != podReady(newPod) ||
-				(oldPod.DeletionTimestamp == nil) != (newPod.DeletionTimestamp == nil)
+			oldMatches, newMatches := isCoreDNSPod(oldPod), isCoreDNSPod(newPod)
+			if oldMatches != newMatches {
+				return true
+			}
+			return oldMatches && (oldPod.Spec.NodeName != newPod.Spec.NodeName ||
+				kubernetes.IsPodReady(oldPod) != kubernetes.IsPodReady(newPod) ||
+				oldPod.Status.Phase != newPod.Status.Phase ||
+				(oldPod.DeletionTimestamp == nil) != (newPod.DeletionTimestamp == nil))
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return isCoreDNSPod(e.Object)
@@ -110,26 +128,21 @@ func coreDNSPodEventPredicate() predicate.Funcs {
 	}
 }
 
-func isNodeReady(node *corev1.Node) bool {
-	if node == nil {
-		return false
+func coreDNSDeploymentEventPredicate() predicate.Funcs {
+	isCoreDNSDeployment := func(obj client.Object) bool {
+		deployment, ok := obj.(*appsv1.Deployment)
+		return ok && deployment.Namespace == coredns.Chart.Namespace && deployment.Name == coredns.DeploymentName
 	}
-	for _, condition := range node.Status.Conditions {
-		if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
-			return true
-		}
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return isCoreDNSDeployment(e.Object)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return isCoreDNSDeployment(e.ObjectNew)
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return isCoreDNSDeployment(e.Object)
+		},
+		GenericFunc: func(event.GenericEvent) bool { return false },
 	}
-	return false
-}
-
-func taintsEqual(a, b []corev1.Taint) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i].Key != b[i].Key || a[i].Value != b[i].Value || a[i].Effect != b[i].Effect {
-			return false
-		}
-	}
-	return true
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -16,10 +17,19 @@ const (
 	deleteFailedMsgTmpl = "Failed to delete DNS, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy DNS, the error was: %v"
 
-	// ControlPlaneTaintKey is the well-known taint key of control-plane nodes.
-	// CoreDNS tolerates it so that it can be scheduled on control-plane nodes.
-	ControlPlaneTaintKey = "node-role.kubernetes.io/control-plane"
+	// DeploymentName is the name of the CoreDNS deployment.
+	DeploymentName = "coredns"
 )
+
+// Tolerations allow CoreDNS to be scheduled on control-plane nodes.
+// Callers must not modify this shared scheduling configuration.
+var Tolerations = []corev1.Toleration{
+	{
+		Key:      "node-role.kubernetes.io/control-plane",
+		Operator: corev1.TolerationOpExists,
+		Effect:   corev1.TaintEffectNoSchedule,
+	},
+}
 
 // ApplyDNS manages the deployment of CoreDNS, with customization options from dns and kubelet, which are retrieved from the cluster configuration.
 // ApplyDNS will uninstall CoreDNS from the cluster if dns.Enabled is false.
@@ -62,15 +72,9 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 			"name":   "coredns",
 		},
 		"priorityClassName": "system-node-critical",
-		"tolerations": []map[string]any{
-			{
-				"key":      ControlPlaneTaintKey,
-				"operator": "Exists",
-				"effect":   "NoSchedule",
-			},
-		},
+		"tolerations":       Tolerations,
 		"deployment": map[string]any{
-			"name": "coredns",
+			"name": DeploymentName,
 		},
 		"rollingUpdate": map[string]any{
 			"maxSurge":       1,
@@ -113,7 +117,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 							"labelSelector": map[string]any{
 								"matchLabels": map[string]any{
 									"app.kubernetes.io/name":     "coredns",
-									"app.kubernetes.io/instance": "ck-dns",
+									"app.kubernetes.io/instance": Chart.Name,
 									"k8s-app":                    "coredns",
 								},
 							},
@@ -133,7 +137,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 				"labelSelector": map[string]any{
 					"matchLabels": map[string]any{
 						"app.kubernetes.io/name":     "coredns",
-						"app.kubernetes.io/instance": "ck-dns",
+						"app.kubernetes.io/instance": Chart.Name,
 						"k8s-app":                    "coredns",
 					},
 				},
@@ -146,7 +150,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 				"labelSelector": map[string]any{
 					"matchLabels": map[string]any{
 						"app.kubernetes.io/name":     "coredns",
-						"app.kubernetes.io/instance": "ck-dns",
+						"app.kubernetes.io/instance": Chart.Name,
 						"k8s-app":                    "coredns",
 					},
 				},
@@ -214,7 +218,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 			Message: fmt.Sprintf(deployFailedMsgTmpl, err),
 		}, "", err
 	}
-	dnsIP, err := client.GetServiceClusterIP(ctx, "coredns", "kube-system")
+	dnsIP, err := client.GetServiceClusterIP(ctx, "coredns", Chart.Namespace)
 	if err != nil {
 		err = fmt.Errorf("failed to retrieve the coredns service: %w", err)
 		return types.FeatureStatus{

@@ -206,14 +206,14 @@ func validateValues(g Gomega, values map[string]any, dns types.DNS, kubelet type
 	g.Expect(values["priorityClassName"]).To(Equal("system-node-critical"))
 
 	// Validate tolerations
-	tolerations, ok := values["tolerations"].([]map[string]any)
+	tolerations, ok := values["tolerations"].([]corev1.Toleration)
 	g.Expect(ok).To(BeTrue())
 	g.Expect(tolerations).To(HaveLen(1))
 
 	toleration := tolerations[0]
-	g.Expect(toleration["key"]).To(Equal("node-role.kubernetes.io/control-plane"))
-	g.Expect(toleration["operator"]).To(Equal("Exists"))
-	g.Expect(toleration["effect"]).To(Equal("NoSchedule"))
+	g.Expect(toleration.Key).To(Equal("node-role.kubernetes.io/control-plane"))
+	g.Expect(toleration.Operator).To(Equal(corev1.TolerationOpExists))
+	g.Expect(toleration.Effect).To(Equal(corev1.TaintEffectNoSchedule))
 
 	// Validate HPA configuration
 	hpa := values["hpa"].(map[string]any)
