@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	dario.cat/mergo v1.0.2
 	github.com/canonical/k8s-snap-api/v2 v2.2.1
-	github.com/canonical/lxd v0.0.0-20261116210220-79eb9785e55d
+	github.com/canonical/lxd v0.0.0-20261119082929-7a617ceaca70
 	github.com/canonical/microcluster/v3 v3.1.3
 	github.com/go-logr/logr v1.4.4
 	github.com/mitchellh/mapstructure v1.5.0
