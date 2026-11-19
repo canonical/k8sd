@@ -3,10 +3,21 @@ name: Trivy
 on:
   schedule:
     - cron: "0 10 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read # Needed to list branches and check out code
 
 jobs:
   list-branches-to-scan:
+    name: List branches to scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # Needed to list remote branches
     outputs:
       branches: ${{ steps.branches.outputs.branches }}
     steps:
@@ -14,6 +25,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: List branches to scan
         id: branches
         run: |
@@ -26,21 +38,26 @@ jobs:
             sed -e 's#refs/heads/##' | \
             grep -E '^(release-[0-9]+\.[0-9]+|main)$' | \
             jq -R -s -c 'split("\n")[:-1]')
+          echo "branches=${BRANCHES}" >> "$GITHUB_OUTPUT"
   scan:
+    name: Scan branch with Trivy
     runs-on: ubuntu-latest
     needs: list-branches-to-scan
     strategy:
+      fail-fast: false
       matrix:
         branch: ${{ fromJson(needs.list-branches-to-scan.outputs.branches) }}
     permissions:
-      security-events: write
-      contents: read
+      security-events: write # Needed to upload SARIF results to GitHub Security
+      contents: read # Needed to check out target branch
+      actions: read # Needed by upload-sarif to inspect workflow run metadata
     steps:
       - name: Checking out repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Run Trivy vulnerability scanner in repo mode
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

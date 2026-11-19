@@ -1,22 +1,24 @@
 name: Backport merged pull request
 on:
-  pull_request_target:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] runs only after PR merge on base branch without checking out untrusted PR code
     types: [closed]
-  issue_comment:
+  issue_comment: # zizmor: ignore[dangerous-triggers] gated to OWNER/MEMBER/COLLABORATOR comments without checking out untrusted PR code
     types: [created]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
 permissions:
-  contents: read
+  contents: read # Needed to read repository metadata
 
 jobs:
   backport:
     name: Backport pull request
     runs-on: ubuntu-latest
     permissions:
-      # contents: write is required by the backport action to create and push backport branches
-      contents: write
-      pull-requests: write # so it can create pull requests
-
+      contents: write # Needed by backport-action to create and push backport branches
+      pull-requests: write # Needed to create, label, and approve backport pull requests
     # Only run when pull request is merged
     # or when a comment containing `/backport` is created by someone other than the
     # https://github.com/backport-action bot user (user id: 97796249). Note that if you use your
@@ -30,17 +32,19 @@ jobs:
         github.event_name == 'issue_comment' &&
         github.event.issue.pull_request &&
         github.event.comment.user.id != 99445902 &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
         contains(github.event.comment.body, '/backport')
       )
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Checkout repository
+        # zizmor: ignore[artipacked] korthout/backport-action relies on persisted git credentials for git push; job uploads no artifacts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Create backport pull requests
         id: create_backports
-        # v3.2.0
-        uses: korthout/backport-action@436145e922f9561fc5ea157ff406f21af2d6b363
+        uses: korthout/backport-action@436145e922f9561fc5ea157ff406f21af2d6b363 # v3.2.0
         with:
           # Set (default) action parameters explicitly.
           branch_name: backport-${pull_number}-to-${target_branch}
@@ -65,8 +69,9 @@ jobs:
       - name: Label backports with automerge and approve
         env:
           GH_TOKEN: ${{ secrets.BACKPORT_APPROVAL_TOKEN }}
+          CREATED_PULL_NUMBERS: ${{ steps.create_backports.outputs.created_pull_numbers }}
         run: |
-          for pr_number in ${{ steps.create_backports.outputs.created_pull_numbers }}; do
+          for pr_number in $CREATED_PULL_NUMBERS; do
             gh pr edit "$pr_number" --add-label "automerge"
             gh pr review "$pr_number" --approve
           done
