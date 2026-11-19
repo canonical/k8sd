@@ -1,9 +1,5 @@
-// Package dnsrebalancer restarts settled, co-located CoreDNS replicas.
-// Node, Pod and Deployment events share one work key; only pod age and restart
-// cooldown require timed requeues. Terminal pods do not participate in placement.
-// An in-memory guard prevents repeating an unsuccessful rollout, but permits a
-// new attempt after observed spreading, pod replacement or a deployment/node change.
-// Scheduling preferences remain soft, so a restart does not guarantee spreading.
+// Package dnsrebalancer restarts CoreDNS when its replicas are all on one node,
+// without repeatedly restarting an unsuccessful rollout.
 package dnsrebalancer
 
 import (
