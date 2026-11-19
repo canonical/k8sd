@@ -44,7 +44,7 @@ jobs:
 
       - name: Create backport pull requests
         id: create_backports
-        uses: korthout/backport-action@436145e922f9561fc5ea157ff406f21af2d6b363 # v3.2.0
+        uses: korthout/backport-action@ad272ff24e4a8593bf18a951a154ae6af93b26b8 # v5.0.0
         with:
           # Set (default) action parameters explicitly.
           branch_name: backport-${pull_number}-to-${target_branch}
