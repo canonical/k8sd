@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -294,9 +293,8 @@ func TestKubeProxyEnabled(t *testing.T) {
 	removeKubeProxyCalled := make(chan struct{}, 100)
 
 	ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute).
-		WithRemoveKubeProxyRules(func(ctx context.Context, s snap.Snap) error {
+		WithRemoveKubeProxyRules(func(ctx context.Context, s snap.Snap) {
 			removeKubeProxyCalled <- struct{}{}
-			return nil
 		})
 
 	keyCh := make(chan *rsa.PublicKey)
@@ -537,9 +535,8 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 			g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
 			cleanupCh := make(chan struct{}, 10)
 			ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute).
-				WithRemoveKubeProxyRules(func(context.Context, snap.Snap) error {
+				WithRemoveKubeProxyRules(func(context.Context, snap.Snap) {
 					cleanupCh <- struct{}{}
-					return nil
 				})
 			kCh := make(chan *rsa.PublicKey)
 			go ctrl.Run(ctx, func(context.Context) (*rsa.PublicKey, error) { return <-kCh, nil }, sharedUpdate)
@@ -588,7 +585,7 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 		dbMu.Unlock()
 	})
 
-	t.Run("CleanupFailureRetriesUntilSuccess", func(t *testing.T) {
+	t.Run("CleanupFailureStillMarksDisabled", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		g := NewWithT(t)
@@ -601,10 +598,18 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 		cs.PrependWatchReactor("configmaps", k8stesting.DefaultWatchReactor(w, nil))
 		defer w.Stop()
 
+		// Fake kube-proxy that records each invocation and fails like the real
+		// one does when there are no KUBE-* chains to remove.
+		binDir := filepath.Join(dir, "bin")
+		callsFile := filepath.Join(dir, "calls")
+		g.Expect(os.MkdirAll(binDir, 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(binDir, "kube-proxy"), []byte("#!/bin/sh\necho x >> "+callsFile+"\necho \"Couldn't find target \\`KUBE-SERVICES'\" >&2\nexit 1\n"), 0o755)).To(Succeed())
+
 		s := &mock.Snap{
 			Mock: mock.Mock{
 				ServiceArgumentsDir:  filepath.Join(dir, "args"),
 				LockFilesDir:         filepath.Join(dir, "lock"),
+				K8sBinDir:            binDir,
 				UID:                  os.Getuid(),
 				GID:                  os.Getgid(),
 				KubernetesNodeClient: &kubernetes.Client{Interface: cs},
@@ -612,24 +617,8 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 		}
 		g.Expect(setup.EnsureAllDirectories(s)).To(Succeed())
 
-		var (
-			mu          sync.Mutex
-			failCleanup = true
-		)
-		cleanupCh := make(chan struct{}, 10)
 		updateCh := make(chan bool, 10)
-
-		ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute).
-			WithRemoveKubeProxyRules(func(context.Context, snap.Snap) error {
-				cleanupCh <- struct{}{}
-				mu.Lock()
-				defer mu.Unlock()
-				if failCleanup {
-					return errors.New("xtables lock busy")
-				}
-				return nil
-			})
-
+		ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute)
 		keyCh := make(chan *rsa.PublicKey)
 		go ctrl.Run(ctx, func(context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil },
 			func(_ context.Context, enabled bool) error {
@@ -650,47 +639,22 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: "k8sd-config", Namespace: "kube-system"},
 			Data:       map[string]string{"kube-proxy-enabled": "false"},
 		}
-
-		// First disable reconcile fails during rule cleanup: marker and DB state must not commit.
 		w.Modify(disableCM)
 		keyCh <- nil
 		select {
 		case <-ctrl.ReconciledCh():
 		case <-time.After(channelSendTimeout):
-			g.Fail("Timed out waiting for failed cleanup reconcile")
+			g.Fail("Timed out waiting for disable reconcile")
 		}
-		g.Expect(cleanupCh).To(Receive())
-		g.Expect(updateCh).ToNot(Receive())
+
+		// A failed cleanup must not block the transition.
+		g.Expect(updateCh).To(Receive(BeFalse()))
 		disabled, err := snaputil.IsKubeProxyDisabled(s)
 		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(disabled).To(BeFalse())
-
-		// Allow cleanup to succeed on the next reconcile and verify both cleanup and DB update run.
-		mu.Lock()
-		failCleanup = false
-		mu.Unlock()
-		w.Modify(disableCM)
-		keyCh <- nil
-		select {
-		case <-ctrl.ReconciledCh():
-		case <-time.After(channelSendTimeout):
-			g.Fail("Timed out waiting for retry reconcile")
-		}
-		g.Expect(cleanupCh).To(Receive())
-		g.Expect(updateCh).To(Receive(BeFalse()))
-		disabled, err = snaputil.IsKubeProxyDisabled(s)
-		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(disabled).To(BeTrue())
-
-		// Subsequent reconcile with kube-proxy still disabled skips cleanup.
-		w.Modify(disableCM)
-		keyCh <- nil
-		select {
-		case <-ctrl.ReconciledCh():
-		case <-time.After(channelSendTimeout):
-			g.Fail("Timed out waiting for steady-state reconcile")
-		}
-		g.Expect(cleanupCh).ToNot(Receive())
+		calls, err := os.ReadFile(callsFile)
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(string(calls)).To(Equal("x\n"))
 	})
 
 	t.Run("PreMarkedDisabledSkipsCleanup", func(t *testing.T) {
@@ -722,9 +686,8 @@ func TestKubeProxyCleanupRuleTransitions(t *testing.T) {
 
 		cleanupCh := make(chan struct{}, 10)
 		ctrl := controllers.NewNodeConfigurationController(s, func() {}, 2*time.Minute).
-			WithRemoveKubeProxyRules(func(context.Context, snap.Snap) error {
+			WithRemoveKubeProxyRules(func(context.Context, snap.Snap) {
 				cleanupCh <- struct{}{}
-				return nil
 			})
 		keyCh := make(chan *rsa.PublicKey)
 		go ctrl.Run(ctx, func(context.Context) (*rsa.PublicKey, error) { return <-keyCh, nil },
