@@ -10,10 +10,15 @@ import (
 	"time"
 
 	"github.com/canonical/k8sd/pkg/log"
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	releasepkg "helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/storage/driver"
+	"github.com/go-logr/logr"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
+	"helm.sh/helm/v4/pkg/kube"
+	releasecommon "helm.sh/helm/v4/pkg/release/common"
+	releasev1 "helm.sh/helm/v4/pkg/release/v1"
+	"helm.sh/helm/v4/pkg/storage/driver"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
 
@@ -55,15 +60,32 @@ func (h *client) actionConfiguration(ctx context.Context, namespace string) (*ac
 }
 
 func (h *client) newActionConfiguration(ctx context.Context, namespace string) (*action.Configuration, error) {
-	actionConfig := new(action.Configuration)
-
 	log := log.FromContext(ctx).WithName("helm")
-	if err := actionConfig.Init(h.restClientGetter(namespace), namespace, "", func(format string, v ...interface{}) {
-		log.Info(fmt.Sprintf(format, v...))
-	}); err != nil {
+	actionConfig := action.NewConfiguration(action.ConfigurationSetLogger(logr.ToSlogHandler(log)))
+
+	if err := actionConfig.Init(h.restClientGetter(namespace), namespace, ""); err != nil {
 		return nil, fmt.Errorf("failed to initialize: %w", err)
 	}
 	return actionConfig, nil
+}
+
+func chartVersion(ch chart.Charter) string {
+	switch c := ch.(type) {
+	case *chartv2.Chart:
+		if c != nil && c.Metadata != nil {
+			return c.Metadata.Version
+		}
+	case chartv2.Chart:
+		if c.Metadata != nil {
+			return c.Metadata.Version
+		}
+	}
+	if acc, err := chart.NewAccessor(ch); err == nil && acc != nil {
+		if v, ok := acc.MetadataAsMap()["version"].(string); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // Apply implements the Client interface.
@@ -80,29 +102,41 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 
 	// get the latest Helm release with the specified name
 	get := action.NewGet(cfg)
-	release, err := get.Run(c.Name)
+	rel, err := get.Run(c.Name)
 	if err != nil {
 		if !errors.Is(err, driver.ErrReleaseNotFound) {
 			return false, fmt.Errorf("failed to get status of release %s: %w", c.Name, err)
 		}
 		isInstalled = false
-	} else {
+	}
+
+	var relObj *releasev1.Release
+	if isInstalled {
+		var ok bool
+		relObj, ok = rel.(*releasev1.Release)
+		if !ok {
+			if r, okVal := rel.(releasev1.Release); okVal {
+				relObj = &r
+			} else {
+				return false, fmt.Errorf("unsupported release type %T for %s", rel, c.Name)
+			}
+		}
 		// keep the existing release configuration, to check if any changes were made.
-		oldConfig = release.Config
+		oldConfig = relObj.Config
 	}
 
 	// If the release is installed, we need to check if it is in a pending state.
 	// If it is, we need to change its status, so that it can be reinstalled or upgraded.
-	if isInstalled && release.Info.Status.IsPending() {
+	if isInstalled && relObj != nil && relObj.Info != nil && relObj.Info.Status.IsPending() {
 		// NOTE(Hue): We're updating the status to "failed", so that future reconciliations
 		// (helm operations) can proceed without being blocked by the pending state.
 		// Another proposed approach would be to delete the pending revision's secret,
 		// but that would introduce various issues and edge cases.
-		s := releasepkg.StatusFailed
-		log.Info("release is in a pending state, changing status", "status", release.Info.Status, "chart", c.Name, "target_status", s)
+		s := releasecommon.StatusFailed
+		log.Info("release is in a pending state, changing status", "status", relObj.Info.Status, "chart", c.Name, "target_status", s)
 
-		release.Info.Status = s
-		if err := cfg.Releases.Update(release); err != nil {
+		relObj.Info.Status = s
+		if err := cfg.Releases.Update(relObj); err != nil {
 			return false, fmt.Errorf("failed to update release %s status: %w", c.Name, err)
 		}
 	}
@@ -122,6 +156,8 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 	case !isInstalled && desired == StatePresent:
 		// there is no release installed, so we must run an install action
 		install := action.NewInstall(cfg)
+		install.WaitStrategy = kube.HookOnlyStrategy
+		install.ServerSideApply = false
 		install.Timeout = h.timeout
 		install.ReleaseName = c.Name
 		install.Namespace = c.Namespace
@@ -150,24 +186,35 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 		// NOTE(Hue): For the charts that we manage (e.g. ck-loadbalancer), we need to make
 		// sure we bump the version manually. Otherwise, they'll not be applied unless
 		// we're lucky and providing different extra values.
-		sameVersions := release.Chart.Metadata.Version == chart.Metadata.Version
+		oldVersion := ""
+		if relObj != nil {
+			oldVersion = chartVersion(relObj.Chart)
+		}
+		newVersion := chartVersion(chart)
+		sameVersions := oldVersion != "" && oldVersion == newVersion
 		switch {
 		case sameValues && sameVersions:
-			if release.Info.Status == releasepkg.StatusDeployed || release.Info.Status == releasepkg.StatusSuperseded {
-				log.Info("no changes detected, skipping upgrade", "status", release.Info.Status)
+			if relObj != nil && relObj.Info != nil && (relObj.Info.Status == releasecommon.StatusDeployed || relObj.Info.Status == releasecommon.StatusSuperseded) {
+				log.Info("no changes detected, skipping upgrade", "status", relObj.Info.Status)
 				return false, nil
 			}
-			log.Info(fmt.Sprintf("no changes detected, but release status is %q, proceeding with upgrade", release.Info.Status))
+			var status releasecommon.Status
+			if relObj != nil && relObj.Info != nil {
+				status = relObj.Info.Status
+			}
+			log.Info(fmt.Sprintf("no changes detected, but release status is %q, proceeding with upgrade", status))
 		case sameValues && !sameVersions:
-			log.Info("chart version changed, upgrading", "oldVersion", release.Chart.Metadata.Version, "newVersion", chart.Metadata.Version)
+			log.Info("chart version changed, upgrading", "oldVersion", oldVersion, "newVersion", newVersion)
 		case sameVersions && !sameValues:
 			log.Info("values changed, upgrading")
 		default:
-			log.Info("both chart version and values changed, upgrading", "oldVersion", release.Chart.Metadata.Version, "newVersion", chart.Metadata.Version)
+			log.Info("both chart version and values changed, upgrading", "oldVersion", oldVersion, "newVersion", newVersion)
 		}
 
 		// there is already a release installed, so we must run an upgrade action
 		upgrade := action.NewUpgrade(cfg)
+		upgrade.WaitStrategy = kube.HookOnlyStrategy
+		upgrade.ServerSideApply = "false"
 		upgrade.Namespace = c.Namespace
 		upgrade.ResetValues = true
 		upgrade.Timeout = h.timeout
@@ -183,6 +230,7 @@ func (h *client) Apply(ctx context.Context, c InstallableChart, desired State, v
 	case isInstalled && desired == StateDeleted:
 		// run an uninstall action
 		uninstall := action.NewUninstall(cfg)
+		uninstall.WaitStrategy = kube.HookOnlyStrategy
 		uninstall.Timeout = h.timeout
 		if _, err := uninstall.Run(c.Name); err != nil {
 			return false, fmt.Errorf("failed to uninstall %s: %w", c.Name, err)
