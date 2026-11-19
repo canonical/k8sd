@@ -20,7 +20,6 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v2"
 )
 
 type BootstrapResult struct {
@@ -217,7 +216,7 @@ func getConfigFromYaml(env cmdutil.ExecutionEnvironment, filePath string) (apiv2
 	}
 
 	var config apiv2.BootstrapConfig
-	if err := yaml.UnmarshalStrict(b, &config); err != nil {
+	if err := utils.UnmarshalStrict(b, &config); err != nil {
 		return apiv2.BootstrapConfig{}, fmt.Errorf("failed to parse YAML config file: %w", err)
 	}
 

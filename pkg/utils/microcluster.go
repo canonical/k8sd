@@ -6,7 +6,6 @@ import (
 	"time"
 
 	apiv2 "github.com/canonical/k8s-snap-api/v2/api"
-	"gopkg.in/yaml.v2"
 )
 
 // MicroclusterMapWithTimeout adds a "timeout" configuration value to the config struct.
@@ -68,7 +67,7 @@ func MicroclusterMapWithControlPlaneJoinConfig(m map[string]string, controlPlane
 // MicroclusterControlPlaneJoinConfigFromMap returns an apiv2.ControlPlaneJoinConfig from the config struct.
 func MicroclusterControlPlaneJoinConfigFromMap(m map[string]string) (apiv2.ControlPlaneJoinConfig, error) {
 	var config apiv2.ControlPlaneJoinConfig
-	if err := yaml.UnmarshalStrict([]byte(m["controlPlaneJoinConfig"]), &config); err != nil {
+	if err := UnmarshalStrict([]byte(m["controlPlaneJoinConfig"]), &config); err != nil {
 		return apiv2.ControlPlaneJoinConfig{}, fmt.Errorf("failed to unmarshal control plane join config: %w", err)
 	}
 	return config, nil
@@ -87,7 +86,7 @@ func MicroclusterMapWithWorkerJoinConfig(m map[string]string, token string, work
 // MicroclusterWorkerJoinConfigFromMap returns an apiv2.WorkerJoinConfig from the config struct.
 func MicroclusterWorkerJoinConfigFromMap(m map[string]string) (apiv2.WorkerJoinConfig, error) {
 	var config apiv2.WorkerJoinConfig
-	if err := yaml.UnmarshalStrict([]byte(m["workerJoinConfig"]), &config); err != nil {
+	if err := UnmarshalStrict([]byte(m["workerJoinConfig"]), &config); err != nil {
 		return apiv2.WorkerJoinConfig{}, fmt.Errorf("failed to unmarshal worker join config: %w", err)
 	}
 	return config, nil
