@@ -559,6 +559,56 @@ func TestNetworkMountPropagationType(t *testing.T) {
 	})
 }
 
+func TestNetworkCNIBinPath(t *testing.T) {
+	oldMountPath, oldPropagation := cilium.GetMountPath, cilium.GetMountPropagationType
+	t.Cleanup(func() {
+		cilium.GetMountPath, cilium.GetMountPropagationType = oldMountPath, oldPropagation
+	})
+	cilium.GetMountPath = func(fs string) (string, error) { return "/sys/fs/" + fs, nil }
+	cilium.GetMountPropagationType = func(string) (utils.MountPropagationType, error) {
+		return utils.MountPropagationShared, nil
+	}
+
+	testenv.WithState(t, func(ctx context.Context, s mctypes.State) {
+		for _, tc := range []struct {
+			name   string
+			strict bool
+			binDir string
+		}{
+			{name: "Classic", strict: false, binDir: "/opt/cni/bin"},
+			{name: "Strict", strict: true, binDir: "/var/snap/k8s/common/opt/cni/bin"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				g := NewWithT(t)
+				stopErr := errors.New("stop after apply")
+				helmM := &helmmock.Mock{ApplyErr: stopErr}
+				snapM := &snapmock.Snap{
+					Mock: snapmock.Mock{
+						HelmClient: helmM,
+						Strict:     tc.strict,
+						CNIBinDir:  tc.binDir,
+					},
+				}
+				network := types.Network{
+					Enabled: ptr.To(true),
+					PodCIDR: ptr.To("10.1.0.0/16"),
+				}
+				apiserver := types.APIServer{
+					SecurePort: ptr.To(6443),
+				}
+
+				_, err := cilium.ApplyNetwork(ctx, snapM, s, apiserver, network, nil)
+				g.Expect(err).To(MatchError(stopErr))
+				g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+				values := helmM.ApplyCalledWith[0].Values
+				cniValues, ok := values["cni"].(map[string]any)
+				g.Expect(ok).To(BeTrue())
+				g.Expect(cniValues["binPath"]).To(Equal(tc.binDir))
+			})
+		}
+	})
+}
+
 func validateNetworkValues(g Gomega, values map[string]any, network types.Network, snap snap.Snap) {
 	ipv4CIDR, ipv6CIDR, err := utils.SplitCIDRStrings(network.GetPodCIDR())
 	g.Expect(err).ToNot(HaveOccurred())
@@ -595,6 +645,7 @@ func validateNetworkValues(g Gomega, values map[string]any, network types.Networ
 	cniValues := values["cni"].(map[string]interface{})
 	g.Expect(cniValues["exclusive"]).To(Equal(exists))
 
+	g.Expect(cniValues["binPath"]).To(Equal(snap.CNIBinDir()))
 	_, exists = annotations.Get(apiv1_annotations.AnnotationSCTPEnabled)
 	sctpValues := values["sctp"].(map[string]interface{})
 	g.Expect(sctpValues["enabled"]).To(Equal(exists))
