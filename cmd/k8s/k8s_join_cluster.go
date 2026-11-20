@@ -11,7 +11,7 @@ import (
 	"github.com/canonical/k8sd/pkg/config"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/spf13/cobra"
-	"go.yaml.in/yaml/v2"
+	"gopkg.in/yaml.v3"
 )
 
 type JoinClusterResult struct {
