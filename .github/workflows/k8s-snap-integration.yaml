@@ -62,7 +62,7 @@ jobs:
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
 
       - name: Check out k8s-snap
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ env.K8S_SNAP_REPOSITORY }}
           ref: ${{ steps.k8s-snap-ref.outputs.ref }}
@@ -109,7 +109,7 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Check out k8s-snap
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ env.K8S_SNAP_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.k8s-snap-ref }}
@@ -179,7 +179,7 @@ jobs:
           sudo docker image prune --all --force
 
       - name: Check out k8s-snap
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ env.K8S_SNAP_REPOSITORY }}
           ref: ${{ needs.prepare.outputs.k8s-snap-ref }}
