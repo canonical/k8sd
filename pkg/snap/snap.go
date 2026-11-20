@@ -124,10 +124,10 @@ func (s *snap) newSnapdClient() (*snapd.Client, error) {
 	return client, nil
 }
 
-func qualifyServiceNames(names []string) []string {
+func (s *snap) qualifyServiceNames(names []string) []string {
 	qualified := make([]string, len(names))
 	for i, name := range names {
-		qualified[i] = serviceName(name)
+		qualified[i] = serviceNameForInstance(s.snapInstanceName, name)
 	}
 	return qualified
 }
@@ -156,7 +156,7 @@ func (s *snap) StartServices(ctx context.Context, names []string, extraSnapArgs 
 		if opts.Enable {
 			cmd = append(cmd, "--enable")
 		}
-		cmd = append(cmd, qualifyServiceNames(names)...)
+		cmd = append(cmd, s.qualifyServiceNames(names)...)
 		return s.runHostCommand(ctx, cmd)
 	}
 
@@ -165,7 +165,7 @@ func (s *snap) StartServices(ctx context.Context, names []string, extraSnapArgs 
 		return err
 	}
 
-	changeID, err := client.StartServices(ctx, qualifyServiceNames(names), opts)
+	changeID, err := client.StartServices(ctx, s.qualifyServiceNames(names), opts)
 	if err != nil {
 		return fmt.Errorf("failed to start services %v: %w", names, err)
 	}
@@ -196,7 +196,7 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 		if opts.Disable {
 			cmd = append(cmd, "--disable")
 		}
-		cmd = append(cmd, qualifyServiceNames(names)...)
+		cmd = append(cmd, s.qualifyServiceNames(names)...)
 		return s.runHostCommand(ctx, cmd)
 	}
 
@@ -205,7 +205,7 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 		return err
 	}
 
-	changeID, err := client.StopServices(ctx, qualifyServiceNames(names), opts)
+	changeID, err := client.StopServices(ctx, s.qualifyServiceNames(names), opts)
 	if err != nil {
 		return fmt.Errorf("failed to stop services %v: %w", names, err)
 	}
@@ -240,7 +240,7 @@ func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArg
 		if opts.Reload {
 			cmd = append(cmd, "--reload")
 		}
-		cmd = append(cmd, qualifyServiceNames(names)...)
+		cmd = append(cmd, s.qualifyServiceNames(names)...)
 		return s.runHostCommand(ctx, cmd)
 	}
 	client, err := s.newSnapdClient()
@@ -248,7 +248,7 @@ func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArg
 		return err
 	}
 
-	changeID, err := client.RestartServices(ctx, qualifyServiceNames(names), opts)
+	changeID, err := client.RestartServices(ctx, s.qualifyServiceNames(names), opts)
 	if err != nil {
 		return fmt.Errorf("failed to restart services %v: %w", names, err)
 	}

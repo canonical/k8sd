@@ -23,7 +23,10 @@ func (h UnixMountManager) Unmount(ctx context.Context, mountPoint string, flags 
 }
 
 func (h UnixMountManager) DetachLoopDevice(ctx context.Context, device string) error {
-	f, err := os.Open(device)
+	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	if errors.Is(err, os.ErrPermission) || errors.Is(err, unix.EROFS) {
+		f, err = os.Open(device)
+	}
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
