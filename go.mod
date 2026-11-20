@@ -15,7 +15,6 @@ require (
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/etcd/api/v3 v3.7.4
 	go.etcd.io/etcd/client/v3 v3.7.4
-	go.yaml.in/yaml/v2 v2.4.5
 	golang.org/x/mod v0.43.0
 	golang.org/x/net v0.63.0
 	golang.org/x/sync v0.25.0
@@ -142,6 +141,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
+	go.yaml.in/yaml/v2 v2.4.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/oauth2 v0.38.0 // indirect
