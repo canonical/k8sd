@@ -20,7 +20,6 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/features"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v2"
 )
 
 type BootstrapResult struct {
@@ -217,7 +216,7 @@ func getConfigFromYaml(env cmdutil.ExecutionEnvironment, filePath string) (apiv2
 	}
 
 	var config apiv2.BootstrapConfig
-	if err := yaml.UnmarshalStrict(b, &config); err != nil {
+	if err := utils.UnmarshalStrict(b, &config); err != nil {
 		return apiv2.BootstrapConfig{}, fmt.Errorf("failed to parse YAML config file: %w", err)
 	}
 
@@ -232,7 +231,6 @@ func getConfigInteractively(stdin io.Reader, stdout io.Writer, stderr io.Writer)
 		"Which features would you like to enable?",
 		featureList,
 		fmt.Sprintf("%s, %s, %s, %s", features.Network, features.DNS, features.Gateway, features.LocalStorage),
-		nil,
 	)
 	for _, component := range strings.FieldsFunc(components, func(r rune) bool { return unicode.IsSpace(r) || r == ',' }) {
 		switch component {
@@ -251,8 +249,8 @@ func getConfigInteractively(stdin io.Reader, stdout io.Writer, stderr io.Writer)
 		}
 	}
 
-	podCIDR := askQuestion(stdin, stdout, stderr, "Please set the Pod CIDR:", nil, "10.1.0.0/16", nil)
-	serviceCIDR := askQuestion(stdin, stdout, stderr, "Please set the Service CIDR:", nil, "10.152.183.0/24", nil)
+	podCIDR := askQuestion(stdin, stdout, stderr, "Please set the Pod CIDR:", nil, "10.1.0.0/16")
+	serviceCIDR := askQuestion(stdin, stdout, stderr, "Please set the Service CIDR:", nil, "10.152.183.0/24")
 
 	config.PodCIDR = utils.Pointer(podCIDR)
 	config.ServiceCIDR = utils.Pointer(serviceCIDR)
@@ -265,8 +263,7 @@ func getConfigInteractively(stdin io.Reader, stdout io.Writer, stderr io.Writer)
 // askQuestion will ask the user for input.
 // askQuestion will keep asking if the input is not valid.
 // askQuestion will remove all whitespaces and capitalization of the input.
-// customErr can be used to provide extra error messages for specific non-valid inputs.
-func askQuestion(stdin io.Reader, stdout io.Writer, stderr io.Writer, question string, options []string, defaultVal string, customErr map[string]string) string {
+func askQuestion(stdin io.Reader, stdout io.Writer, stderr io.Writer, question string, options []string, defaultVal string) string {
 	for {
 		q := question
 		if options != nil {
@@ -299,11 +296,7 @@ func askQuestion(stdin io.Reader, stdout io.Writer, stderr io.Writer, question s
 
 			for _, element := range sSlice {
 				if !slices.Contains(options, element) {
-					if msg, ok := customErr[element]; ok {
-						fmt.Fprintf(stderr, "  %s\n", msg)
-					} else {
-						fmt.Fprintf(stderr, "  %q is not a valid option.\n", element)
-					}
+					fmt.Fprintf(stderr, "  %q is not a valid option.\n", element)
 					valid = false
 				}
 			}

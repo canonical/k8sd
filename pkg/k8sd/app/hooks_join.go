@@ -11,7 +11,6 @@ import (
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations"
 	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
-	etcdclient "github.com/canonical/k8sd/pkg/client/etcd"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	databaseutil "github.com/canonical/k8sd/pkg/k8sd/database/util"
 	"github.com/canonical/k8sd/pkg/k8sd/pki"
@@ -431,48 +430,6 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 	reverter.Success()
 
 	return nil
-}
-
-// RegisterEtcdMemberReverter registers the reverter for etcd member removal on join failure.
-//
-// For voting members (isLearner=false), removal requires >2 endpoints to ensure
-// the remaining cluster still has a majority and can maintain quorum.
-//
-// For learner members (isLearner=true), removal is always safe because learners
-// do not count toward quorum. Removal is attempted as long as at least one client
-// endpoint is available to reach the cluster.
-func registerEtcdMemberReverter(snap snap.Snap, nodeName string, endpoints []string, isLearner bool, reverter *revert.Reverter) {
-	reverter.Add(func() {
-		// Use an independent short-lived context for revert operations so
-		// they have a chance to complete even if the join hook's ctx has
-		// already been cancelled by a timeout.
-		rmCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		log := log.FromContext(rmCtx).WithValues("step", "etcd-member-removal", "node", nodeName)
-
-		// For voting members, only remove when there are >2 endpoints so
-		// that the remaining cluster keeps its majority (quorum protection).
-		// For learner members, any available endpoint is sufficient since
-		// learners do not affect quorum.
-		canRemove := (isLearner && len(endpoints) > 0) || (!isLearner && len(endpoints) > 2)
-		if canRemove {
-			etcdClient, err := snap.EtcdClient(endpoints)
-			if err != nil {
-				log.Error(err, "failed to create etcd client for member removal")
-			} else {
-				defer etcdClient.Close()
-				err := etcdClient.RemoveNodeByName(rmCtx, nodeName)
-				if err != nil && !errors.Is(err, etcdclient.ErrNotFound) {
-					log.Error(err, "failed to remove node from etcd cluster")
-				} else {
-					if err := os.RemoveAll(snap.EtcdDir()); err != nil {
-						log.Error(err, "failed to cleanup etcd state directory")
-					}
-				}
-			}
-		}
-	})
 }
 
 // RegisterK8sNodeDeletionReverter registers the reverter for Kubernetes Node object deletion on join failure.

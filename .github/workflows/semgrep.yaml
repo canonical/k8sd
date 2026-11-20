@@ -12,20 +12,25 @@ on:
         paths-ignore:
             - "docs/**"
 
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
 permissions:
-    contents: read
+    contents: read # Needed to read repository code
 
 jobs:
     semgrep:
         name: Semgrep scan
         runs-on: ubuntu-latest
         permissions:
-            contents: read
-            security-events: write
+            contents: read # Needed to clone the repo
+            security-events: write # Needed to upload SARIF results to GitHub Security
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
+              with:
+                  persist-credentials: false
             - name: Setup Python
               uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
               with:
@@ -35,17 +40,22 @@ jobs:
               run: pip install semgrep==1.156.0
 
             - name: Run Semgrep scan
-              continue-on-error: true
               run: |
+                  rc=0
                   semgrep scan \
-                    --config p/go \
+                    --config p/golang \
                     --config p/github-actions \
+                    --error \
                     --sarif \
-                    --output semgrep-results.sarif \
-                    .
+                    --output semgrep-raw.sarif \
+                    . || rc=$?
+                  if [ -s semgrep-raw.sarif ]; then
+                    jq '.runs[0].results |= map(select((.suppressions // []) | length == 0))' semgrep-raw.sarif > semgrep-results.sarif
+                  fi
+                  exit "$rc"
 
             - name: Upload SARIF results
-              uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
-              if: always()
+              uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+              if: always() && hashFiles('semgrep-results.sarif') != ''
               with:
                   sarif_file: semgrep-results.sarif

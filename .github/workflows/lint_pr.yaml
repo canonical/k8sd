@@ -1,13 +1,16 @@
 name: "Lint PR"
 
 on:
-  pull_request_target:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] inspects PR title/label metadata only and never checks out PR code
     # will run on adding or removing labels, converting to draft or ready, etc.
     types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
 
-permissions:
-  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
+permissions:
+  contents: read # Needed to read repository metadata
 jobs:
   main:
     name: Validate PR title
@@ -28,7 +31,7 @@ jobs:
           else
             echo "is_wip=false" >> $GITHUB_OUTPUT
           fi
-      - uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6
+      - uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6.1.2
         id: lint_pr_title
         if: steps.check_wip.outputs.is_wip == 'false'
         env:

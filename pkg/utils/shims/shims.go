@@ -10,7 +10,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
+
+// detachedSnapShimExe is the /proc/<pid>/exe path after snapd lazy-unmounts an old revision.
+const detachedSnapShimExe = "/bin/containerd-shim-runc-v2"
 
 // reBinaryCmd matches containerd-shim-runc-v2 command lines for k8s and k8s_<instance> snaps.
 var reBinaryCmd = regexp.MustCompile(`^(/var/lib/snapd)?/snap/k8s(_[a-zA-Z0-9-]+)?/.*/bin/containerd-shim-runc-v2($|\s)`)
@@ -18,10 +23,10 @@ var reBinaryCmd = regexp.MustCompile(`^(/var/lib/snapd)?/snap/k8s(_[a-zA-Z0-9-]+
 // reBinaryExe matches the exact containerd-shim-runc-v2 executable path for k8s and k8s_<instance> snaps.
 var reBinaryExe = regexp.MustCompile(`^(/var/lib/snapd)?/snap/k8s(_[a-zA-Z0-9-]+)?/.*/bin/containerd-shim-runc-v2$`)
 
-var reBinaryName = reBinaryCmd
-
 var (
 	osReadlink    = os.Readlink
+	osStat        = os.Stat
+	statfsType    = unixStatfsType
 	listProcesses = listAllSystemProcesses
 )
 
@@ -121,17 +126,41 @@ func findShimPIDsWithReadlink(procs map[string]processInfo, readlink func(string
 			continue
 		}
 
-		exe, err := readlink(fmt.Sprintf("/proc/%s/exe", pid))
+		procExePath := fmt.Sprintf("/proc/%s/exe", pid)
+		exe, err := readlink(procExePath)
 		if err != nil {
 			continue
 		}
 
 		exe = strings.TrimSuffix(exe, " (deleted)")
-		if reBinaryExe.MatchString(exe) {
+		if reBinaryExe.MatchString(exe) || (exe == detachedSnapShimExe && reBinaryCmd.MatchString(info.command) && isDetachedSnapExe(procExePath)) {
 			result = append(result, pid)
 		}
 	}
 	return result
+}
+
+func isDetachedSnapExe(procExePath string) bool {
+	procInfo, err := osStat(procExePath)
+	if err != nil {
+		return false
+	}
+	if hostInfo, err := osStat(detachedSnapShimExe); err == nil && os.SameFile(procInfo, hostInfo) {
+		return false
+	}
+	fsType, err := statfsType(procExePath)
+	if err != nil {
+		return false
+	}
+	return fsType == unix.SQUASHFS_MAGIC || fsType == unix.FUSE_SUPER_MAGIC
+}
+
+func unixStatfsType(path string) (int64, error) {
+	var sfs unix.Statfs_t
+	if err := unix.Statfs(path, &sfs); err != nil {
+		return 0, err
+	}
+	return int64(sfs.Type), nil
 }
 
 // findAllChildren returns a list of all process IDs starting from a given set of parents in post-order (children before parent shim).

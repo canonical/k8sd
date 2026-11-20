@@ -18,7 +18,6 @@ var k8sdTokensStmts = map[string]int{
 	"select-by-token":    MustPrepareStatement("kubernetes-auth-tokens", "select-by-token.sql"),
 	"select-by-username": MustPrepareStatement("kubernetes-auth-tokens", "select-by-username.sql"),
 	"delete-by-token":    MustPrepareStatement("kubernetes-auth-tokens", "delete-by-token.sql"),
-	"delete-by-username": MustPrepareStatement("kubernetes-auth-tokens", "delete-by-username.sql"),
 }
 
 func groupsToString(inGroups []string) (string, error) {

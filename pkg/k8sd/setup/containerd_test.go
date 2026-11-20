@@ -57,10 +57,10 @@ func TestContainerd(t *testing.T) {
 		b, err := os.ReadFile(filepath.Join(dir, "containerd", "config.toml"))
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(string(b)).To(SatisfyAll(
-			ContainSubstring(fmt.Sprintf(`imports = ["%s/*.toml", "/custom/imports/*.toml"]`, filepath.Join(dir, "containerd-confd"))),
-			ContainSubstring(fmt.Sprintf(`conf_dir = "%s"`, filepath.Join(dir, "cni-netd"))),
-			ContainSubstring(fmt.Sprintf(`bin_dir = "%s"`, filepath.Join(dir, "opt-cni-bin"))),
-			ContainSubstring(fmt.Sprintf(`config_path = "%s"`, filepath.Join(dir, "containerd-hosts"))),
+			ContainSubstring(fmt.Sprintf(`imports = ['%s/*.toml', '/custom/imports/*.toml']`, filepath.Join(dir, "containerd-confd"))),
+			ContainSubstring(fmt.Sprintf(`conf_dir = '%s'`, filepath.Join(dir, "cni-netd"))),
+			ContainSubstring(fmt.Sprintf(`bin_dir = '%s'`, filepath.Join(dir, "opt-cni-bin"))),
+			ContainSubstring(fmt.Sprintf(`config_path = '%s'`, filepath.Join(dir, "containerd-hosts"))),
 		))
 
 		info, err := os.Stat(filepath.Join(dir, "containerd", "config.toml"))

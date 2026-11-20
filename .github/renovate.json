@@ -1,12 +1,51 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "security:gomodIndirectSecurityUpdates"
   ],
+  "baseBranchPatterns": [
+    "$default",
+    "/^release-[0-9]+\\.[0-9]+$/"
+  ],
+  "osvVulnerabilityAlerts": true,
   "postUpdateOptions": [
     "gomodTidy"
   ],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  },
   "packageRules": [
+    {
+      "matchBaseBranches": [
+        "/^release-[0-9]+\\.[0-9]+$/"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor",
+        "patch",
+        "pin",
+        "digest",
+        "pinDigest",
+        "lockFileMaintenance",
+        "rollback",
+        "replacement"
+      ],
+      "enabled": false
+    },
+    {
+      "matchDepTypes": [
+        "action",
+        "workflow"
+      ],
+      "matchPackageNames": [
+        "!canonical/has-signed-canonical-cla",
+        "!canonical/setup-lxd"
+      ],
+      "extractVersion": "^(?<version>v?\\d+\\.\\d+\\.\\d+)$",
+      "versioning": "regex:^v?(?<major>\\d+)(\\.(?<minor>\\d+)\\.(?<patch>\\d+))?$"
+    },
     {
       "matchPackageNames": [
         "go.etcd.io/etcd/**"

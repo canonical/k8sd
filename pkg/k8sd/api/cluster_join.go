@@ -10,7 +10,7 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/utils"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func (e *Endpoints) postClusterJoin(s mctypes.State, r *http.Request) mctypes.Response {

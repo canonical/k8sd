@@ -152,7 +152,7 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 		if err := a.ensureSystemTuningConfigFile(ctx); err != nil {
 			log.Error(err, "failed to create system tuning file")
 		}
-		if err := a.tuneSystemSettings(ctx, s); err != nil {
+		if err := a.tuneSystemSettings(ctx); err != nil {
 			log.Error(err, "failed to tune system settings")
 		}
 	}
@@ -331,7 +331,7 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 		if err := a.ensureSystemTuningConfigFile(ctx); err != nil {
 			log.Error(err, "failed to create system tuning file")
 		}
-		if err := a.tuneSystemSettings(ctx, s); err != nil {
+		if err := a.tuneSystemSettings(ctx); err != nil {
 			log.Error(err, "failed to tune system settings")
 		}
 	}
@@ -545,7 +545,13 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 	if err := waitApiServerReady(ctx, snap); err != nil {
 		return fmt.Errorf("kube-apiserver did not become ready in time: %w", err)
 	}
-	log.Info("API server is ready - notify controllers")
+
+	// A node joining right after must see this node's Node object.
+	log.Info("Waiting for the bootstrap node to register")
+	if err := waitNodeRegistered(ctx, snap, s.Name()); err != nil {
+		return fmt.Errorf("failed to wait for bootstrap node registration: %w", err)
+	}
+	log.Info("Bootstrap node is registered - notify controllers")
 
 	a.NotifyFeatureController(
 		cfg.Network.GetEnabled(),

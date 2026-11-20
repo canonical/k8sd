@@ -11,8 +11,9 @@ import (
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -196,7 +197,7 @@ func bfdProfilesFromAnnotations(annotations types.Annotations) ([]bfdProfile, er
 		MinimumTTL       int    `yaml:"minimumTtl"`
 	}
 	var items []profileYAML
-	if err := yaml.UnmarshalStrict([]byte(profilesYAML), &items); err != nil {
+	if err := utils.UnmarshalStrict([]byte(profilesYAML), &items); err != nil {
 		return nil, fmt.Errorf("failed to parse bfd-profiles annotation: %w", err)
 	}
 
@@ -260,9 +261,9 @@ func validateBFDProfiles(profiles []bfdProfile, frrk8sEnabled bool) error {
 // deployment.
 // ApplyLoadBalancer returns an error if anything fails. The error is also wrapped in the .Message field of the
 // returned FeatureStatus.
-func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) (types.FeatureStatus, error) {
+func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, annotations types.Annotations) (types.FeatureStatus, error) {
 	if !loadbalancer.GetEnabled() {
-		if err := disableLoadBalancer(ctx, snap, network); err != nil {
+		if err := disableLoadBalancer(ctx, snap); err != nil {
 			err = fmt.Errorf("failed to disable LoadBalancer: %w", err)
 			return types.FeatureStatus{
 				Enabled: false,
@@ -277,7 +278,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 		}, nil
 	}
 
-	if err := enableLoadBalancer(ctx, snap, loadbalancer, network, annotations); err != nil {
+	if err := enableLoadBalancer(ctx, snap, loadbalancer, annotations); err != nil {
 		err = fmt.Errorf("failed to enable LoadBalancer: %w", err)
 		return types.FeatureStatus{
 			Enabled: false,
@@ -326,7 +327,7 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 	}
 }
 
-func disableLoadBalancer(ctx context.Context, snap snap.Snap, network types.Network) error {
+func disableLoadBalancer(ctx context.Context, snap snap.Snap) error {
 	m := snap.HelmClient()
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StateDeleted, nil); err != nil {
@@ -419,7 +420,7 @@ func buildLoadBalancerValues(lb types.LoadBalancer, neighbors []bgpNeighbor, adv
 	}
 }
 
-func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, network types.Network, annotations types.Annotations) error {
+func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.LoadBalancer, annotations types.Annotations) error {
 	m := snap.HelmClient()
 
 	nativeBackend, err := isNativeBGPBackend(annotations)

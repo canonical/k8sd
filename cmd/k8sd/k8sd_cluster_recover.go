@@ -18,7 +18,7 @@ import (
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 const preRecoveryMessage = `You should only run this command if:

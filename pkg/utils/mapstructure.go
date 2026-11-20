@@ -7,7 +7,7 @@ import (
 	"unicode"
 
 	"github.com/mitchellh/mapstructure"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // YAMLToStringSliceHookFunc returns a mapstructure.DecodeHookFunc that converts string to []string by parsing YAML.

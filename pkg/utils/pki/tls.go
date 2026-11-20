@@ -22,6 +22,7 @@ func LoadTLSConfigFromPath(certFile, keyFile, caFile string) (*tls.Config, error
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		RootCAs:      caCertPool,
+		MinVersion:   tls.VersionTLS12,
 	}, nil
 }
 

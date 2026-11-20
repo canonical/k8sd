@@ -76,7 +76,7 @@ func getGoPackageDir(packageName string, projectDir string) (string, error) {
 	}
 
 	if strings.HasPrefix(packageName, "github.com/canonical/k8sd/") {
-		return strings.Replace(packageName, "github.com/canonical/k8s", projectDir, 1), nil
+		return path.Join(projectDir, strings.TrimPrefix(packageName, "github.com/canonical/k8sd/")), nil
 	}
 
 	// Dependency, need to retrieve its version from go.mod.

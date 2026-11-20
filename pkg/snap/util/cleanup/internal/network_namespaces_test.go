@@ -1,4 +1,4 @@
-package internal_test
+package internal
 
 import (
 	"context"
@@ -6,31 +6,26 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/canonical/k8sd/pkg/snap/util/cleanup/internal"
 	netnsutils "github.com/canonical/k8sd/pkg/utils/netns"
 	. "github.com/onsi/gomega"
 )
 
-func TestRemoveNetworkNamespaces(t *testing.T) {
-	ctx := context.Background()
-	netnsDir := t.TempDir()
+func TestRemoveNetworkNamespacesOnlyRemovesOwned(t *testing.T) {
 	g := NewWithT(t)
-
+	netnsDir := t.TempDir()
 	helper := netnsutils.NewMockNetworkNSHelper(netnsDir)
 
-	// Create namespaces: one cni- and one non-cni-
-	cniNS := "cni-test-ns"
-	otherNS := "other-ns"
-	cniPath := filepath.Join(netnsDir, cniNS)
-	otherPath := filepath.Join(netnsDir, otherNS)
-	g.Expect(os.Mkdir(cniPath, 0o755)).To(Succeed())
-	g.Expect(os.Mkdir(otherPath, 0o755)).To(Succeed())
-	g.Expect(cniPath).To(BeAnExistingFile())
-	g.Expect(otherPath).To(BeAnExistingFile())
+	for _, ns := range []string{"cni-owned", "cni-foreign", "owned-not-cni"} {
+		g.Expect(os.WriteFile(filepath.Join(netnsDir, ns), nil, 0o600)).To(Succeed())
+	}
 
-	internal.RemoveNetworkNamespaces(ctx, helper)
+	owned := NetworkNamespaces{}
+	owned.add(filepath.Join(netnsDir, "cni-owned"))
+	owned.add(filepath.Join(netnsDir, "owned-not-cni"))
 
-	// cni- namespace should be deleted, other should remain
-	g.Expect(cniPath).ToNot(BeAnExistingFile())
-	g.Expect(otherPath).To(BeAnExistingFile())
+	RemoveNetworkNamespaces(context.Background(), helper, owned)
+
+	g.Expect(filepath.Join(netnsDir, "cni-owned")).ToNot(BeAnExistingFile())
+	g.Expect(filepath.Join(netnsDir, "cni-foreign")).To(BeAnExistingFile())
+	g.Expect(filepath.Join(netnsDir, "owned-not-cni")).To(BeAnExistingFile())
 }

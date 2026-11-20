@@ -11,7 +11,7 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func TestValidateConfig(t *testing.T) {
@@ -96,7 +96,6 @@ func TestValidateConfig(t *testing.T) {
 			g.Expect(err).To(Not(HaveOccurred()))
 
 			internalToken := types.InternalWorkerNodeToken{
-				Token:  "foo",
 				Secret: "lish",
 			}
 			tokenString, err := internalToken.Encode()
@@ -129,7 +128,6 @@ func TestValidateConfig(t *testing.T) {
 			g.Expect(err).To(Not(HaveOccurred()))
 
 			internalToken := types.InternalWorkerNodeToken{
-				Token:  "foo",
 				Secret: "lish",
 			}
 			tokenString, err := internalToken.Encode()

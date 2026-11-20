@@ -67,7 +67,6 @@ type Config struct {
 type App struct {
 	config  Config
 	cluster *microcluster.MicroCluster
-	client  mctypes.Client
 	snap    snap.Snap
 
 	// profilingAddress
@@ -108,15 +107,10 @@ func New(cfg Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create microcluster app: %w", err)
 	}
-	client, err := cluster.LocalClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create microcluster local client: %w", err)
-	}
 
 	app := &App{
 		config:           cfg,
 		cluster:          cluster,
-		client:           client,
 		snap:             cfg.Snap,
 		profilingAddress: cfg.PprofAddress,
 	}
@@ -293,7 +287,7 @@ func (a *App) Run(ctx context.Context, customHooks *mctypes.Hooks) error {
 			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-			if err := http.ListenAndServe(a.profilingAddress, mux); err != nil {
+			if err := http.ListenAndServe(a.profilingAddress, mux); err != nil { // nosemgrep: go.lang.security.audit.net.use-tls.use-tls
 				log.Error(err, "Failed to serve pprof endpoint")
 			}
 		}()
