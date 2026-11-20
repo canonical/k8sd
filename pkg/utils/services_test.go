@@ -383,4 +383,36 @@ func TestRunningServiceArgs_ProcFallback(t *testing.T) {
 			"--cluster-dns": "10.152.183.99",
 		}))
 	})
+
+	t.Run("KubernetesMulticallSymlinkExeMatched", func(t *testing.T) {
+		g := NewWithT(t)
+		multiProc := t.TempDir()
+		oldProc := procDir
+		oldReadlink := osReadlinkService
+		procDir = multiProc
+		osReadlinkService = func(string) (string, error) {
+			return "/snap/k8s/x1/bin/kubernetes", nil
+		}
+		t.Cleanup(func() {
+			procDir = oldProc
+			osReadlinkService = oldReadlink
+		})
+		t.Setenv("SNAP_INSTANCE_NAME", "k8s")
+
+		// kube-apiserver also points exe to bin/kubernetes, must not match kubelet lookup.
+		createMockProcessWithExe(t, multiProc, 710, "kube-apiserver", 'S', "", []string{
+			"/snap/k8s/x1/bin/kube-apiserver",
+			"--secure-port=6443",
+		})
+		createMockProcessWithExe(t, multiProc, 711, "kubelet", 'S', "", []string{
+			"/snap/k8s/x1/bin/kubelet",
+			"--cluster-dns=10.152.183.77",
+		})
+
+		args, err := RunningServiceArgs(ctx, "kubelet")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(args).To(Equal(map[string]string{
+			"--cluster-dns": "10.152.183.77",
+		}))
+	})
 }

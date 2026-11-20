@@ -368,7 +368,7 @@ exit 0
 		g.Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
 	})
 
-	t.Run("StrictOmitsAllStateFlag", func(t *testing.T) {
+	t.Run("StrictUsesBpfStateFlag", func(t *testing.T) {
 		g := NewWithT(t)
 
 		tmpDir := t.TempDir()
@@ -398,6 +398,6 @@ exit 0
 		g.Expect(cilium.CleanupNetwork(context.Background(), s)).To(Succeed())
 		calls, err := os.ReadFile(ciliumCallsLog)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(strings.TrimSpace(string(calls))).To(Equal("post-uninstall-cleanup --force"))
+		g.Expect(strings.TrimSpace(string(calls))).To(Equal("post-uninstall-cleanup --bpf-state --force"))
 	})
 }

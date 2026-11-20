@@ -195,6 +195,31 @@ func isSnapServiceBinary(binPath string, serviceName string) bool {
 	return inst == "k8s" || strings.HasPrefix(inst, "k8s_")
 }
 
+// isKubernetesMulticallService reports whether serviceName is shipped as a
+// symlink to the multicall bin/kubernetes binary in the k8s snap.
+func isKubernetesMulticallService(serviceName string) bool {
+	switch serviceName {
+	case "kubelet", "kube-apiserver", "kube-controller-manager", "kube-scheduler", "kube-proxy":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSnapServiceExecutable(exePath string, serviceName string) bool {
+	if isSnapServiceBinary(exePath, serviceName) {
+		return true
+	}
+	return isKubernetesMulticallService(serviceName) && isSnapServiceBinary(exePath, "kubernetes")
+}
+
+func isDetachedServiceExecutable(exePath string, serviceName string) bool {
+	if exePath == "/bin/"+serviceName {
+		return true
+	}
+	return isKubernetesMulticallService(serviceName) && exePath == "/bin/kubernetes"
+}
+
 // hasSnapServiceProfile checks whether /proc/<pid>/attr/current matches snap.<instance>.<serviceName>.
 func hasSnapServiceProfile(pidDir string, serviceName string) bool {
 	if serviceName == "" || strings.Contains(serviceName, "/") {
@@ -269,11 +294,11 @@ func findServicePID(serviceName string) (int, error) {
 		exe, err := osReadlinkService(filepath.Join(pidDir, "exe"))
 		if err == nil {
 			exe = strings.TrimSuffix(exe, " (deleted)")
-			if isSnapServiceBinary(exe, serviceName) {
+			if isSnapServiceExecutable(exe, serviceName) {
 				return pid, nil
 			}
 		}
-		if (err != nil || exe == "/bin/"+serviceName) && hasSnapServiceProfile(pidDir, serviceName) {
+		if (err != nil || isDetachedServiceExecutable(exe, serviceName)) && hasSnapServiceProfile(pidDir, serviceName) {
 			return pid, nil
 		}
 		rejectedDiag = fmt.Sprintf(" (candidate pid %d rejected: exe=%q err=%v)", pid, exe, err)

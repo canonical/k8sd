@@ -5,17 +5,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/canonical/k8sd/pkg/snap"
+	"golang.org/x/sys/unix"
 )
 
 const (
-	ciliumPidFile = "/var/run/cilium/cilium.pid"
-	ciliumRunDir  = "/run/cilium"
+	ciliumPidFile    = "/var/run/cilium/cilium.pid"
+	ciliumRunDir     = "/run/cilium"
+	ciliumCgroupRoot = "/run/cilium/cgroupv2"
+	ciliumLinkPrefix = "cilium_"
+	ciliumHostPrefix = "lxc"
+	ciliumHostLen    = len("lxcXXXXX")
 )
 
 func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
@@ -100,9 +106,12 @@ func cleanupCiliumState(ctx context.Context, snap snap.Snap) error {
 	}
 
 	args := []string{"post-uninstall-cleanup"}
-	if !snap.Strict() {
-		// --all-state scans /var/run and /var/lib with filepath.Glob, which triggers
-		// AppArmor denials on /run/ under strict confinement.
+	if snap.Strict() {
+		// Without --bpf-state, cilium-dbg defaults to --all-state and calls
+		// os.RemoveAll("/var/run/cilium"), which opens parent directory /run/ and
+		// triggers an AppArmor denial under strict confinement.
+		args = append(args, "--bpf-state")
+	} else {
 		args = append(args, "--all-state")
 	}
 	args = append(args, "--force")
@@ -114,13 +123,68 @@ func cleanupCiliumState(ctx context.Context, snap snap.Snap) error {
 		return fmt.Errorf("cilium-dbg cleanup failed: %w", err)
 	}
 	if snap.Strict() {
-		if err := cleanDirContents(ciliumRunDir); err != nil {
-			return fmt.Errorf("failed to clean %s: %w", ciliumRunDir, err)
+		var strictErrs []error
+		if err := unmountCiliumCgroup(ciliumCgroupRoot); err != nil {
+			strictErrs = append(strictErrs, err)
 		}
+		if err := removeCiliumHostLinks(ctx); err != nil {
+			strictErrs = append(strictErrs, err)
+		}
+		if err := cleanDirContents(ciliumRunDir); err != nil {
+			strictErrs = append(strictErrs, fmt.Errorf("failed to clean %s: %w", ciliumRunDir, err))
+		}
+		return errors.Join(strictErrs...)
 	}
 	return nil
 }
 
+func unmountCiliumCgroup(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	if err := unix.Unmount(path, unix.MNT_DETACH); err != nil && !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.ENOENT) {
+		return fmt.Errorf("failed to unmount %s: %w", path, err)
+	}
+	return nil
+}
+
+func isCiliumHostLink(name string) bool {
+	return strings.HasPrefix(name, ciliumLinkPrefix) ||
+		name == "lxc_health" ||
+		(strings.HasPrefix(name, ciliumHostPrefix) && len(name) == ciliumHostLen)
+}
+
+func removeCiliumHostLinks(ctx context.Context) error {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return fmt.Errorf("failed to list network interfaces: %w", err)
+	}
+	var errs []error
+	for _, iface := range ifaces {
+		if !isCiliumHostLink(iface.Name) {
+			continue
+		}
+		out, err := exec.CommandContext(ctx, "ip", "link", "delete", iface.Name).CombinedOutput()
+		if err != nil {
+			msg := string(out)
+			if strings.Contains(msg, "Cannot find device") || strings.Contains(msg, "no such device") {
+				continue
+			}
+			errs = append(errs, fmt.Errorf("failed to delete link %s: %w: %s", iface.Name, err, bytes.TrimSpace(out)))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// cleanDirContents removes all entries inside dir using os.OpenRoot so removal
+// stays strictly relative to dir's file descriptor and never opens filepath.Dir(dir).
 func cleanDirContents(dir string) error {
 	info, err := os.Lstat(dir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -136,9 +200,15 @@ func cleanDirContents(dir string) error {
 	if err != nil {
 		return err
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
 	var errs []error
 	for _, entry := range entries {
-		if rmErr := os.RemoveAll(filepath.Join(dir, entry.Name())); rmErr != nil {
+		if rmErr := root.RemoveAll(entry.Name()); rmErr != nil {
 			errs = append(errs, rmErr)
 		}
 	}

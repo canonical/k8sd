@@ -71,10 +71,15 @@ func defaultIsProcessAlive(target processTarget) bool {
 	return isTargetAlive(target, readProcStat)
 }
 
+var (
+	pidfdOpen       = unix.PidfdOpen
+	pidfdSendSignal = unix.PidfdSendSignal
+)
+
 func defaultKillProcessTarget(target processTarget) error {
 	// Try Linux pidfd_open + pidfd_send_signal if available to bind the signal to the
 	// exact process instance, preventing races where a PID is reused before signal delivery.
-	fd, err := unix.PidfdOpen(target.pid, 0)
+	fd, err := pidfdOpen(target.pid, 0)
 	if err == nil {
 		defer unix.Close(fd)
 		// Verify start time matches before sending signal via pidfd
@@ -84,16 +89,18 @@ func defaultKillProcessTarget(target processTarget) error {
 				return nil
 			}
 		}
-		if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil {
-			if errors.Is(err, unix.ESRCH) {
-				return nil
-			}
+		err = pidfdSendSignal(fd, unix.SIGKILL, nil, 0)
+		if err == nil || errors.Is(err, unix.ESRCH) {
+			return nil
+		}
+		// snapd's default seccomp policy allows pidfd_open unconditionally but
+		// blocks pidfd_send_signal with EPERM; fall back to kill(2) in that case.
+		if !errors.Is(err, unix.ENOSYS) && !errors.Is(err, unix.EPERM) {
 			return fmt.Errorf("failed to send SIGKILL via pidfd: %w", err)
 		}
-		return nil
 	}
 
-	// Fallback to process search and kill if pidfd_open is unsupported
+	// Fallback to process search and kill if pidfd_open or pidfd_send_signal is unsupported
 	if !defaultIsProcessAlive(target) {
 		return nil
 	}
