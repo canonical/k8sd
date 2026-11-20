@@ -2,7 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    "helpers:pinGitHubActionDigestsToSemver",
+    "helpers:pinGitHubActionDigests",
     "security:gomodIndirectSecurityUpdates"
   ],
   "baseBranchPatterns": [
@@ -35,11 +35,16 @@
       "enabled": false
     },
     {
-      "matchPackageNames": [
-        "canonical/has-signed-canonical-cla",
-        "canonical/setup-lxd"
+      "matchDepTypes": [
+        "action",
+        "workflow"
       ],
-      "extractVersion": null
+      "matchPackageNames": [
+        "!canonical/has-signed-canonical-cla",
+        "!canonical/setup-lxd"
+      ],
+      "extractVersion": "^(?<version>v?\\d+\\.\\d+\\.\\d+)$",
+      "versioning": "regex:^v?(?<major>\\d+)(\\.(?<minor>\\d+)\\.(?<patch>\\d+))?$"
     },
     {
       "matchPackageNames": [
