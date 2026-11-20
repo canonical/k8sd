@@ -52,6 +52,21 @@ func NewClient(manifestsBaseDir string,
 	}
 }
 
+// NewClientWithActionConfig creates a new client with a custom action configuration factory.
+func NewClientWithActionConfig(
+	manifestsBaseDir string,
+	applyTimeout time.Duration,
+	maxHistory int,
+	actionConfig func(ctx context.Context, namespace string) (*action.Configuration, error),
+) Client {
+	return &client{
+		manifestsBaseDir: manifestsBaseDir,
+		timeout:          applyTimeout,
+		maxHistory:       maxHistory,
+		newConfig:        actionConfig,
+	}
+}
+
 func (h *client) actionConfiguration(ctx context.Context, namespace string) (*action.Configuration, error) {
 	if h.newConfig != nil {
 		return h.newConfig(ctx, namespace)
@@ -332,4 +347,44 @@ func sanitizeHelmValues(values map[string]any) (map[string]any, error) {
 	}
 
 	return result, nil
+}
+
+// GetDeployedConfig implements Client.
+func (h *client) GetDeployedConfig(ctx context.Context, c InstallableChart) (map[string]any, bool, error) {
+	cfg, err := h.actionConfiguration(ctx, c.Namespace)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to create action configuration: %w", err)
+	}
+
+	rel, err := cfg.Releases.Deployed(c.Name)
+	if err != nil {
+		if errors.Is(err, driver.ErrNoDeployedReleases) || errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("failed to get deployed release %s: %w", c.Name, err)
+	}
+
+	if rel == nil {
+		return nil, false, nil
+	}
+
+	var relObj *releasev1.Release
+	if r, ok := rel.(*releasev1.Release); ok {
+		relObj = r
+	} else if r, ok := rel.(releasev1.Release); ok {
+		relObj = &r
+	} else {
+		return nil, false, fmt.Errorf("unsupported release type %T for %s", rel, c.Name)
+	}
+
+	if relObj == nil || relObj.Info == nil || relObj.Info.Status != releasecommon.StatusDeployed {
+		return nil, false, nil
+	}
+
+	cloned, err := cloneMap(normalizeValues(relObj.Config))
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to clone release config: %w", err)
+	}
+
+	return cloned, true, nil
 }
