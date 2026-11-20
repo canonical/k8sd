@@ -22,6 +22,7 @@ import (
 // The controller has separate trigger channels for each feature.
 type FeatureController struct {
 	snap      snap.Snap
+	features  features.Interface
 	waitReady func()
 
 	readyCh chan struct{}
@@ -96,6 +97,7 @@ func (c *FeatureController) ReconciledMetricsServerCh() <-chan struct{} {
 
 type FeatureControllerOpts struct {
 	Snap      snap.Snap
+	Features  features.Interface
 	WaitReady func()
 
 	TriggerNetworkCh       chan struct{}
@@ -112,8 +114,13 @@ type FeatureControllerOpts struct {
 }
 
 func NewFeatureController(opts FeatureControllerOpts) *FeatureController {
+	f := opts.Features
+	if f == nil {
+		f = features.Implementation
+	}
 	return &FeatureController{
 		snap:                          opts.Snap,
+		features:                      f,
 		waitReady:                     opts.WaitReady,
 		readyCh:                       make(chan struct{}),
 		triggerNetworkCh:              opts.TriggerNetworkCh,
@@ -162,35 +169,35 @@ func (c *FeatureController) Run(
 	go c.reconcileLoop(ctx, getClusterConfig, setFeatureStatus, features.Network, c.triggerNetworkCh, c.reconciledNetworkCh, func(cfg types.ClusterConfig) (types.FeatureStatus, error) {
 		c.ciliumLock.Lock()
 		defer c.ciliumLock.Unlock()
-		return features.Implementation.ApplyNetwork(ctx, c.snap, s, cfg.APIServer, cfg.Network, cfg.Annotations)
+		return c.features.ApplyNetwork(ctx, c.snap, s, cfg.APIServer, cfg.Network, cfg.Annotations)
 	})
 
 	go c.reconcileLoop(ctx, getClusterConfig, setFeatureStatus, features.Gateway, c.triggerGatewayCh, c.reconciledGatewayCh, func(cfg types.ClusterConfig) (types.FeatureStatus, error) {
 		c.ciliumLock.Lock()
 		defer c.ciliumLock.Unlock()
-		return features.Implementation.ApplyGateway(ctx, c.snap, cfg.Gateway, cfg.Network, cfg.Annotations)
+		return c.features.ApplyGateway(ctx, c.snap, cfg.Gateway, cfg.Network, cfg.Annotations)
 	})
 
 	go c.reconcileLoop(ctx, getClusterConfig, setFeatureStatus, features.Ingress, c.triggerIngressCh, c.reconciledIngressCh, func(cfg types.ClusterConfig) (types.FeatureStatus, error) {
 		c.ciliumLock.Lock()
 		defer c.ciliumLock.Unlock()
-		return features.Implementation.ApplyIngress(ctx, c.snap, cfg.Ingress, cfg.Network, cfg.Annotations)
+		return c.features.ApplyIngress(ctx, c.snap, cfg.Ingress, cfg.Network, cfg.Annotations)
 	})
 
 	go c.reconcileLoop(ctx, getClusterConfig, setFeatureStatus, features.LoadBalancer, c.triggerLoadBalancerCh, c.reconciledLoadBalancerCh, func(cfg types.ClusterConfig) (types.FeatureStatus, error) {
-		return features.Implementation.ApplyLoadBalancer(ctx, c.snap, cfg.LoadBalancer, cfg.Annotations)
+		return c.features.ApplyLoadBalancer(ctx, c.snap, cfg.LoadBalancer, cfg.Annotations)
 	})
 
 	go c.reconcileLoop(ctx, getClusterConfig, setFeatureStatus, features.LocalStorage, c.triggerLocalStorageCh, c.reconciledLocalStorageCh, func(cfg types.ClusterConfig) (types.FeatureStatus, error) {
-		return features.Implementation.ApplyLocalStorage(ctx, c.snap, cfg.LocalStorage, cfg.Annotations)
+		return c.features.ApplyLocalStorage(ctx, c.snap, cfg.LocalStorage, cfg.Annotations)
 	})
 
 	go c.reconcileLoop(ctx, getClusterConfig, setFeatureStatus, features.MetricsServer, c.triggerMetricsServerCh, c.reconciledMetricsServerCh, func(cfg types.ClusterConfig) (types.FeatureStatus, error) {
-		return features.Implementation.ApplyMetricsServer(ctx, c.snap, cfg.MetricsServer, cfg.Annotations)
+		return c.features.ApplyMetricsServer(ctx, c.snap, cfg.MetricsServer, cfg.Annotations)
 	})
 
 	go c.reconcileLoop(ctx, getClusterConfig, setFeatureStatus, features.DNS, c.triggerDNSCh, c.reconciledDNSCh, func(cfg types.ClusterConfig) (types.FeatureStatus, error) {
-		featureStatus, dnsIP, err := features.Implementation.ApplyDNS(ctx, c.snap, cfg.DNS, cfg.Kubelet, cfg.Annotations)
+		featureStatus, dnsIP, err := c.features.ApplyDNS(ctx, c.snap, cfg.DNS, cfg.Kubelet, cfg.Annotations)
 
 		if err != nil {
 			return featureStatus, fmt.Errorf("failed to apply DNS configuration: %w", err)

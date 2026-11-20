@@ -10,4 +10,8 @@ type Client interface {
 	// When state is StateDeleted, Apply will ensure that the chart is removed. If the chart is not installed, this is a no-op. Apply returns true if the chart was previously installed.
 	// Apply returns an error in case of failure.
 	Apply(ctx context.Context, f InstallableChart, desired State, values map[string]any) (bool, error)
+
+	// GetDeployedConfig returns the configuration of the currently deployed release of the specified chart.
+	// If no release is deployed, it returns (nil, false, nil).
+	GetDeployedConfig(ctx context.Context, c InstallableChart) (map[string]any, bool, error)
 }
