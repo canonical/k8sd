@@ -22,6 +22,7 @@ func TestRemoveLoopDevices(t *testing.T) {
 	mountsContent := `
 /dev/loop123 /var/lib/kubelet/pods/abc ext4 rw,relatime 0 0
 /dev/loop125 /var/snap/k8s/common/var/lib/kubelet/pods/strict-pod ext4 rw,relatime 0 0
+/dev/loop126 /var/snap/k8s/common/var/lib/kubelet/pods-backup/vol ext4 rw,relatime 0 0
 /dev/loop124 /not/kubelet/pods ext4 rw,relatime 0 0
 /dev/sda1 /var/lib/kubelet/pods/def ext4 rw,relatime 0 0
 `
@@ -38,8 +39,8 @@ func TestRemoveLoopDevices(t *testing.T) {
 	g.Expect(err).To(Not(HaveOccurred()))
 	g.Expect(string(updatedContent)).ToNot(ContainSubstring("/dev/loop123"))
 	g.Expect(string(updatedContent)).ToNot(ContainSubstring("/dev/loop125"))
-	// Ensure that the loop device that was not in kubelet pods is still present
+	// Ensure that loop devices outside the kubelet pods subtree are untouched
+	g.Expect(string(updatedContent)).To(ContainSubstring("/dev/loop126"))
 	g.Expect(string(updatedContent)).To(ContainSubstring("/dev/loop124"))
-	// Non-loop device entries should remain
 	g.Expect(string(updatedContent)).To(ContainSubstring("/dev/sda1"))
 }

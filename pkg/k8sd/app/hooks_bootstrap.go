@@ -278,7 +278,7 @@ func (a *App) onBootstrapWorkerNode(ctx context.Context, s mctypes.State, encode
 	}
 	preMarkDisabled := snap.Strict() && !cfg.Network.GetKubeProxyEnabled()
 	if err := snaputil.MarkKubeProxyDisabled(snap, preMarkDisabled); err != nil {
-		return fmt.Errorf("failed to set kube-proxy disabled marker: %w", err)
+		return fmt.Errorf("failed to update kube-proxy disabled marker: %w", err)
 	}
 
 	// Start services
@@ -527,7 +527,7 @@ func (a *App) onBootstrapControlPlane(ctx context.Context, s mctypes.State, boot
 
 	preMarkDisabled := snap.Strict() && !cfg.Network.GetKubeProxyEnabled()
 	if err := snaputil.MarkKubeProxyDisabled(snap, preMarkDisabled); err != nil {
-		return fmt.Errorf("failed to set kube-proxy disabled marker: %w", err)
+		return fmt.Errorf("failed to update kube-proxy disabled marker: %w", err)
 	}
 
 	// Start services

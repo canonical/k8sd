@@ -11,11 +11,11 @@ import (
 )
 
 func isKubeletPodMount(mountPoint string) bool {
-	if strings.HasPrefix(mountPoint, "/var/lib/kubelet/pods") {
+	if hasMountPrefix(mountPoint, "/var/lib/kubelet/pods") {
 		return true
 	}
 	if snapCommon := os.Getenv("SNAP_COMMON"); snapCommon != "" {
-		return strings.HasPrefix(mountPoint, filepath.Join(snapCommon, "var/lib/kubelet/pods"))
+		return hasMountPrefix(mountPoint, filepath.Join(snapCommon, "var/lib/kubelet/pods"))
 	}
 	return false
 }
