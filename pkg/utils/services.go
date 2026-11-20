@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // ServiceArgsFromMap processes a map of string pointers and categorizes them into update and delete lists.
@@ -39,7 +39,8 @@ var (
 	procDir            = "/proc"
 	expectedServiceUID = uint32(0)
 
-	systemctlUsable = func() *atomic.Bool {
+	osReadlinkService = os.Readlink
+	systemctlUsable   = func() *atomic.Bool {
 		var b atomic.Bool
 		b.Store(true)
 		return &b
@@ -194,6 +195,39 @@ func isSnapServiceBinary(binPath string, serviceName string) bool {
 	return inst == "k8s" || strings.HasPrefix(inst, "k8s_")
 }
 
+// hasSnapServiceProfile checks whether /proc/<pid>/attr/current matches snap.<instance>.<serviceName>.
+func hasSnapServiceProfile(pidDir string, serviceName string) bool {
+	if serviceName == "" || strings.Contains(serviceName, "/") {
+		return false
+	}
+	raw, err := os.ReadFile(filepath.Join(pidDir, "attr", "current"))
+	if err != nil {
+		raw, err = os.ReadFile(filepath.Join(pidDir, "attr", "apparmor", "current"))
+		if err != nil {
+			return false
+		}
+	}
+	label := strings.TrimSpace(string(bytes.TrimRight(raw, "\x00\r\n")))
+	if idx := strings.IndexByte(label, ' '); idx >= 0 {
+		label = label[:idx]
+	}
+	if idx := strings.LastIndexByte(label, ':'); idx >= 0 {
+		label = label[idx+1:]
+	}
+	if !strings.HasPrefix(label, "snap.") {
+		return false
+	}
+	suffix := "." + serviceName
+	if !strings.HasSuffix(label, suffix) {
+		return false
+	}
+	inst := strings.TrimSuffix(strings.TrimPrefix(label, "snap."), suffix)
+	if snapInst := os.Getenv("SNAP_INSTANCE_NAME"); snapInst == "k8s" || strings.HasPrefix(snapInst, "k8s_") {
+		return inst == snapInst
+	}
+	return inst == "k8s" || strings.HasPrefix(inst, "k8s_")
+}
+
 // findServicePID returns the pid of the root-owned snap service whose argv[0]
 // and /proc/<pid>/exe point at the snap's bin/<serviceName> binary.
 func findServicePID(serviceName string) (int, error) {
@@ -202,6 +236,7 @@ func findServicePID(serviceName string) (int, error) {
 		return 0, fmt.Errorf("failed to read %s: %w", procDir, err)
 	}
 
+	var rejectedDiag string
 	for _, entry := range entries {
 		pid, err := strconv.Atoi(entry.Name())
 		if err != nil || pid <= 0 {
@@ -231,19 +266,20 @@ func findServicePID(serviceName string) (int, error) {
 			continue
 		}
 
-		exe, err := os.Readlink(filepath.Join(pidDir, "exe"))
-		if err != nil {
-			continue
+		exe, err := osReadlinkService(filepath.Join(pidDir, "exe"))
+		if err == nil {
+			exe = strings.TrimSuffix(exe, " (deleted)")
+			if isSnapServiceBinary(exe, serviceName) {
+				return pid, nil
+			}
 		}
-		exe = strings.TrimSuffix(exe, " (deleted)")
-		if !isSnapServiceBinary(exe, serviceName) {
-			continue
+		if (err != nil || exe == "/bin/"+serviceName) && hasSnapServiceProfile(pidDir, serviceName) {
+			return pid, nil
 		}
-
-		return pid, nil
+		rejectedDiag = fmt.Sprintf(" (candidate pid %d rejected: exe=%q err=%v)", pid, exe, err)
 	}
 
-	return 0, fmt.Errorf("no running process found for service %q: %w", serviceName, ErrUnitNotRunning)
+	return 0, fmt.Errorf("no running process found for service %q%s: %w", serviceName, rejectedDiag, ErrUnitNotRunning)
 }
 
 type LoadState string

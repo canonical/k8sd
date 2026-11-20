@@ -367,4 +367,37 @@ exit 0
 		_, err = os.Stat(ip6tablesCallsLog)
 		g.Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
 	})
+
+	t.Run("StrictOmitsAllStateFlag", func(t *testing.T) {
+		g := NewWithT(t)
+
+		tmpDir := t.TempDir()
+		cniDir := filepath.Join(tmpDir, "cni")
+		g.Expect(os.MkdirAll(cniDir, 0o755)).To(Succeed())
+
+		ciliumCallsLog := filepath.Join(tmpDir, "cilium-dbg.log")
+		createFakeExe(t, cniDir, "cilium-dbg", `#!/bin/sh
+echo "$@" >> `+ciliumCallsLog+`
+exit 0
+`)
+		createFakeExe(t, tmpDir, "iptables-save", `#!/bin/sh
+exit 0
+`)
+		createFakeExe(t, tmpDir, "ip6tables-save", `#!/bin/sh
+exit 0
+`)
+		setupTestPath(t, tmpDir)
+
+		s := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				Strict:    true,
+				CNIBinDir: cniDir,
+			},
+		}
+
+		g.Expect(cilium.CleanupNetwork(context.Background(), s)).To(Succeed())
+		calls, err := os.ReadFile(ciliumCallsLog)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(string(calls))).To(Equal("post-uninstall-cleanup --force"))
+	})
 }

@@ -13,7 +13,10 @@ import (
 	"github.com/canonical/k8sd/pkg/snap"
 )
 
-const ciliumPidFile = "/var/run/cilium/cilium.pid"
+const (
+	ciliumPidFile = "/var/run/cilium/cilium.pid"
+	ciliumRunDir  = "/run/cilium"
+)
 
 func CleanupNetwork(ctx context.Context, snap snap.Snap) error {
 	if err := ctx.Err(); err != nil {
@@ -96,11 +99,48 @@ func cleanupCiliumState(ctx context.Context, snap snap.Snap) error {
 		return nil
 	}
 
-	if out, err := exec.CommandContext(ctx, ciliumDbg, "post-uninstall-cleanup", "--all-state", "--force").CombinedOutput(); err != nil {
+	args := []string{"post-uninstall-cleanup"}
+	if !snap.Strict() {
+		// --all-state scans /var/run and /var/lib with filepath.Glob, which triggers
+		// AppArmor denials on /run/ under strict confinement.
+		args = append(args, "--all-state")
+	}
+	args = append(args, "--force")
+
+	if out, err := exec.CommandContext(ctx, ciliumDbg, args...).CombinedOutput(); err != nil {
 		if out := bytes.TrimSpace(out); len(out) > 0 {
 			return fmt.Errorf("cilium-dbg cleanup failed: %w: %s", err, out)
 		}
 		return fmt.Errorf("cilium-dbg cleanup failed: %w", err)
 	}
+	if snap.Strict() {
+		if err := cleanDirContents(ciliumRunDir); err != nil {
+			return fmt.Errorf("failed to clean %s: %w", ciliumRunDir, err)
+		}
+	}
 	return nil
+}
+
+func cleanDirContents(dir string) error {
+	info, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("unexpected non-directory path: %s", dir)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, entry := range entries {
+		if rmErr := os.RemoveAll(filepath.Join(dir, entry.Name())); rmErr != nil {
+			errs = append(errs, rmErr)
+		}
+	}
+	return errors.Join(errs...)
 }

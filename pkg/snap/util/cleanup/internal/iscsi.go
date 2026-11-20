@@ -62,7 +62,7 @@ func GetISCSISessionsToLogout(ctx context.Context, s snap.Snap, mountHelper moun
 		return sids
 	}
 
-	prefixes := append([]string{"/var/lib/kubelet/pods", "/var/lib/kubelet/plugins"}, containerdMountPrefixes(ctx, s)...)
+	prefixes := append([]string{kubeletMountDir(s, "pods"), kubeletMountDir(s, "plugins")}, containerdMountPrefixes(ctx, s)...)
 	sidSet := make(map[string]bool)
 
 	err = mountHelper.ForEachMount(ctx, func(ctx context.Context, device string, mountPoint string, fsType string, flags string) error {

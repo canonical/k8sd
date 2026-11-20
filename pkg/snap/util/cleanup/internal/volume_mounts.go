@@ -12,6 +12,16 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func kubeletMountDir(s snap.Snap, subdir string) string {
+	if s.Strict() {
+		if argsDir := s.ServiceArgumentsDir(); argsDir != "" {
+			return filepath.Join(filepath.Dir(argsDir), "var", "lib", "kubelet", subdir)
+		}
+		return filepath.Join("/var/snap/k8s/common/var/lib/kubelet", subdir)
+	}
+	return filepath.Join("/var/lib/kubelet", subdir)
+}
+
 func containerdMountPrefixes(ctx context.Context, s snap.Snap) []string {
 	paths := []string{}
 
@@ -34,7 +44,7 @@ func containerdMountPrefixes(ctx context.Context, s snap.Snap) []string {
 func RemoveVolumeMountsGracefully(ctx context.Context, s snap.Snap, mountHelper mountutils.MountManager) {
 	log := log.FromContext(ctx)
 
-	prefixes := []string{"/var/lib/kubelet/pods"}
+	prefixes := []string{kubeletMountDir(s, "pods")}
 	containerdPaths := containerdMountPrefixes(ctx, s)
 	prefixes = append(prefixes, containerdPaths...)
 	log.Info("Removing volume mounts", "prefixes", prefixes)
@@ -58,7 +68,7 @@ func RemoveVolumeMountsGracefully(ctx context.Context, s snap.Snap, mountHelper 
 func RemoveVolumeMountsForce(ctx context.Context, s snap.Snap, mountHelper mountutils.MountManager) {
 	log := log.FromContext(ctx)
 
-	prefixes := []string{"/var/lib/kubelet/pods", "/var/lib/kubelet/plugins"}
+	prefixes := []string{kubeletMountDir(s, "pods"), kubeletMountDir(s, "plugins")}
 	containerdPaths := containerdMountPrefixes(ctx, s)
 	prefixes = append(prefixes, containerdPaths...)
 	log.Info("Removing volume mounts", "prefixes", prefixes)

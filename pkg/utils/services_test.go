@@ -316,4 +316,71 @@ func TestRunningServiceArgs_ProcFallback(t *testing.T) {
 			"--secure-port": "6443",
 		}))
 	})
+
+	t.Run("StrictReadlinkPermissionDeniedUsesAppArmorProfile", func(t *testing.T) {
+		g := NewWithT(t)
+		strictProc := t.TempDir()
+		oldProc := procDir
+		oldReadlink := osReadlinkService
+		procDir = strictProc
+		osReadlinkService = func(string) (string, error) {
+			return "", os.ErrPermission
+		}
+		t.Cleanup(func() {
+			procDir = oldProc
+			osReadlinkService = oldReadlink
+		})
+		t.Setenv("SNAP_INSTANCE_NAME", "k8s")
+
+		// Pod process spoofing argv[0] under cri-containerd.apparmor.d must be rejected.
+		createMockProcessWithExe(t, strictProc, 700, "kubelet", 'S', "", []string{
+			"/snap/k8s/x1/bin/kubelet",
+			"--cluster-dns=1.2.3.4",
+		})
+		g.Expect(os.MkdirAll(filepath.Join(strictProc, "700", "attr"), 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(strictProc, "700", "attr", "current"), []byte("cri-containerd.apparmor.d (enforce)\n"), 0o644)).To(Succeed())
+
+		// Real confined kubelet under snap.k8s.kubelet must be matched.
+		createMockProcessWithExe(t, strictProc, 701, "kubelet", 'S', "", []string{
+			"/snap/k8s/x1/bin/kubelet",
+			"--cluster-dns=10.152.183.51",
+		})
+		g.Expect(os.MkdirAll(filepath.Join(strictProc, "701", "attr"), 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(strictProc, "701", "attr", "current"), []byte(":lxd-node1:snap.k8s.kubelet (enforce)\n"), 0o644)).To(Succeed())
+
+		args, err := RunningServiceArgs(ctx, "kubelet")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(args).To(Equal(map[string]string{
+			"--cluster-dns": "10.152.183.51",
+		}))
+	})
+
+	t.Run("StrictDetachedSnapfuseBinPathUsesAppArmorProfile", func(t *testing.T) {
+		g := NewWithT(t)
+		strictProc := t.TempDir()
+		oldProc := procDir
+		oldReadlink := osReadlinkService
+		procDir = strictProc
+		osReadlinkService = func(string) (string, error) {
+			return "/bin/kubelet", nil
+		}
+		t.Cleanup(func() {
+			procDir = oldProc
+			osReadlinkService = oldReadlink
+		})
+		t.Setenv("SNAP_INSTANCE_NAME", "k8s")
+
+		createMockProcessWithExe(t, strictProc, 702, "kubelet", 'S', "", []string{
+			"/snap/k8s/x1/bin/kubelet",
+			"--cluster-dns=10.152.183.99",
+		})
+		g.Expect(os.MkdirAll(filepath.Join(strictProc, "702", "attr"), 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(strictProc, "702", "attr", "current"), []byte("snap.k8s.kubelet (enforce)\n"), 0o644)).To(Succeed())
+
+		args, err := RunningServiceArgs(ctx, "kubelet")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(args).To(Equal(map[string]string{
+			"--cluster-dns": "10.152.183.99",
+		}))
+	})
 }
