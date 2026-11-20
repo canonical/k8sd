@@ -238,12 +238,10 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 			}, err
 		}
 
-		values["bpf"] = map[string]any{
-			"autoMount": map[string]any{
-				"enabled": false,
-			},
-			"root": bpfMnt,
+		bpfValues["autoMount"] = map[string]any{
+			"enabled": false,
 		}
+		bpfValues["root"] = bpfMnt
 		values["cgroup"] = map[string]any{
 			"autoMount": map[string]any{
 				"enabled": false,

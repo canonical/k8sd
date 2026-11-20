@@ -313,7 +313,65 @@ func TestNetworkEnabled(t *testing.T) {
 			sctpValues := callArgs.Values["sctp"].(map[string]interface{})
 			g.Expect(sctpValues["enabled"]).To(BeTrue())
 		})
+
+		t.Run("StrictPreservesVLANBPFBypass", func(t *testing.T) {
+			g := NewWithT(t)
+
+			origGetMountPath := cilium.GetMountPath
+			t.Cleanup(func() { cilium.GetMountPath = origGetMountPath })
+			cilium.GetMountPath = func(fsType string) (string, error) {
+				return "/mnt/" + fsType, nil
+			}
+
+			helmM := &helmmock.Mock{}
+			clientset := fake.NewSimpleClientset(
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium-operator",
+						Namespace: "kube-system",
+					},
+				},
+				&appsv1.DaemonSet{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cilium",
+						Namespace: "kube-system",
+					},
+				},
+			)
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+					Strict:           true,
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+			testAnnotations := types.Annotations{
+				apiv1_annotations.AnnotationVLANBPFBypass: "100,200",
+			}
+
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, testAnnotations)
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+
+			bpfValues := helmM.ApplyCalledWith[0].Values["bpf"].(map[string]any)
+			g.Expect(bpfValues["vlanBypass"]).To(Equal([]int{100, 200}))
+			g.Expect(bpfValues["root"]).To(Equal("/mnt/bpf"))
+			g.Expect(bpfValues["autoMount"]).To(Equal(map[string]any{"enabled": false}))
+		})
 	})
+}
+
+func TestChartCiliumRetainKeys(t *testing.T) {
+	g := NewWithT(t)
+	g.Expect(cilium.ChartCilium.RetainKeys).To(Equal([]string{"ingressController", "gatewayAPI"}))
 }
 
 func TestNetworkMountPath(t *testing.T) {
