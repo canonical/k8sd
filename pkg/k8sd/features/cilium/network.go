@@ -156,7 +156,7 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		},
 		"cni": map[string]any{
 			"confPath":     "/etc/cni/net.d",
-			"binPath":      "/opt/cni/bin",
+			"binPath":      snap.CNIBinDir(),
 			"exclusive":    config.cniExclusive,
 			"chainingMode": "portmap",
 		},

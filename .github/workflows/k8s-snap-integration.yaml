@@ -20,11 +20,15 @@ on:
         type: string
         default: pull_request
 
+      variant:
+        description: k8s-snap variant to build and test (e.g. strict), leave empty for classic
+        type: string
+        default: ""
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.variant || 'classic' }}
   cancel-in-progress: true
 
 env:
@@ -38,6 +42,7 @@ jobs:
       k8s-snap-ref: ${{ steps.k8s-snap-ref.outputs.ref }}
       tests: ${{ steps.collect-tests.outputs.tests }}
       test-tags: ${{ steps.collect-tests.outputs.test-tags }}
+      variant: ${{ steps.collect-tests.outputs.variant }}
     steps:
       - name: Determine k8s-snap ref
         id: k8s-snap-ref
@@ -85,6 +90,7 @@ jobs:
         id: collect-tests
         env:
           TEST_TAGS: ${{ inputs.test-tags || 'pull_request' }}
+          VARIANT: ${{ inputs.variant }}
         run: |
           cd tests/integration
           IFS=' ' read -ra TAGS <<< "$TEST_TAGS"
@@ -99,6 +105,7 @@ jobs:
 
           echo "tests=$(printf '%s\n' "$TESTS" | jq -R -s -c 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
           echo "test-tags=${TEST_TAGS}" >> "$GITHUB_OUTPUT"
+          echo "variant=${VARIANT}" >> "$GITHUB_OUTPUT"
 
   build-snap:
     name: Build k8s-snap ${{ matrix.arch }}
@@ -139,6 +146,13 @@ jobs:
 
           cat "${component_dir}/repository" "${component_dir}/version" "${component_dir}/pre-patch.sh"
 
+
+      - name: Apply variant-specific patches
+        if: needs.prepare.outputs.variant != ''
+        env:
+          VARIANT: ${{ needs.prepare.outputs.variant }}
+        run: |
+          ./build-scripts/patches/"$VARIANT"/apply
       - name: Setup LXD
         uses: canonical/setup-lxd@8c6a87bfb56aa48f3fb9b830baa18562d8bfd4ee # v1
 
@@ -156,6 +170,7 @@ jobs:
         run: |
           sudo --user "$USER" --preserve-env --preserve-env=PATH -- env -- snapcraft --use-lxd
           mv k8s_*.snap "k8s-${ARCH}.snap"
+          unsquashfs -q -cat "k8s-${ARCH}.snap" meta/snap.yaml | grep -E '^(name|version|base|confinement):'
 
       - name: Upload k8s snap
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -226,6 +241,7 @@ jobs:
           TEST_SUBSTRATE: lxd
           TEST_LXD_IMAGE: ubuntu:24.04
           TEST_INSPECTION_REPORTS_DIR: ${{ github.workspace }}/inspection-reports/${{ env.test_name }}
+          TEST_VARIANT: ${{ needs.prepare.outputs.variant }}
           TEST_MIRROR_LIST: '[{"name": "ghcr.io", "port": 5000, "remote": "https://ghcr.io", "username": "${{ github.actor }}", "password": "${{ secrets.GITHUB_TOKEN }}"}, {"name": "docker.io", "port": 5001, "remote": "https://registry-1.docker.io", "username": "", "password": ""}]'
           # Some tests derive snap tracks from the branch they run on.
           TEST_GH_REF: ${{ needs.prepare.outputs.k8s-snap-ref }}

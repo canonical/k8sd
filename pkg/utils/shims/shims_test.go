@@ -814,3 +814,87 @@ func mustAtoi(t *testing.T, s string) int {
 	}
 	return n
 }
+
+func TestStrictProcShimDiscoveryWithoutPtrace(t *testing.T) {
+	g := NewWithT(t)
+
+	mockProc := t.TempDir()
+	origProcDir := procDir
+	origUID := expectedShimUID
+	origReadlink := osReadlink
+	procDir = mockProc
+	expectedShimUID = uint32(os.Getuid())
+	osReadlink = func(string) (string, error) {
+		return "", os.ErrPermission
+	}
+	t.Cleanup(func() {
+		procDir = origProcDir
+		expectedShimUID = origUID
+		osReadlink = origReadlink
+	})
+
+	writeProc := func(pid, ppid, comm string, cmdline string, label string) {
+		pidDir := filepath.Join(mockProc, pid)
+		g.Expect(os.MkdirAll(filepath.Join(pidDir, "attr"), 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(pidDir, "stat"), []byte(fmt.Sprintf("%s (%s) S %s 1 1\n", pid, comm, ppid)), 0o644)).To(Succeed())
+		if cmdline != "" {
+			raw := strings.ReplaceAll(cmdline, " ", "\x00") + "\x00"
+			g.Expect(os.WriteFile(filepath.Join(pidDir, "cmdline"), []byte(raw), 0o644)).To(Succeed())
+		}
+		if label != "" {
+			g.Expect(os.WriteFile(filepath.Join(pidDir, "attr", "current"), []byte(label+"\n"), 0o644)).To(Succeed())
+		}
+	}
+
+	// Real strict shim + child container process (with empty cmdline simulating non-root child).
+	writeProc("400", "1", "containerd-shim", "/snap/k8s/x1/bin/containerd-shim-runc-v2 -namespace k8s.io -id abc", "snap.k8s.containerd (enforce)")
+	writeProc("401", "400", "pause", "", "cri-containerd.apparmor.d (enforce)")
+	// Pod process spoofing containerd-shim argv[0] under cri-containerd.apparmor.d must be ignored.
+	writeProc("500", "1", "spoof", "/snap/k8s/x1/bin/containerd-shim-runc-v2 -namespace k8s.io -id bad", "cri-containerd.apparmor.d (enforce)")
+	writeProc("501", "500", "child", "", "cri-containerd.apparmor.d (enforce)")
+
+	procs, err := listProcSystemProcesses(mockProc)
+	g.Expect(err).ToNot(HaveOccurred())
+	pids := findAllChildren(findShimPIDsWithReadlink(procs, osReadlink), makeShallowChildPIDs(procs))
+	g.Expect(pids).To(Equal([]string{"401", "400"}))
+}
+
+func TestStrictDetachedSnapfuseShimDiscovery(t *testing.T) {
+	g := NewWithT(t)
+
+	mockProc := t.TempDir()
+	origProcDir := procDir
+	origUID := expectedShimUID
+	origStat := osStat
+	procDir = mockProc
+	expectedShimUID = uint32(os.Getuid())
+	osStat = func(path string) (os.FileInfo, error) {
+		if strings.HasSuffix(path, "/exe") {
+			return nil, os.ErrPermission
+		}
+		return os.Stat(path)
+	}
+	t.Cleanup(func() {
+		procDir = origProcDir
+		expectedShimUID = origUID
+		osStat = origStat
+	})
+
+	pidDir := filepath.Join(mockProc, "410")
+	g.Expect(os.MkdirAll(filepath.Join(pidDir, "attr"), 0o755)).To(Succeed())
+	g.Expect(os.WriteFile(filepath.Join(pidDir, "stat"), []byte("410 (containerd-shim) S 1 1 1\n"), 0o644)).To(Succeed())
+	g.Expect(os.WriteFile(filepath.Join(pidDir, "cmdline"), []byte("/snap/k8s/x1/bin/containerd-shim-runc-v2\x00-namespace\x00k8s.io\x00"), 0o644)).To(Succeed())
+	g.Expect(os.WriteFile(filepath.Join(pidDir, "attr", "current"), []byte("snap.k8s.containerd (enforce)\n"), 0o644)).To(Succeed())
+
+	childDir := filepath.Join(mockProc, "411")
+	g.Expect(os.MkdirAll(childDir, 0o755)).To(Succeed())
+	g.Expect(os.WriteFile(filepath.Join(childDir, "stat"), []byte("411 (pause) S 410 1 1\n"), 0o644)).To(Succeed())
+
+	procs, err := listProcSystemProcesses(mockProc)
+	g.Expect(err).ToNot(HaveOccurred())
+	readlink := func(string) (string, error) {
+		return "/bin/containerd-shim-runc-v2", nil
+	}
+	pids := findAllChildren(findShimPIDsWithReadlink(procs, readlink), makeShallowChildPIDs(procs))
+	g.Expect(pids).To(Equal([]string{"411", "410"}))
+}

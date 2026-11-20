@@ -48,22 +48,24 @@ func newBootstrapCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		Use:    "bootstrap",
 		Short:  "Bootstrap a new Kubernetes cluster",
 		Long:   "Bootstrap a new Kubernetes cluster by generating certificates, configuring service arguments, and starting the Kubernetes services.",
-		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat), hookCheckLXD()),
+		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat), hookCheckLXD(env)),
 		Args:   cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			snapdClient, err := snapd.NewClient()
-			if err != nil {
-				cmd.PrintErrf("Error: failed to create snapd client: %v\n", err)
-				env.Exit(1)
-				return
-			}
-			microk8sInfo, err := snapdClient.GetSnapInfo("microk8s")
-			if err != nil {
-				cmd.PrintErrf("Warning: failed to check if microk8s is installed: %v\n", err)
-			} else if microk8sInfo.StatusCode == 200 && microk8sInfo.HasInstallDate() {
-				cmd.PrintErrln("Error: microk8s snap is installed. Please remove it using the following command and try again:\n\n  sudo snap remove microk8s")
-				env.Exit(1)
-				return
+			if env.Snap == nil || !env.Snap.Strict() {
+				snapdClient, err := snapd.NewClient()
+				if err != nil {
+					cmd.PrintErrf("Error: failed to create snapd client: %v\n", err)
+					env.Exit(1)
+					return
+				}
+				microk8sInfo, err := snapdClient.GetSnapInfo("microk8s")
+				if err != nil {
+					cmd.PrintErrf("Warning: failed to check if microk8s is installed: %v\n", err)
+				} else if microk8sInfo.StatusCode == 200 && microk8sInfo.HasInstallDate() {
+					cmd.PrintErrln("Error: microk8s snap is installed. Please remove it using the following command and try again:\n\n  sudo snap remove microk8s")
+					env.Exit(1)
+					return
+				}
 			}
 
 			if opts.interactive && opts.configFile != "" {

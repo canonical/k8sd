@@ -124,10 +124,10 @@ func (s *snap) newSnapdClient() (*snapd.Client, error) {
 	return client, nil
 }
 
-func qualifyServiceNames(names []string) []string {
+func (s *snap) qualifyServiceNames(names []string) []string {
 	qualified := make([]string, len(names))
 	for i, name := range names {
-		qualified[i] = serviceName(name)
+		qualified[i] = serviceNameForInstance(s.snapInstanceName, name)
 	}
 	return qualified
 }
@@ -151,13 +151,21 @@ func (s *snap) StartServices(ctx context.Context, names []string, extraSnapArgs 
 			return fmt.Errorf("unsupported snap start argument %q", arg)
 		}
 	}
+	if s.Strict() {
+		cmd := []string{"snapctl", "start"}
+		if opts.Enable {
+			cmd = append(cmd, "--enable")
+		}
+		cmd = append(cmd, s.qualifyServiceNames(names)...)
+		return s.runHostCommand(ctx, cmd)
+	}
 
 	client, err := s.newSnapdClient()
 	if err != nil {
 		return err
 	}
 
-	changeID, err := client.StartServices(ctx, qualifyServiceNames(names), opts)
+	changeID, err := client.StartServices(ctx, s.qualifyServiceNames(names), opts)
 	if err != nil {
 		return fmt.Errorf("failed to start services %v: %w", names, err)
 	}
@@ -183,13 +191,21 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 			return fmt.Errorf("unsupported snap stop argument %q", arg)
 		}
 	}
+	if s.Strict() {
+		cmd := []string{"snapctl", "stop"}
+		if opts.Disable {
+			cmd = append(cmd, "--disable")
+		}
+		cmd = append(cmd, s.qualifyServiceNames(names)...)
+		return s.runHostCommand(ctx, cmd)
+	}
 
 	client, err := s.newSnapdClient()
 	if err != nil {
 		return err
 	}
 
-	changeID, err := client.StopServices(ctx, qualifyServiceNames(names), opts)
+	changeID, err := client.StopServices(ctx, s.qualifyServiceNames(names), opts)
 	if err != nil {
 		return fmt.Errorf("failed to stop services %v: %w", names, err)
 	}
@@ -219,12 +235,20 @@ func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArg
 		}
 	}
 
+	if s.Strict() {
+		cmd := []string{"snapctl", "restart"}
+		if opts.Reload {
+			cmd = append(cmd, "--reload")
+		}
+		cmd = append(cmd, s.qualifyServiceNames(names)...)
+		return s.runHostCommand(ctx, cmd)
+	}
 	client, err := s.newSnapdClient()
 	if err != nil {
 		return err
 	}
 
-	changeID, err := client.RestartServices(ctx, qualifyServiceNames(names), opts)
+	changeID, err := client.RestartServices(ctx, s.qualifyServiceNames(names), opts)
 	if err != nil {
 		return fmt.Errorf("failed to restart services %v: %w", names, err)
 	}
@@ -388,6 +412,9 @@ func (s *snap) CNIConfDir() string {
 }
 
 func (s *snap) CNIBinDir() string {
+	if s.Strict() {
+		return filepath.Join(s.snapCommonDir, "opt", "cni", "bin")
+	}
 	return "/opt/cni/bin"
 }
 

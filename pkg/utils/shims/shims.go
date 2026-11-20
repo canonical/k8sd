@@ -1,17 +1,21 @@
 package shims
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
+	"gopkg.in/yaml.v3"
 )
 
 // detachedSnapShimExe is the /proc/<pid>/exe path after snapd lazy-unmounts an old revision.
@@ -24,11 +28,32 @@ var reBinaryCmd = regexp.MustCompile(`^(/var/lib/snapd)?/snap/k8s(_[a-zA-Z0-9-]+
 var reBinaryExe = regexp.MustCompile(`^(/var/lib/snapd)?/snap/k8s(_[a-zA-Z0-9-]+)?/.*/bin/containerd-shim-runc-v2$`)
 
 var (
-	osReadlink    = os.Readlink
-	osStat        = os.Stat
-	statfsType    = unixStatfsType
-	listProcesses = listAllSystemProcesses
+	osReadlink      = os.Readlink
+	osStat          = os.Stat
+	statfsType      = unixStatfsType
+	listProcesses   = listAllSystemProcesses
+	procDir         = "/proc"
+	expectedShimUID = uint32(0)
 )
+
+func isStrictSnap() bool {
+	snapEnv := os.Getenv("SNAP")
+	if snapEnv == "" {
+		return false
+	}
+	raw, err := os.ReadFile(filepath.Join(snapEnv, "meta", "snap.yaml"))
+	if err != nil {
+		return false
+	}
+	var meta struct {
+		Name        string `yaml:"name"`
+		Confinement string `yaml:"confinement"`
+	}
+	if err := yaml.Unmarshal(raw, &meta); err != nil {
+		return false
+	}
+	return meta.Name == "k8s" && meta.Confinement == "strict"
+}
 
 // RunningContainerdShimPIDs returns a list of all the pids on the system that have been started by a containerd shim.
 func RunningContainerdShimPIDs(ctx context.Context) ([]string, error) {
@@ -48,6 +73,9 @@ type processInfo struct {
 // listAllSystemProcesses returns a map of all running processes on the host.
 // for each process, we store the ppid and the command line.
 func listAllSystemProcesses(ctx context.Context) (map[string]processInfo, error) {
+	if isStrictSnap() {
+		return listProcSystemProcesses(procDir)
+	}
 	// output is a list of lines in the following format, one line for each running process:
 	// [pid] [ppid] [arg1 arg2 arg3 ...]
 	// [pid] [ppid] [arg1 arg2 arg3 ...]
@@ -57,6 +85,52 @@ func listAllSystemProcesses(ctx context.Context) (map[string]processInfo, error)
 	}
 
 	return parseProcessList(string(stdout)), nil
+}
+
+// listProcSystemProcesses builds the process map directly from /proc without spawning ps.
+// Under strict confinement, /proc/<pid>/stat is readable for all processes (providing ppid for
+// child traversal), while /proc/<pid>/cmdline is read only for root-owned processes to avoid
+// AppArmor denials on non-root host daemons.
+func listProcSystemProcesses(procRoot string) (map[string]processInfo, error) {
+	entries, err := os.ReadDir(procRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s: %w", procRoot, err)
+	}
+	result := make(map[string]processInfo, len(entries))
+	for _, entry := range entries {
+		pid := entry.Name()
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		pidDir := filepath.Join(procRoot, pid)
+		statBytes, err := os.ReadFile(filepath.Join(pidDir, "stat"))
+		if err != nil {
+			continue
+		}
+		idx := bytes.LastIndexByte(statBytes, ')')
+		if idx == -1 || idx+2 >= len(statBytes) {
+			continue
+		}
+		fields := strings.Fields(string(statBytes[idx+2:]))
+		if len(fields) < 2 {
+			continue
+		}
+		pinfo := processInfo{
+			parentPID: fields[1],
+		}
+		if info, err := os.Stat(pidDir); err == nil {
+			if st, ok := info.Sys().(*syscall.Stat_t); ok && st.Uid == expectedShimUID {
+				if cmdBytes, err := os.ReadFile(filepath.Join(pidDir, "cmdline")); err == nil {
+					trimmed := bytes.TrimRight(cmdBytes, "\x00")
+					if len(trimmed) > 0 {
+						pinfo.command = string(bytes.ReplaceAll(trimmed, []byte{0}, []byte{' '}))
+					}
+				}
+			}
+		}
+		result[pid] = pinfo
+	}
+	return result, nil
 }
 
 // parseProcessList parses `ps -e -o pid=,ppid=,args=` output into a PID-keyed map.
@@ -126,18 +200,40 @@ func findShimPIDsWithReadlink(procs map[string]processInfo, readlink func(string
 			continue
 		}
 
-		procExePath := fmt.Sprintf("/proc/%s/exe", pid)
+		procExePath := filepath.Join(procDir, pid, "exe")
 		exe, err := readlink(procExePath)
-		if err != nil {
-			continue
+		if err == nil {
+			exe = strings.TrimSuffix(exe, " (deleted)")
+			if reBinaryExe.MatchString(exe) || (exe == detachedSnapShimExe && reBinaryCmd.MatchString(info.command) && isDetachedSnapExe(procExePath)) {
+				result = append(result, pid)
+				continue
+			}
 		}
-
-		exe = strings.TrimSuffix(exe, " (deleted)")
-		if reBinaryExe.MatchString(exe) || (exe == detachedSnapShimExe && reBinaryCmd.MatchString(info.command) && isDetachedSnapExe(procExePath)) {
+		if (err != nil || exe == detachedSnapShimExe) && reBinaryCmd.MatchString(info.command) && hasContainerdSnapProfile(filepath.Join(procDir, pid)) {
 			result = append(result, pid)
 		}
 	}
 	return result
+}
+
+var reContainerdSnapProfile = regexp.MustCompile(`^snap\.k8s(_[a-zA-Z0-9-]+)?\.containerd$`)
+
+func hasContainerdSnapProfile(pidDir string) bool {
+	raw, err := os.ReadFile(filepath.Join(pidDir, "attr", "current"))
+	if err != nil {
+		raw, err = os.ReadFile(filepath.Join(pidDir, "attr", "apparmor", "current"))
+		if err != nil {
+			return false
+		}
+	}
+	label := strings.TrimSpace(string(bytes.TrimRight(raw, "\x00\r\n")))
+	if idx := strings.IndexByte(label, ' '); idx >= 0 {
+		label = label[:idx]
+	}
+	if idx := strings.LastIndexByte(label, ':'); idx >= 0 {
+		label = label[idx+1:]
+	}
+	return reContainerdSnapProfile.MatchString(label)
 }
 
 func isDetachedSnapExe(procExePath string) bool {

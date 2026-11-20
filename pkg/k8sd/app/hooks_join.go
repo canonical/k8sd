@@ -380,8 +380,9 @@ func (a *App) onPostJoin(ctx context.Context, s mctypes.State, initConfig map[st
 
 	// Start services
 	// This may fail if the node controllers try to restart the services at the same time, hence the retry.
-	if err := snaputil.MarkKubeProxyDisabled(snap, false); err != nil {
-		return fmt.Errorf("failed to clear kube-proxy disabled marker: %w", err)
+	preMarkDisabled := snap.Strict() && !cfg.Network.GetKubeProxyEnabled()
+	if err := snaputil.MarkKubeProxyDisabled(snap, preMarkDisabled); err != nil {
+		return fmt.Errorf("failed to update kube-proxy disabled marker: %w", err)
 	}
 
 	log.Info("Starting control-plane services")
