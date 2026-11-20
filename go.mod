@@ -16,6 +16,7 @@ require (
 	go.etcd.io/etcd/api/v3 v3.7.4
 	go.etcd.io/etcd/client/v3 v3.7.4
 	go.yaml.in/yaml/v2 v2.4.5
+	go.yaml.in/yaml/v4 v4.0.0
 	golang.org/x/mod v0.43.0
 	golang.org/x/net v0.63.0
 	golang.org/x/sync v0.25.0
