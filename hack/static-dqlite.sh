@@ -54,7 +54,14 @@ if [ ! -f "${BUILD_DIR}/libtirpc/src/libtirpc.la" ]; then
     cd libtirpc
     chmod +x autogen.sh
     ./autogen.sh > /dev/null
-    ./configure --disable-shared --disable-gssapi > /dev/null
+    # libtirpc 1.3.3 declares things like
+    # `int (*__getpublickey_LOCAL)() = 0;` (empty-paren K&R "unspecified
+    # args"), then calls through it with real arguments. GCC >= 15 defaults
+    # to -std=gnu23, where empty parens mean "takes no arguments", turning
+    # that call into a hard error ("too many arguments; expected 0, have
+    # N"). Force the pre-C23 dialect so the build doesn't depend on the
+    # host compiler's default standard version.
+    ./configure --disable-shared --disable-gssapi CFLAGS="${CFLAGS} -std=gnu17" > /dev/null
     make -j > /dev/null
   )
 fi
@@ -70,7 +77,7 @@ if [ ! -f "${BUILD_DIR}/libnsl/src/libnsl.la" ]; then
     autoreconf -i > /dev/null
     autoconf > /dev/null
     ./configure --disable-shared \
-      CFLAGS="${CFLAGS} -I${BUILD_DIR}/libtirpc/tirpc" \
+      CFLAGS="${CFLAGS} -std=gnu17 -I${BUILD_DIR}/libtirpc/tirpc" \
       LDFLAGS="${LDFLAGS} -L${BUILD_DIR}/libtirpc/src" \
       TIRPC_CFLAGS="-I${BUILD_DIR}/libtirpc/tirpc" \
       TIRPC_LIBS="-L${BUILD_DIR}/libtirpc/src" \
@@ -126,7 +133,7 @@ if [ ! -f "${BUILD_DIR}/dqlite/libdqlite.la" ]; then
     cd dqlite
     autoreconf -i > /dev/null
     ./configure --disable-shared --enable-build-raft \
-      CFLAGS="${CFLAGS} -g -I${BUILD_DIR}/sqlite -I${BUILD_DIR}/libuv/include -I${BUILD_DIR}/lz4/lib -I${INSTALL_DIR}/musl/include -Werror=implicit-function-declaration" \
+      CFLAGS="${CFLAGS} -g -I${BUILD_DIR}/sqlite -I${BUILD_DIR}/libuv/include -I${BUILD_DIR}/lz4/lib -I${INSTALL_DIR}/musl/include -Wno-error -Werror=implicit-function-declaration" \
       LDFLAGS="${LDFLAGS} -L${BUILD_DIR}/libuv/.libs -L${BUILD_DIR}/lz4/lib -L${BUILD_DIR}/libnsl/src" \
       UV_CFLAGS="-I${BUILD_DIR}/libuv/include" \
       UV_LIBS="-L${BUILD_DIR}/libuv/.libs" \

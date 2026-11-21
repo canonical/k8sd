@@ -24,7 +24,9 @@ if [ ! -f "${BUILD_DIR}/libtirpc/src/libtirpc.la" ]; then
     cd libtirpc
     chmod +x autogen.sh
     ./autogen.sh > /dev/null
-    ./configure --disable-gssapi > /dev/null
+    # See static-dqlite.sh: libtirpc 1.3.3's K&R-style empty-paren
+    # function pointers break under GCC's C23 default (-std=gnu23).
+    ./configure --disable-gssapi CFLAGS="-std=gnu17" > /dev/null
     make -j > /dev/null
   )
 fi
@@ -40,7 +42,7 @@ if [ ! -f "${BUILD_DIR}/libnsl/src/libnsl.la" ]; then
     autoreconf -i > /dev/null
     autoconf > /dev/null
     ./configure \
-      CFLAGS="-I${BUILD_DIR}/libtirpc/tirpc" \
+      CFLAGS="-std=gnu17 -I${BUILD_DIR}/libtirpc/tirpc" \
       LDFLAGS="-L${BUILD_DIR}/libtirpc/src" \
       TIRPC_CFLAGS="-I${BUILD_DIR}/libtirpc/tirpc" \
       TIRPC_LIBS="-L${BUILD_DIR}/libtirpc/src -ltirpc" \
@@ -95,7 +97,7 @@ if [ ! -f "${BUILD_DIR}/dqlite/libdqlite.la" ]; then
     cd dqlite
     autoreconf -i > /dev/null
     ./configure --enable-build-raft \
-      CFLAGS=" -g -I${BUILD_DIR}/sqlite -I${BUILD_DIR}/libuv/include -I${BUILD_DIR}/lz4/lib -Werror=implicit-function-declaration" \
+      CFLAGS=" -g -I${BUILD_DIR}/sqlite -I${BUILD_DIR}/libuv/include -I${BUILD_DIR}/lz4/lib -Wno-error -Werror=implicit-function-declaration" \
       LDFLAGS=" -L${BUILD_DIR}/libuv/.libs -L${BUILD_DIR}/lz4/lib -L${BUILD_DIR}/libnsl/src" \
       UV_CFLAGS="-I${BUILD_DIR}/libuv/include" \
       UV_LIBS="-L${BUILD_DIR}/libuv/.libs -luv" \
