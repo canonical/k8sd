@@ -39,7 +39,7 @@ const (
 	recoveryLeaseName = "ck-dns-recovery"
 )
 
-// RecoveryLeaseDuration and RecoveryLeaseRenewInterval configure the CoreDNS recovery Lease TTL and renewal cadence.
+// RecoveryLeaseDuration and RecoveryLeaseRenewInterval set the recovery Lease TTL and renewal interval.
 var (
 	RecoveryLeaseDuration      = 60 * time.Second
 	RecoveryLeaseRenewInterval = 20 * time.Second
@@ -56,7 +56,7 @@ var (
 	observedLeases   = map[string]leaseObservation{}
 )
 
-// ResetObservedRecoveryLeases clears cached local Lease observations (used for test isolation).
+// ResetObservedRecoveryLeases clears cached Lease observations; for tests.
 func ResetObservedRecoveryLeases() {
 	observedLeasesMu.Lock()
 	defer observedLeasesMu.Unlock()
@@ -160,8 +160,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 			}
 			defer releaseLease()
 
-			// Re-read deployed release and live Service under the cluster-wide lease in case
-			// another control-plane node already completed installation or recovery.
+			// Re-check under the lease; a peer may have already installed or recovered CoreDNS.
 			oldConfig, deployed, err = m.GetDeployedConfig(opCtx, Chart)
 			if err != nil {
 				err = fmt.Errorf("failed to re-read deployed release config: %w", err)
@@ -453,8 +452,7 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 	}, dnsIP, err
 }
 
-// preserveDynamicClusterIP keeps the deployed release's empty, nil, or omitted service.clusterIP
-// representation when the live coredns Service already matches clusterIP, avoiding redundant upgrades.
+// preserveDynamicClusterIP keeps the deployed empty, nil, or omitted clusterIP to avoid a redundant upgrade.
 func preserveDynamicClusterIP(oldConfig map[string]any, serviceValues map[string]any) {
 	svcMap, ok := oldConfig["service"].(map[string]any)
 	if !ok {
@@ -470,9 +468,8 @@ func preserveDynamicClusterIP(oldConfig map[string]any, serviceValues map[string
 	}
 }
 
-// acquireRecoveryLease acquires and periodically renews a cluster-wide Kubernetes Lease to
-// serialize CoreDNS installation and out-of-band Service recovery across control-plane nodes.
-// If lease renewal fails or ownership is lost, the returned context is cancelled immediately.
+// acquireRecoveryLease holds a renewed cluster-wide Lease that serializes CoreDNS recovery across nodes.
+// The returned context is cancelled once ownership is lost.
 func acquireRecoveryLease(ctx context.Context, client *kubernetes.Client, namespace string) (context.Context, func(), error) {
 	var token [16]byte
 	if _, err := rand.Read(token[:]); err != nil {
@@ -647,8 +644,8 @@ func acquireRecoveryLease(ctx context.Context, client *kubernetes.Client, namesp
 	}, nil
 }
 
-// isPeerLeaseExpiredLocally determines whether an existing Lease held by another node has expired
-// using local monotonic observations of unchanged LeaseSpec state (immune to cross-node clock skew).
+// isPeerLeaseExpiredLocally reports whether a peer's unchanged Lease outlived dur on the local
+// monotonic clock, avoiding cross-node clock skew.
 func isPeerLeaseExpiredLocally(key string, existing *coordinationv1.Lease, dur time.Duration) bool {
 	if ptr.Deref(existing.Spec.HolderIdentity, "") == "" {
 		clearObservedRecoveryLease(key)
@@ -703,8 +700,7 @@ func deleteRecoveryLease(ctx context.Context, leases interface {
 	_ = leases.Delete(releaseCtx, recoveryLeaseName, opts)
 }
 
-// hasUninstallingReleaseSecret reports whether Kubernetes Secrets storage still holds an incomplete
-// uninstalling revision for releaseName (e.g. after a failed recovery uninstall).
+// hasUninstallingReleaseSecret reports whether an incomplete uninstall of releaseName is left in storage.
 func hasUninstallingReleaseSecret(ctx context.Context, client *kubernetes.Client, namespace, releaseName string) (bool, error) {
 	secrets, err := client.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("owner=helm,name=%s,status=uninstalling", releaseName),

@@ -366,7 +366,7 @@ func TestApplyDNS_DynamicBootstrap_SecondReconcileKeepsRevision1(t *testing.T) {
 	dns := types.DNS{Enabled: ptr.To(true)}
 	kubelet := types.Kubelet{} // ClusterDNS == ""
 
-	// 1. First reconcile: bootstrap with ClusterDNS == ""
+	// Bootstrap with a dynamic clusterIP.
 	status, ip, err := coredns.ApplyDNS(t.Context(), snapM, dns, kubelet, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(ip).To(Equal(liveIP))
@@ -379,20 +379,20 @@ func TestApplyDNS_DynamicBootstrap_SecondReconcileKeepsRevision1(t *testing.T) {
 	g.Expect(relObj.Chart.Metadata.Version).To(Equal("1.47.0"))
 	g.Expect(relObj.Config["service"].(map[string]any)["clusterIP"]).To(Equal(""))
 
-	// 2. Second reconcile: Kubelet has learned dynamic IP (ClusterDNS == "10.152.183.211")
+	// Cluster DNS now holds the assigned IP.
 	kubelet.ClusterDNS = ptr.To(liveIP)
 	status, ip, err = coredns.ApplyDNS(t.Context(), snapM, dns, kubelet, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(ip).To(Equal(liveIP))
 	g.Expect(status.Enabled).To(BeTrue())
 
-	// MUST STAY REVISION 1!
+	// No new revision.
 	rel, err = store.Last(coredns.Chart.Name)
 	g.Expect(err).NotTo(HaveOccurred())
 	relObj = rel.(*releasev1.Release)
 	g.Expect(relObj.Version).To(Equal(1))
 
-	// 3. Third reconcile: actual configuration change (UpstreamNameservers changed & Chart bumped to 1.48.0)
+	// A real configuration change upgrades.
 	writeTestCoreDNSChart(t, baseDir, "1.48.0")
 	dns.UpstreamNameservers = ptr.To([]string{"1.1.1.1", "8.8.8.8"})
 	status, ip, err = coredns.ApplyDNS(t.Context(), snapM, dns, kubelet, nil)
@@ -400,7 +400,6 @@ func TestApplyDNS_DynamicBootstrap_SecondReconcileKeepsRevision1(t *testing.T) {
 	g.Expect(ip).To(Equal(liveIP))
 	g.Expect(status.Enabled).To(BeTrue())
 
-	// Must upgrade to Revision 2
 	rel, err = store.Last(coredns.Chart.Name)
 	g.Expect(err).NotTo(HaveOccurred())
 	relObj = rel.(*releasev1.Release)
@@ -408,7 +407,7 @@ func TestApplyDNS_DynamicBootstrap_SecondReconcileKeepsRevision1(t *testing.T) {
 	g.Expect(relObj.Chart.Metadata.Version).To(Equal("1.48.0"))
 	g.Expect(relObj.Config["service"].(map[string]any)["clusterIP"]).To(Equal(""))
 
-	// 4. Fourth reconcile: no changes after upgrade, stays Revision 2
+	// Unchanged configuration: no new revision.
 	status, ip, err = coredns.ApplyDNS(t.Context(), snapM, dns, kubelet, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(ip).To(Equal(liveIP))
@@ -536,19 +535,19 @@ func TestApplyDNS_RealHelmClient_MissingServiceRecovery(t *testing.T) {
 	_, _, err := coredns.ApplyDNS(t.Context(), snapM, dns, kubelet, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	// Simulate out-of-band deletion of Service/coredns
+	// Delete the Service out of band.
 	err = clientset.CoreV1().Services("kube-system").Delete(t.Context(), "coredns", metav1.DeleteOptions{})
 	g.Expect(err).NotTo(HaveOccurred())
 
-	// Prepend reactor to simulate service recreated after reinstall
+	// The Service is recreated by the reinstall.
 	callCount := 0
 	clientset.PrependReactor("get", "services", func(action clientgotesting.Action) (bool, runtime.Object, error) {
 		callCount++
 		if callCount <= 2 {
-			// Pre-apply and post-lease checks: Service is missing (NotFound)
+			// Missing before the reinstall.
 			return true, nil, apierrors.NewNotFound(corev1.Resource("services"), "coredns")
 		}
-		// Post-apply check: Service was recreated
+		// Recreated after the reinstall.
 		return true, corednsService, nil
 	})
 
@@ -593,7 +592,7 @@ func TestApplyDNS_RealHelmClient_DriftedServiceRecovery(t *testing.T) {
 	_, _, err := coredns.ApplyDNS(t.Context(), snapM, dns, kubelet, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	// Simulate service IP drift in Kubernetes to a different IP (e.g. 10.152.183.99)
+	// Drift the Service IP out of band.
 	driftedService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "coredns",
@@ -604,7 +603,7 @@ func TestApplyDNS_RealHelmClient_DriftedServiceRecovery(t *testing.T) {
 		},
 	}
 
-	// Prepend reactor: pre-apply check sees drifted IP; post-apply check sees recreated service
+	// Drifted IP before the reinstall, recreated Service after.
 	callCount := 0
 	clientset.PrependReactor("get", "services", func(action clientgotesting.Action) (bool, runtime.Object, error) {
 		callCount++
@@ -648,7 +647,7 @@ func TestApplyDNS_IncompleteUninstallRecovery(t *testing.T) {
 		_, _, err := coredns.ApplyDNS(t.Context(), snapM, dns, types.Kubelet{}, nil)
 		g.Expect(err).NotTo(HaveOccurred())
 
-		// Simulate a prior recovery uninstall failing mid-way and leaving the release in StatusUninstalling.
+		// Leave a failed recovery uninstall behind.
 		rel, err := store.Last(coredns.Chart.Name)
 		g.Expect(err).NotTo(HaveOccurred())
 		relObj := rel.(*releasev1.Release)
@@ -749,10 +748,10 @@ func TestApplyDNS_ConcurrentPeerAlreadyRepairedService_SkipsUninstall(t *testing
 	clientset.PrependReactor("get", "services", func(action clientgotesting.Action) (bool, runtime.Object, error) {
 		svcGets++
 		if svcGets == 1 {
-			// Initial unlocked check observes stale NotFound before peer finishes repairing.
+			// The unlocked check still sees the Service missing.
 			return true, nil, apierrors.NewNotFound(corev1.Resource("services"), "coredns")
 		}
-		// Re-check under recovery lease observes the peer's newly repaired Service.
+		// The re-check under the lease sees the peer's repair.
 		return true, repairedService, nil
 	})
 
@@ -774,7 +773,7 @@ func TestApplyDNS_ConcurrentPeerAlreadyRepairedService_SkipsUninstall(t *testing
 	g.Expect(ip).To(Equal(allocatedIP))
 	g.Expect(status.Enabled).To(BeTrue())
 
-	// Must NOT have called StateDeleted; only a single StatePresent preserving ""
+	// No uninstall; one apply keeping the empty clusterIP.
 	g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
 	g.Expect(helmM.ApplyCalledWith[0].State).To(Equal(helm.StatePresent))
 	g.Expect(helmM.ApplyCalledWith[0].Values["service"].(map[string]any)["clusterIP"]).To(Equal(""))
@@ -854,8 +853,7 @@ func TestApplyDNS_ExpiredRecoveryLease_StealsLeaseAndRecoversService(t *testing.
 		},
 	}
 
-	// Even if the crashed peer's clock was 1 hour in the FUTURE, local monotonic observation
-	// steals the unchanged lease once RecoveryLeaseDuration elapses locally.
+	// Peer clock is 1h ahead; the lease is taken after RecoveryLeaseDuration of local time.
 	futureSkewedTime := metav1.NewMicroTime(time.Now().Add(1 * time.Hour))
 	abandonedLease := &coordinationv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
@@ -901,7 +899,7 @@ func TestApplyDNS_ExpiredRecoveryLease_StealsLeaseAndRecoversService(t *testing.
 		},
 	}
 
-	// 1. Initial observation records baseline without trusting peer wall clock.
+	// The first observation only records the lease.
 	_, _, err := coredns.ApplyDNS(
 		t.Context(),
 		snapM,
@@ -912,7 +910,7 @@ func TestApplyDNS_ExpiredRecoveryLease_StealsLeaseAndRecoversService(t *testing.
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(helmM.ApplyCalledWith).To(BeEmpty())
 
-	// 2. Wait past local monotonic lease duration; unchanged lease is now stolen and recovered.
+	// Past the local lease duration, the unchanged lease is taken.
 	time.Sleep(40 * time.Millisecond)
 	status, ip, err := coredns.ApplyDNS(
 		t.Context(),
@@ -928,7 +926,7 @@ func TestApplyDNS_ExpiredRecoveryLease_StealsLeaseAndRecoversService(t *testing.
 	g.Expect(helmM.ApplyCalledWith[0].State).To(Equal(helm.StateDeleted))
 	g.Expect(helmM.ApplyCalledWith[1].State).To(Equal(helm.StatePresent))
 
-	// Lease must be cleaned up on return
+	// The lease is released on return.
 	_, getErr := clientset.CoordinationV1().Leases("kube-system").Get(t.Context(), "ck-dns-recovery", metav1.GetOptions{})
 	g.Expect(apierrors.IsNotFound(getErr)).To(BeTrue())
 }
@@ -958,8 +956,7 @@ func TestApplyDNS_ClockSkewedPeerLease_UsesLocalMonotonicObservation(t *testing.
 		},
 	}
 
-	// Peer's clock is 70s behind this node's wall clock: by raw wall-clock comparison,
-	// RenewTime (-70s) + 60s already looks expired even though the peer is actively renewing!
+	// Peer clock is 70s behind, so its active lease looks expired by wall clock.
 	skewedTime := metav1.NewMicroTime(time.Now().Add(-70 * time.Second))
 	skewedLease := &coordinationv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
@@ -982,7 +979,7 @@ func TestApplyDNS_ClockSkewedPeerLease_UsesLocalMonotonicObservation(t *testing.
 		},
 	}
 
-	// 1. First observation: must NOT steal the lease based on cross-node wall-clock comparison!
+	// Wall-clock expiry alone must not take the lease.
 	status, _, err := coredns.ApplyDNS(
 		t.Context(),
 		snapM,
@@ -995,7 +992,7 @@ func TestApplyDNS_ClockSkewedPeerLease_UsesLocalMonotonicObservation(t *testing.
 	g.Expect(status.Enabled).To(BeFalse())
 	g.Expect(helmM.ApplyCalledWith).To(BeEmpty(), "must not steal clock-skewed peer lease on first local observation")
 
-	// 2. Peer renews (still 69s behind our wall clock!), resetting our local observation timer.
+	// A peer renewal resets the local observation.
 	time.Sleep(25 * time.Millisecond)
 	renewedSkewedTime := metav1.NewMicroTime(time.Now().Add(-69 * time.Second))
 	skewedLease.Spec.RenewTime = &renewedSkewedTime
@@ -1091,7 +1088,7 @@ func TestApplyDNS_RecoveryLeaseRenewalAndLostOwnership(t *testing.T) {
 				"service": map[string]any{"name": "coredns", "clusterIP": allocatedIP},
 			},
 		}
-		// Pause inside StateDeleted long enough for >= 2 lease renewals to fire.
+		// Block long enough for at least two renewals.
 		snapM := &snapmock.Snap{
 			Mock: snapmock.Mock{
 				HelmClient: &slowUninstallMock{
@@ -1160,11 +1157,11 @@ func TestApplyDNS_RecoveryLeaseRenewalAndLostOwnership(t *testing.T) {
 		)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(status.Enabled).To(BeFalse())
-		// StateDeleted ran, lost lease ownership, and StatePresent MUST NOT have been called!
+		// Ownership was lost during the uninstall, so no reinstall.
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
 		g.Expect(helmM.ApplyCalledWith[0].State).To(Equal(helm.StateDeleted))
 
-		// Stolen lease must NOT have been deleted by the former holder's defer
+		// The new holder's lease is kept.
 		_, getErr := clientset.CoordinationV1().Leases("kube-system").Get(t.Context(), "ck-dns-recovery", metav1.GetOptions{})
 		g.Expect(getErr).NotTo(HaveOccurred())
 	})
@@ -1189,7 +1186,7 @@ func TestApplyDNS_SlowLeaseAcquisition(t *testing.T) {
 
 		clientset := fake.NewSimpleClientset()
 		clientset.PrependReactor("create", "leases", func(action clientgotesting.Action) (bool, runtime.Object, error) {
-			// Sleep past leaseDuration - safetyMargin (60ms - 10ms = 50ms) during Create.
+			// Exceed the 50ms renewal safety margin during Create.
 			time.Sleep(55 * time.Millisecond)
 			return false, nil, nil
 		})
@@ -1229,7 +1226,7 @@ func TestApplyDNS_SlowLeaseAcquisition(t *testing.T) {
 		}
 		clientset := fake.NewSimpleClientset()
 		clientset.PrependReactor("create", "leases", func(action clientgotesting.Action) (bool, runtime.Object, error) {
-			// Simulate Create taking 25ms (> 18ms renew interval, < 50ms safety deadline).
+			// Create outlasts one renew interval but stays within the safety margin.
 			time.Sleep(25 * time.Millisecond)
 			return false, nil, nil
 		})
@@ -1407,7 +1404,7 @@ func TestApplyDNS_OutOfBandServiceDeleted_UninstallsBeforeReinstall(t *testing.T
 			},
 		},
 	}
-	// Service does not exist in K8s (out-of-band deleted)
+	// Service deleted out of band.
 	clientset := fake.NewSimpleClientset()
 	snapM := &snapmock.Snap{
 		Mock: snapmock.Mock{
@@ -1422,12 +1419,11 @@ func TestApplyDNS_OutOfBandServiceDeleted_UninstallsBeforeReinstall(t *testing.T
 		ClusterDNS: ptr.To(clusterIp),
 	}
 
-	// Apply will attempt uninstall first, then reinstall. Post-apply GetServiceClusterIP fails in fake clientset:
+	// Uninstall, then reinstall; the fake clientset never recreates the Service.
 	status, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(status.Enabled).To(BeFalse())
 
-	// Must have called Apply twice: first StateDeleted, then StatePresent
 	g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 	g.Expect(helmM.ApplyCalledWith[0].State).To(Equal(helm.StateDeleted))
 	g.Expect(helmM.ApplyCalledWith[1].State).To(Equal(helm.StatePresent))
@@ -1447,7 +1443,7 @@ func TestApplyDNS_OutOfBandServiceDeleted_UnsetClusterDNS_UninstallsBeforeReinst
 			},
 		},
 	}
-	// Service does not exist in K8s (out-of-band deleted)
+	// Service deleted out of band.
 	clientset := fake.NewSimpleClientset()
 	snapM := &snapmock.Snap{
 		Mock: snapmock.Mock{
@@ -1460,12 +1456,11 @@ func TestApplyDNS_OutOfBandServiceDeleted_UnsetClusterDNS_UninstallsBeforeReinst
 	}
 	kubelet := types.Kubelet{} // ClusterDNS == ""
 
-	// Apply will attempt uninstall first, then reinstall. Post-apply GetServiceClusterIP fails in fake clientset:
+	// Uninstall, then reinstall; the fake clientset never recreates the Service.
 	status, _, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(status.Enabled).To(BeFalse())
 
-	// Must have called Apply twice: first StateDeleted, then StatePresent
 	g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 	g.Expect(helmM.ApplyCalledWith[0].State).To(Equal(helm.StateDeleted))
 	g.Expect(helmM.ApplyCalledWith[1].State).To(Equal(helm.StatePresent))
@@ -1486,7 +1481,7 @@ func TestApplyDNS_DriftedServiceIP_UninstallsBeforeReinstall(t *testing.T) {
 			},
 		},
 	}
-	// Service exists in K8s with drifted IP (e.g. 10.152.183.99)
+	// Service IP drifted out of band.
 	driftedService := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "coredns",
@@ -1510,13 +1505,13 @@ func TestApplyDNS_DriftedServiceIP_UninstallsBeforeReinstall(t *testing.T) {
 		ClusterDNS: ptr.To(clusterIp),
 	}
 
-	// Post-apply will see driftedService again and return its IP
+	// The post-apply lookup returns the drifted IP.
 	status, ip, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(ip).To(Equal("10.152.183.99"))
 	g.Expect(status.Enabled).To(BeTrue())
 
-	// Must have called Apply twice: first StateDeleted, then StatePresent
+	// Uninstall, then reinstall.
 	g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 	g.Expect(helmM.ApplyCalledWith[0].State).To(Equal(helm.StateDeleted))
 	g.Expect(helmM.ApplyCalledWith[1].State).To(Equal(helm.StatePresent))

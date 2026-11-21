@@ -119,7 +119,7 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 					return fmt.Errorf("database transaction to update cluster configuration failed: %w", err)
 				}
 
-				// Always notify node config controller so ConfigMap/k8sd-config self-heals
+				// Always notify so the node config self-heals.
 				a.NotifyUpdateNodeConfigController()
 
 				return nil
