@@ -65,17 +65,17 @@ data:
 	}
 }
 
-func newMemoryHelmClient(t *testing.T, baseDir string) (*client, *storage.Storage) {
+func newMemoryHelmClient(t *testing.T, baseDir string) (Client, *storage.Storage) {
 	t.Helper()
 	mem := driver.NewMemory()
 	mem.SetNamespace("kube-system")
 	store := storage.Init(mem)
 
-	c := &client{
-		manifestsBaseDir: baseDir,
-		timeout:          time.Minute,
-		maxHistory:       10,
-		newConfig: func(_ context.Context, _ string) (*action.Configuration, error) {
+	client := NewClientWithActionConfig(
+		baseDir,
+		time.Minute,
+		10,
+		func(_ context.Context, _ string) (*action.Configuration, error) {
 			cfg := action.NewConfiguration(
 				action.ConfigurationSetLogger(slog.NewTextHandler(io.Discard, nil)),
 			)
@@ -86,8 +86,8 @@ func newMemoryHelmClient(t *testing.T, baseDir string) (*client, *storage.Storag
 			}
 			return cfg, nil
 		},
-	}
-	return c, store
+	)
+	return client, store
 }
 
 func mustLastRelease(t *testing.T, store *storage.Storage, name string) *releasev1.Release {
@@ -534,4 +534,121 @@ func TestClientApplyLifecycleWithRealKubeClient(t *testing.T) {
 	if changed {
 		t.Fatalf("expected changed=false when already uninstalled")
 	}
+}
+
+func TestGetDeployedConfig_NotInstalled(t *testing.T) {
+	g := NewWithT(t)
+	baseDir := t.TempDir()
+	chart := writeTestChart(t, baseDir, "charts/test", "0.1.0")
+	c, _ := newMemoryHelmClient(t, baseDir)
+
+	cfg, deployed, err := c.GetDeployedConfig(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed).To(BeFalse())
+	g.Expect(cfg).To(BeNil())
+}
+
+func TestGetDeployedConfig_PendingOrFailed(t *testing.T) {
+	g := NewWithT(t)
+	baseDir := t.TempDir()
+	chart := writeTestChart(t, baseDir, "charts/test", "0.1.0")
+	c, store := newMemoryHelmClient(t, baseDir)
+
+	_, err := c.Apply(t.Context(), chart, StatePresent, map[string]any{
+		"service": map[string]any{"clusterIP": "10.152.183.10"},
+	})
+	g.Expect(err).NotTo(HaveOccurred())
+
+	rel := mustLastRelease(t, store, chart.Name)
+	rel.Info.Status = releasecommon.StatusFailed
+	g.Expect(store.Update(rel)).To(Succeed())
+
+	cfg, deployed, err := c.GetDeployedConfig(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed).To(BeFalse())
+	g.Expect(cfg).To(BeNil())
+
+	rel.Info.Status = releasecommon.StatusPendingInstall
+	g.Expect(store.Update(rel)).To(Succeed())
+
+	cfg, deployed, err = c.GetDeployedConfig(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed).To(BeFalse())
+	g.Expect(cfg).To(BeNil())
+}
+
+func TestGetDeployedConfig_Deployed(t *testing.T) {
+	g := NewWithT(t)
+	baseDir := t.TempDir()
+	chart := writeTestChart(t, baseDir, "charts/test", "0.1.0")
+	c, _ := newMemoryHelmClient(t, baseDir)
+
+	values := map[string]any{
+		"service": map[string]any{
+			"clusterIP": "10.152.183.10",
+		},
+		"replicaCount": float64(2),
+	}
+	_, err := c.Apply(t.Context(), chart, StatePresent, values)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	cfg, deployed, err := c.GetDeployedConfig(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed).To(BeTrue())
+	g.Expect(cfg).To(HaveKey("service"))
+	svc, ok := cfg["service"].(map[string]any)
+	g.Expect(ok).To(BeTrue())
+	g.Expect(svc["clusterIP"]).To(Equal("10.152.183.10"))
+
+	// Deep copy test: modifying cfg must not mutate subsequent calls
+	svc["clusterIP"] = "mutated"
+	cfg2, deployed2, err := c.GetDeployedConfig(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed2).To(BeTrue())
+	svc2 := cfg2["service"].(map[string]any)
+	g.Expect(svc2["clusterIP"]).To(Equal("10.152.183.10"))
+}
+
+func TestGetDeployedConfig_FailedRevisionOverDeployedRevisionReturnsDeployedConfig(t *testing.T) {
+	g := NewWithT(t)
+	baseDir := t.TempDir()
+	chart := writeTestChart(t, baseDir, "charts/test", "0.1.0")
+	c, store := newMemoryHelmClient(t, baseDir)
+
+	// Revision 1: deployed with clusterIP = "10.152.183.10"
+	values := map[string]any{
+		"service": map[string]any{
+			"clusterIP": "10.152.183.10",
+		},
+	}
+	_, err := c.Apply(t.Context(), chart, StatePresent, values)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	rel1 := mustLastRelease(t, store, chart.Name)
+	g.Expect(rel1.Version).To(Equal(1))
+	g.Expect(rel1.Info.Status).To(Equal(releasecommon.StatusDeployed))
+
+	// Simulate failed Revision 2 in storage
+	rel2 := &releasev1.Release{
+		Name:      chart.Name,
+		Namespace: chart.Namespace,
+		Version:   2,
+		Info: &releasev1.Info{
+			Status: releasecommon.StatusFailed,
+		},
+		Config: map[string]any{
+			"service": map[string]any{
+				"clusterIP": "10.152.183.99",
+			},
+		},
+	}
+	g.Expect(store.Create(rel2)).To(Succeed())
+
+	// GetDeployedConfig must find deployed Revision 1, not failed Revision 2!
+	cfg, deployed, err := c.GetDeployedConfig(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed).To(BeTrue(), "deployed release (rev 1) must be found even when rev 2 failed")
+	g.Expect(cfg).To(HaveKey("service"))
+	svc := cfg["service"].(map[string]any)
+	g.Expect(svc["clusterIP"]).To(Equal("10.152.183.10"), "must return rev 1 config")
 }

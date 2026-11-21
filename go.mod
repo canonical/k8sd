@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	dario.cat/mergo v1.0.2
 	github.com/canonical/k8s-snap-api/v2 v2.2.1
-	github.com/canonical/lxd v0.0.0-20261120085923-e76425864698
+	github.com/canonical/lxd v0.0.0-20261120204359-757eb61ecf91
 	github.com/canonical/microcluster/v3 v3.1.3
 	github.com/go-logr/logr v1.4.4
 	github.com/mitchellh/mapstructure v1.5.0
@@ -15,7 +15,6 @@ require (
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/etcd/api/v3 v3.7.4
 	go.etcd.io/etcd/client/v3 v3.7.4
-	go.yaml.in/yaml/v2 v2.4.5
 	golang.org/x/mod v0.43.0
 	golang.org/x/net v0.63.0
 	golang.org/x/sync v0.25.0
@@ -142,6 +141,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
+	go.yaml.in/yaml/v2 v2.4.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/oauth2 v0.38.0 // indirect
