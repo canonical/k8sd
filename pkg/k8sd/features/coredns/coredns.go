@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils"
+	"helm.sh/helm/v4/pkg/storage/driver"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -200,6 +202,34 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 				} else {
 					preserveDynamicClusterIP(oldConfig, serviceValues)
 				}
+			} else {
+				incompleteUninstall, err := hasUninstallingReleaseSecret(opCtx, client, Chart.Namespace, Chart.Name)
+				if err != nil {
+					err = fmt.Errorf("failed to check coredns release secrets: %w", err)
+					return types.FeatureStatus{
+						Enabled: false,
+						Version: ImageTag,
+						Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+					}, "", err
+				}
+				if incompleteUninstall {
+					if err := opCtx.Err(); err != nil {
+						err = fmt.Errorf("coredns recovery lease lost before finishing uninstall: %w", err)
+						return types.FeatureStatus{
+							Enabled: false,
+							Version: ImageTag,
+							Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+						}, "", err
+					}
+					if _, err := m.Apply(opCtx, Chart, helm.StateDeleted, nil); err != nil {
+						err = fmt.Errorf("failed to finish incomplete coredns uninstall: %w", err)
+						return types.FeatureStatus{
+							Enabled: false,
+							Version: ImageTag,
+							Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+						}, "", err
+					}
+				}
 			}
 		}
 	}
@@ -353,12 +383,41 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 	}
 
 	if _, err := m.Apply(opCtx, Chart, helm.StatePresent, values); err != nil {
-		err = fmt.Errorf("failed to apply coredns: %w", err)
-		return types.FeatureStatus{
-			Enabled: false,
-			Version: ImageTag,
-			Message: fmt.Sprintf(deployFailedMsgTmpl, err),
-		}, "", err
+		if !deployed && client != nil && errors.Is(err, driver.ErrNoDeployedReleases) {
+			if ctxErr := opCtx.Err(); ctxErr != nil {
+				err = fmt.Errorf("coredns recovery lease lost before finishing uninstall: %w", ctxErr)
+				return types.FeatureStatus{
+					Enabled: false,
+					Version: ImageTag,
+					Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+				}, "", err
+			}
+			if _, delErr := m.Apply(opCtx, Chart, helm.StateDeleted, nil); delErr != nil {
+				err = fmt.Errorf("failed to finish incomplete coredns uninstall: %w", delErr)
+				return types.FeatureStatus{
+					Enabled: false,
+					Version: ImageTag,
+					Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+				}, "", err
+			}
+			if ctxErr := opCtx.Err(); ctxErr != nil {
+				err = fmt.Errorf("coredns recovery lease lost before apply: %w", ctxErr)
+				return types.FeatureStatus{
+					Enabled: false,
+					Version: ImageTag,
+					Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+				}, "", err
+			}
+			_, err = m.Apply(opCtx, Chart, helm.StatePresent, values)
+		}
+		if err != nil {
+			err = fmt.Errorf("failed to apply coredns: %w", err)
+			return types.FeatureStatus{
+				Enabled: false,
+				Version: ImageTag,
+				Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+			}, "", err
+		}
 	}
 
 	if client == nil {
@@ -642,4 +701,17 @@ func deleteRecoveryLease(ctx context.Context, leases interface {
 		opts.Preconditions = preconds
 	}
 	_ = leases.Delete(releaseCtx, recoveryLeaseName, opts)
+}
+
+// hasUninstallingReleaseSecret reports whether Kubernetes Secrets storage still holds an incomplete
+// uninstalling revision for releaseName (e.g. after a failed recovery uninstall).
+func hasUninstallingReleaseSecret(ctx context.Context, client *kubernetes.Client, namespace, releaseName string) (bool, error) {
+	secrets, err := client.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("owner=helm,name=%s,status=uninstalling", releaseName),
+		Limit:         1,
+	})
+	if err != nil {
+		return false, err
+	}
+	return len(secrets.Items) > 0, nil
 }

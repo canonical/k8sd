@@ -18,6 +18,7 @@ import (
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
+	releasecommon "helm.sh/helm/v4/pkg/release/common"
 	releasev1 "helm.sh/helm/v4/pkg/release/v1"
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -618,6 +619,106 @@ func TestApplyDNS_RealHelmClient_DriftedServiceRecovery(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(ip).To(Equal(allocatedIP))
 	g.Expect(status.Enabled).To(BeTrue())
+}
+
+func TestApplyDNS_IncompleteUninstallRecovery(t *testing.T) {
+	t.Run("RealHelmClient_RetriesAfterInterruptedUninstallingState", func(t *testing.T) {
+		g := NewWithT(t)
+		coredns.ResetObservedRecoveryLeases()
+		t.Cleanup(coredns.ResetObservedRecoveryLeases)
+
+		baseDir := t.TempDir()
+		writeTestCoreDNSChart(t, baseDir, "1.47.0")
+
+		helmClient, store := helmtest.NewMemoryClient(baseDir, "kube-system")
+		allocatedIP := "10.152.183.211"
+		corednsService := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "coredns", Namespace: "kube-system"},
+			Spec:       corev1.ServiceSpec{ClusterIP: allocatedIP},
+		}
+		clientset := fake.NewSimpleClientset(corednsService)
+		snapM := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient:       helmClient,
+				KubernetesClient: &kubernetes.Client{Interface: clientset},
+			},
+		}
+
+		dns := types.DNS{Enabled: ptr.To(true)}
+		_, _, err := coredns.ApplyDNS(t.Context(), snapM, dns, types.Kubelet{}, nil)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		// Simulate a prior recovery uninstall failing mid-way and leaving the release in StatusUninstalling.
+		rel, err := store.Last(coredns.Chart.Name)
+		g.Expect(err).NotTo(HaveOccurred())
+		relObj := rel.(*releasev1.Release)
+		relObj.Info.Status = releasecommon.StatusUninstalling
+		g.Expect(store.Update(relObj)).To(Succeed())
+
+		status, ip, err := coredns.ApplyDNS(
+			t.Context(),
+			snapM,
+			dns,
+			types.Kubelet{ClusterDNS: ptr.To(allocatedIP)},
+			nil,
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(ip).To(Equal(allocatedIP))
+		g.Expect(status.Enabled).To(BeTrue())
+
+		rel, err = store.Last(coredns.Chart.Name)
+		g.Expect(err).NotTo(HaveOccurred())
+		recovered := rel.(*releasev1.Release)
+		g.Expect(recovered.Info.Status).To(Equal(releasecommon.StatusDeployed))
+		g.Expect(recovered.Version).To(Equal(1))
+	})
+
+	t.Run("ProactivelyFinishesDeletionWhenUninstallingSecretPresent", func(t *testing.T) {
+		g := NewWithT(t)
+		coredns.ResetObservedRecoveryLeases()
+		t.Cleanup(coredns.ResetObservedRecoveryLeases)
+
+		allocatedIP := "10.152.183.211"
+		helmM := &helmmock.Mock{
+			GetDeployedConfigDeployed: false,
+		}
+		uninstallingSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sh.helm.release.v1.ck-dns.v1",
+				Namespace: "kube-system",
+				Labels: map[string]string{
+					"owner":  "helm",
+					"name":   coredns.Chart.Name,
+					"status": string(releasecommon.StatusUninstalling),
+				},
+			},
+		}
+		corednsService := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: "coredns", Namespace: "kube-system"},
+			Spec:       corev1.ServiceSpec{ClusterIP: allocatedIP},
+		}
+		clientset := fake.NewSimpleClientset(uninstallingSecret, corednsService)
+		snapM := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient:       helmM,
+				KubernetesClient: &kubernetes.Client{Interface: clientset},
+			},
+		}
+
+		status, ip, err := coredns.ApplyDNS(
+			t.Context(),
+			snapM,
+			types.DNS{Enabled: ptr.To(true)},
+			types.Kubelet{ClusterDNS: ptr.To(allocatedIP)},
+			nil,
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(ip).To(Equal(allocatedIP))
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
+		g.Expect(helmM.ApplyCalledWith[0].State).To(Equal(helm.StateDeleted))
+		g.Expect(helmM.ApplyCalledWith[1].State).To(Equal(helm.StatePresent))
+	})
 }
 
 func TestApplyDNS_ConcurrentPeerAlreadyRepairedService_SkipsUninstall(t *testing.T) {
