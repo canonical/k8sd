@@ -108,3 +108,33 @@ func TestGetAllIPsFromInterface(t *testing.T) {
 		})
 	}
 }
+
+func TestEqualIP(t *testing.T) {
+	testCases := []struct {
+		name     string
+		ip1      string
+		ip2      string
+		expected bool
+	}{
+		{name: "both empty", ip1: "", ip2: "", expected: true},
+		{name: "one empty", ip1: "10.0.0.1", ip2: "", expected: false},
+		{name: "ipv4 identical", ip1: "10.152.183.211", ip2: "10.152.183.211", expected: true},
+		{name: "ipv4 different", ip1: "10.152.183.211", ip2: "10.152.183.212", expected: false},
+		{name: "ipv6 canonical match uppercase lowercase", ip1: "FD00::53", ip2: "fd00::53", expected: true},
+		{name: "ipv6 canonical match expanded vs compressed", ip1: "fd00:0000:0000:0000:0000:0000:0000:0053", ip2: "fd00::53", expected: true},
+		{name: "ipv6 different", ip1: "fd00::53", ip2: "fd00::54", expected: false},
+		{name: "ipv4 vs ipv6", ip1: "10.0.0.1", ip2: "::1", expected: false},
+		{name: "ipv4-mapped ipv6 vs ipv4 match", ip1: "::ffff:10.152.183.211", ip2: "10.152.183.211", expected: true},
+		{name: "ipv4 vs ipv4-mapped ipv6 match", ip1: "10.152.183.211", ip2: "::FFFF:10.152.183.211", expected: true},
+		{name: "ipv4-mapped ipv6 vs ipv4 different", ip1: "::ffff:10.152.183.211", ip2: "10.152.183.212", expected: false},
+		{name: "invalid non-ip strings equal", ip1: "not-an-ip", ip2: "not-an-ip", expected: true},
+		{name: "invalid non-ip strings different", ip1: "not-an-ip-1", ip2: "not-an-ip-2", expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := NewWithT(t)
+			g.Expect(EqualIP(tc.ip1, tc.ip2)).To(Equal(tc.expected))
+		})
+	}
+}

@@ -8,7 +8,9 @@ import (
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/snap"
+	"github.com/canonical/k8sd/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
@@ -58,15 +60,24 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		}, "", nil
 	}
 
+	serviceValues := map[string]any{
+		"name":      "coredns",
+		"clusterIP": kubelet.GetClusterDNS(),
+	}
+	if err := keepDeployedDynamicClusterIP(ctx, snap, m, kubelet.GetClusterDNS(), serviceValues); err != nil {
+		return types.FeatureStatus{
+			Enabled: false,
+			Version: ImageTag,
+			Message: fmt.Sprintf(deployFailedMsgTmpl, err),
+		}, "", err
+	}
+
 	values := map[string]any{
 		"image": map[string]any{
 			"repository": imageRepo,
 			"tag":        ImageTag,
 		},
-		"service": map[string]any{
-			"name":      "coredns",
-			"clusterIP": kubelet.GetClusterDNS(),
-		},
+		"service": serviceValues,
 		"serviceAccount": map[string]any{
 			"create": true,
 			"name":   "coredns",
@@ -233,4 +244,56 @@ func ApplyDNS(ctx context.Context, snap snap.Snap, dns types.DNS, kubelet types.
 		Version: ImageTag,
 		Message: fmt.Sprintf(enabledMsgTmpl, dnsIP),
 	}, dnsIP, err
+}
+
+// keepDeployedDynamicClusterIP keeps a dynamic (empty) deployed clusterIP if the live Service already
+// has the desired address, avoiding an upgrade that only pins it.
+func keepDeployedDynamicClusterIP(ctx context.Context, snap snap.Snap, m helm.Client, clusterIP string, serviceValues map[string]any) error {
+	if clusterIP == "" {
+		return nil
+	}
+
+	deployedConfig, deployed, err := m.GetDeployedConfig(ctx, Chart)
+	if err != nil {
+		return fmt.Errorf("failed to get deployed release config: %w", err)
+	}
+	if !deployed {
+		return nil
+	}
+	deployedService, ok := deployedConfig["service"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	deployedIP, hasDeployedIP := deployedService["clusterIP"]
+	switch ip := deployedIP.(type) {
+	case nil:
+	case string:
+		if ip != "" {
+			return nil
+		}
+	default:
+		return nil
+	}
+
+	client, err := snap.KubernetesClient("")
+	if err != nil {
+		return fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+	liveIP, err := client.GetServiceClusterIP(ctx, "coredns", Chart.Namespace)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to retrieve the coredns service: %w", err)
+	}
+	if !utils.EqualIP(liveIP, clusterIP) {
+		return nil
+	}
+
+	if hasDeployedIP {
+		serviceValues["clusterIP"] = deployedIP
+	} else {
+		delete(serviceValues, "clusterIP")
+	}
+	return nil
 }

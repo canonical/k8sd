@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"slices"
 	"syscall"
 )
@@ -19,6 +20,19 @@ func IsLocalPortOpen(port string) (bool, error) {
 		l.Close()
 		return true, nil
 	}
+}
+
+// EqualIP compares two IP addresses canonically, falling back to string equality if parsing fails.
+func EqualIP(ip1, ip2 string) bool {
+	if ip1 == ip2 {
+		return true
+	}
+	a, err1 := netip.ParseAddr(ip1)
+	b, err2 := netip.ParseAddr(ip2)
+	if err1 == nil && err2 == nil {
+		return a.Unmap() == b.Unmap()
+	}
+	return false
 }
 
 // GetIPv46Addresses returns an IPv4 and IPv6 pair if possible, from the local network interface which has the
