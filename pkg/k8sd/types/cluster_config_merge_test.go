@@ -298,6 +298,30 @@ func TestMergeClusterConfig_Scenarios(t *testing.T) {
 			},
 		},
 		{
+			name: "Kubelet/AllowSetClusterDNS/IfDNSEnabledAndClusterDNSExplicitEmptyString",
+			old: types.ClusterConfig{
+				DNS: types.DNS{
+					Enabled: utils.Pointer(true),
+				},
+				Kubelet: types.Kubelet{
+					ClusterDNS: utils.Pointer(""),
+				},
+			},
+			new: types.ClusterConfig{
+				Kubelet: types.Kubelet{
+					ClusterDNS: utils.Pointer("10.152.183.20"),
+				},
+			},
+			expectMerged: types.ClusterConfig{
+				DNS: types.DNS{
+					Enabled: utils.Pointer(true),
+				},
+				Kubelet: types.Kubelet{
+					ClusterDNS: utils.Pointer("10.152.183.20"),
+				},
+			},
+		},
+		{
 			name: "Kubelet/RejectEnableDNSWithExternalClusterDNS",
 			old: types.ClusterConfig{
 				Kubelet: types.Kubelet{
