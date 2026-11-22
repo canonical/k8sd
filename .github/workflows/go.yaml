@@ -17,7 +17,7 @@ jobs:
       pull-requests: write  # for marocchino/sticky-pull-request-comment to create or update PR comment
       checks: write # for golangci/golangci-lint-action to checks to allow the action to annotate code in the PR.
     name: Unit Tests & Code Quality
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Check out code
@@ -73,7 +73,7 @@ jobs:
 
   test-binary:
     name: Binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Check out code
