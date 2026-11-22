@@ -30,6 +30,8 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
+	"k8s.io/client-go/util/retry"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // onPostJoin is called when a control plane node joins the cluster.
@@ -572,17 +574,46 @@ func initiateRollingUpgrade(ctx context.Context, snap snap.Snap, s mctypes.State
 	}
 
 	versionData := version.Info{Revision: rev, KubernetesVersion: thisNodeVersion}
-	newUpgrade := upgradesv1alpha.NewUpgrade(upgradepkg.GetName(versionData))
-	if err := k8sClient.Create(ctx, newUpgrade); err != nil {
-		return fmt.Errorf("failed to create upgrade: %w", err)
+	upgradeName := upgradepkg.GetName(versionData)
+
+	upgrade := upgradesv1alpha.NewUpgrade(upgradeName)
+	if err := k8sClient.CreateOrGetUpgrade(ctx, upgrade); err != nil {
+		return fmt.Errorf("failed to create or get upgrade: %w", err)
 	}
 
-	status := upgradesv1alpha.UpgradeStatus{
-		UpgradedNodes: []string{s.Name()},
-		Phase:         upgradesv1alpha.UpgradePhaseNodeUpgrade,
-		Strategy:      strategy,
-	}
-	if err := k8sClient.PatchUpgradeStatus(ctx, newUpgrade, status); err != nil {
+	targetName := upgrade.Name
+	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err := k8sClient.Get(ctx, ctrlclient.ObjectKey{Name: targetName}, upgrade); err != nil {
+			return fmt.Errorf("failed to get upgrade %q: %w", targetName, err)
+		}
+
+		var upgradedNodes []string
+		phase := upgradesv1alpha.UpgradePhaseNodeUpgrade
+		upgradeStrategy := strategy
+		if upgrade.Status.Phase != upgradesv1alpha.UpgradePhaseCompleted && upgrade.Status.Phase != upgradesv1alpha.UpgradePhaseFailed {
+			upgradedNodes = upgrade.Status.UpgradedNodes
+			if upgrade.Status.Phase != "" {
+				phase = upgrade.Status.Phase
+			}
+			if upgrade.Status.Strategy != "" {
+				upgradeStrategy = upgrade.Status.Strategy
+			}
+		}
+		if !slices.Contains(upgradedNodes, s.Name()) {
+			upgradedNodes = append(upgradedNodes, s.Name())
+		}
+
+		status := upgradesv1alpha.UpgradeStatus{
+			UpgradedNodes: upgradedNodes,
+			Phase:         phase,
+			Strategy:      upgradeStrategy,
+		}
+		if err := k8sClient.PatchUpgradeStatus(ctx, upgrade, status); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to patch upgrade status: %w", err)
 	}
 
@@ -612,11 +643,16 @@ func handleUpgradeInProgress(ctx context.Context, s mctypes.State, k8sClient *ku
 	}
 
 	log.Info("Marking node as upgraded", "node", nodeName)
-	status := upgrade.Status
-	if !slices.Contains(status.UpgradedNodes, nodeName) {
-		status.UpgradedNodes = append(status.UpgradedNodes, nodeName)
-	}
-	return k8sClient.PatchUpgradeStatus(ctx, upgrade, status)
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err := k8sClient.Get(ctx, ctrlclient.ObjectKey{Name: upgrade.Name}, upgrade); err != nil {
+			return fmt.Errorf("failed to get upgrade: %w", err)
+		}
+		status := upgrade.Status
+		if !slices.Contains(status.UpgradedNodes, nodeName) {
+			status.UpgradedNodes = append(status.UpgradedNodes, nodeName)
+		}
+		return k8sClient.PatchUpgradeStatus(ctx, upgrade, status)
+	})
 }
 
 // lowestHighestK8sVersions returns the lowest and highest Kubernetes versions from the given map.
