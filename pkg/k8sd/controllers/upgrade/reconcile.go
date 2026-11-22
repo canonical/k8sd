@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -232,28 +233,36 @@ func (c *Controller) waitForFeatureReconciliations(ctx context.Context, log logr
 }
 
 func (c *Controller) transitionTo(ctx context.Context, upgrade *upgradesv1alpha.Upgrade, phase upgradesv1alpha.UpgradePhase) error {
-	p := ctrlclient.MergeFrom(upgrade.DeepCopy())
-	upgrade.Status.Phase = phase
-	if err := c.client.Status().Patch(ctx, upgrade, p); err != nil {
-		return fmt.Errorf("failed to patch: %w", err)
-	}
-	return nil
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err := c.client.Get(ctx, ctrlclient.ObjectKey{Name: upgrade.Name}, upgrade); err != nil {
+			return fmt.Errorf("failed to get upgrade: %w", err)
+		}
+		p := ctrlclient.MergeFromWithOptions(upgrade.DeepCopy(), ctrlclient.MergeFromWithOptimisticLock{})
+		upgrade.Status.Phase = phase
+		if err := c.client.Status().Patch(ctx, upgrade, p); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // addToUpgradedNodes adds the given node to the list of upgraded nodes in the upgrade resource.
 func (c *Controller) addToUpgradedNodes(ctx context.Context, upgrade *upgradesv1alpha.Upgrade, node *corev1.Node) error {
-	var p ctrlclient.Patch
-	if !slices.Contains(upgrade.Status.UpgradedNodes, node.Name) {
-		p = ctrlclient.MergeFrom(upgrade.DeepCopy())
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err := c.client.Get(ctx, ctrlclient.ObjectKey{Name: upgrade.Name}, upgrade); err != nil {
+			return fmt.Errorf("failed to get upgrade: %w", err)
+		}
+		if slices.Contains(upgrade.Status.UpgradedNodes, node.Name) {
+			c.logger.WithValues("node", node.Name, "upgrade", upgrade.Name).Info("Node already in upgraded nodes list, skipping.")
+			return nil
+		}
+		p := ctrlclient.MergeFromWithOptions(upgrade.DeepCopy(), ctrlclient.MergeFromWithOptimisticLock{})
 		upgrade.Status.UpgradedNodes = append(upgrade.Status.UpgradedNodes, node.Name)
-	} else {
-		c.logger.WithValues("node", node.Name, "upgrade", upgrade.Name).Info("Node already in upgraded nodes list, skipping.")
+		if err := c.client.Status().Patch(ctx, upgrade, p); err != nil {
+			return err
+		}
 		return nil
-	}
-	if err := c.client.Status().Patch(ctx, upgrade, p); err != nil {
-		return fmt.Errorf("failed to patch: %w", err)
-	}
-	return nil
+	})
 }
 
 func (c *Controller) triggerFeature(name types.FeatureName) error {
