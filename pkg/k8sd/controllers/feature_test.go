@@ -40,8 +40,9 @@ func TestFeatureController_DNS_Notify(t *testing.T) {
 			},
 		}
 
-		var notifiedIP atomic.Pointer[string]
-		notifyDNSChangedIP := func(ctx context.Context, ip string) error {
+		var notifiedPreviousIP, notifiedIP atomic.Pointer[string]
+		notifyDNSChangedIP := func(ctx context.Context, previousIP, ip string) error {
+			notifiedPreviousIP.Store(&previousIP)
 			notifiedIP.Store(&ip)
 			return nil
 		}
@@ -86,6 +87,8 @@ func TestFeatureController_DNS_Notify(t *testing.T) {
 
 		g.Expect(notifiedIP.Load()).NotTo(BeNil())
 		g.Expect(*notifiedIP.Load()).To(Equal(dnsIP), "notifyDNSChangedIP must be called when dnsIP is non-empty")
+		g.Expect(notifiedPreviousIP.Load()).NotTo(BeNil())
+		g.Expect(*notifiedPreviousIP.Load()).To(Equal(dnsIP))
 	})
 
 	t.Run("DoesNotNotifyWhenDNSIPIsEmpty", func(t *testing.T) {
@@ -98,7 +101,7 @@ func TestFeatureController_DNS_Notify(t *testing.T) {
 		}
 
 		var notifyCount atomic.Int32
-		notifyDNSChangedIP := func(ctx context.Context, dnsIP string) error {
+		notifyDNSChangedIP := func(ctx context.Context, previousIP, dnsIP string) error {
 			notifyCount.Add(1)
 			return nil
 		}

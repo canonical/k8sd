@@ -16,8 +16,29 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 		expectConfig types.ClusterConfig
 	}{
 		{
+			name: "DNSServiceIP",
+			bootstrap: apiv2.BootstrapConfig{
+				ClusterConfig: apiv2.UserFacingClusterConfig{
+					DNS: apiv2.DNSConfig{ServiceIP: utils.Pointer("10.152.183.10")},
+				},
+			},
+			expectConfig: types.ClusterConfig{
+				APIServer: types.APIServer{
+					AuthorizationMode: utils.Pointer("Node,RBAC"),
+				},
+				Datastore: types.Datastore{
+					Type: utils.Pointer("etcd"),
+				},
+				Kubelet: types.Kubelet{
+					ClusterDNS: utils.Pointer("10.152.183.10"),
+				},
+				DNS: types.DNS{ServiceIPPinned: utils.Pointer(true)},
+			},
+		},
+		{
 			name: "Nil",
 			expectConfig: types.ClusterConfig{
+				DNS: types.DNS{ServiceIPPinned: utils.Pointer(false)},
 				APIServer: types.APIServer{
 					AuthorizationMode: utils.Pointer("Node,RBAC"),
 				},
@@ -32,6 +53,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 				DisableRBAC: utils.Pointer(true),
 			},
 			expectConfig: types.ClusterConfig{
+				DNS: types.DNS{ServiceIPPinned: utils.Pointer(false)},
 				APIServer: types.APIServer{
 					AuthorizationMode: utils.Pointer("AlwaysAllow"),
 				},
@@ -46,6 +68,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 				DatastoreType: utils.Pointer(""),
 			},
 			expectConfig: types.ClusterConfig{
+				DNS: types.DNS{ServiceIPPinned: utils.Pointer(false)},
 				APIServer: types.APIServer{
 					AuthorizationMode: utils.Pointer("Node,RBAC"),
 				},
@@ -64,6 +87,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 				DatastoreClientKey:  utils.Pointer("KEY DATA"),
 			},
 			expectConfig: types.ClusterConfig{
+				DNS: types.DNS{ServiceIPPinned: utils.Pointer(false)},
 				APIServer: types.APIServer{
 					AuthorizationMode: utils.Pointer("Node,RBAC"),
 				},
@@ -84,6 +108,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 				EtcdPeerPort:  utils.Pointer(12380),
 			},
 			expectConfig: types.ClusterConfig{
+				DNS: types.DNS{ServiceIPPinned: utils.Pointer(false)},
 				APIServer: types.APIServer{
 					AuthorizationMode: utils.Pointer("Node,RBAC"),
 				},
@@ -160,7 +185,8 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 					KubeProxyEnabled: utils.Pointer(false),
 				},
 				DNS: types.DNS{
-					Enabled: utils.Pointer(true),
+					Enabled:         utils.Pointer(true),
+					ServiceIPPinned: utils.Pointer(false),
 				},
 				Ingress: types.Ingress{
 					Enabled: utils.Pointer(true),
@@ -193,6 +219,7 @@ func TestClusterConfigFromBootstrapConfig(t *testing.T) {
 				ControlPlaneTaints: []string{"node-role.kubernetes.io/control-plane:NoSchedule"},
 			},
 			expectConfig: types.ClusterConfig{
+				DNS: types.DNS{ServiceIPPinned: utils.Pointer(false)},
 				APIServer: types.APIServer{
 					AuthorizationMode: utils.Pointer("Node,RBAC"),
 				},

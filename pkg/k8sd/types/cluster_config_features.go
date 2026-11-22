@@ -3,6 +3,9 @@ package types
 type DNS struct {
 	Enabled             *bool     `json:"enabled,omitempty"`
 	UpstreamNameservers *[]string `json:"upstream-nameservers,omitempty"`
+	// ServiceIPPinned records whether Kubelet.ClusterDNS was chosen by the user. It is internal
+	// state, set at bootstrap and by MergeClusterConfig, and never exposed to users.
+	ServiceIPPinned *bool `json:"service-ip-pinned,omitempty"`
 }
 
 type Ingress struct {
@@ -47,6 +50,10 @@ type LocalStorage struct {
 func (c DNS) GetEnabled() bool                 { return getField(c.Enabled) }
 func (c DNS) GetUpstreamNameservers() []string { return getField(c.UpstreamNameservers) }
 func (c DNS) Empty() bool                      { return c == DNS{} }
+
+// GetServiceIPPinned reports whether the DNS service IP must be kept even if another Service
+// has taken it. Configs written before the field existed are treated as pinned.
+func (c DNS) GetServiceIPPinned() bool { return c.ServiceIPPinned == nil || *c.ServiceIPPinned }
 
 func (c Ingress) GetEnabled() bool             { return getField(c.Enabled) }
 func (c Ingress) GetDefaultTLSSecret() string  { return getField(c.DefaultTLSSecret) }

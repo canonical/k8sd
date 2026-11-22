@@ -2,6 +2,8 @@ package types
 
 import (
 	"fmt"
+
+	"github.com/canonical/k8sd/pkg/utils"
 )
 
 // MergeClusterConfig applies updates from non-empty values of the new ClusterConfig to an existing one.
@@ -127,6 +129,7 @@ func MergeClusterConfig(existing ClusterConfig, new ClusterConfig) (ClusterConfi
 		{name: "network kube-proxy-enabled", val: &config.Network.KubeProxyEnabled, old: existing.Network.KubeProxyEnabled, new: new.Network.KubeProxyEnabled, allowChange: true},
 		// DNS
 		{name: "DNS enabled", val: &config.DNS.Enabled, old: existing.DNS.Enabled, new: new.DNS.Enabled, allowChange: true},
+		{name: "DNS service IP pinned", val: &config.DNS.ServiceIPPinned, old: existing.DNS.ServiceIPPinned, new: new.DNS.ServiceIPPinned, allowChange: true},
 		// gateway
 		{name: "gateway enabled", val: &config.Gateway.Enabled, old: existing.Gateway.Enabled, new: new.Gateway.Enabled, allowChange: true},
 		// ingress
@@ -144,6 +147,17 @@ func MergeClusterConfig(existing ClusterConfig, new ClusterConfig) (ClusterConfi
 	} {
 		if *i.val, err = mergeField(i.old, i.new, i.allowChange); err != nil {
 			return ClusterConfig{}, fmt.Errorf("prevented update of %s: %w", i.name, err)
+		}
+	}
+
+	// Pin the DNS IP when explicitly set or changed, unpin when cleared, and leave unchanged
+	// when re-sending the stored IP so auto-assigned IPs remain unpinned.
+	if ip := new.Kubelet.ClusterDNS; ip != nil {
+		switch {
+		case *ip == "":
+			config.DNS.ServiceIPPinned = utils.Pointer(false)
+		case *ip != existing.Kubelet.GetClusterDNS():
+			config.DNS.ServiceIPPinned = utils.Pointer(true)
 		}
 	}
 

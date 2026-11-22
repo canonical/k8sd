@@ -145,7 +145,8 @@ func (c *FeatureController) Run(
 	ctx context.Context,
 	getClusterConfig func(context.Context) (types.ClusterConfig, error),
 	getState func() mctypes.State,
-	notifyDNSChangedIP func(ctx context.Context, dnsIP string) error,
+	// notifyDNSChangedIP records dnsIP as the DNS service IP, unless it changed from previousIP meanwhile.
+	notifyDNSChangedIP func(ctx context.Context, previousIP string, dnsIP string) error,
 	setFeatureStatus func(ctx context.Context, name types.FeatureName, featureStatus types.FeatureStatus) error,
 ) {
 	ctx = log.NewContext(ctx, log.FromContext(ctx).WithValues("controller", "feature"))
@@ -202,7 +203,7 @@ func (c *FeatureController) Run(
 		if err != nil {
 			return featureStatus, fmt.Errorf("failed to apply DNS configuration: %w", err)
 		} else if dnsIP != "" {
-			if err := notifyDNSChangedIP(ctx, dnsIP); err != nil {
+			if err := notifyDNSChangedIP(ctx, cfg.Kubelet.GetClusterDNS(), dnsIP); err != nil {
 				// we already have featureStatus.Message which contains wrapped error of the Apply<Feature>
 				// (or empty if no error occurs). we further wrap the error to add the DNS IP change error to the message
 				changeErr := fmt.Errorf("failed to update DNS IP address to %s: %w", dnsIP, err)
