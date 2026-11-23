@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"slices"
 	"strconv"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	. "github.com/onsi/gomega"
+	"golang.org/x/sys/unix"
 )
 
 func defaultMockStat(pid int) (byte, uint64, bool) {
@@ -632,6 +634,35 @@ func TestDefaultKillProcessTarget_RecycledPIDSkipped(t *testing.T) {
 	target := processTarget{pid: selfPid, startTime: 999999999}
 	err := defaultKillProcessTarget(target)
 	g.Expect(err).ToNot(HaveOccurred())
+}
+
+func TestDefaultKillProcessTarget_SeccompPidfdSendSignalFallsBackToKill(t *testing.T) {
+	g := NewWithT(t)
+
+	cmd := exec.Command("sleep", "30")
+	g.Expect(cmd.Start()).To(Succeed())
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	})
+	pid := cmd.Process.Pid
+	_, startTime, exists := defaultReadProcessStat(pid)
+	g.Expect(exists).To(BeTrue())
+
+	origSend := pidfdSendSignal
+	pidfdSendSignal = func(pidfd int, sig unix.Signal, info *unix.Siginfo, flags int) error {
+		return unix.EPERM
+	}
+	t.Cleanup(func() {
+		pidfdSendSignal = origSend
+	})
+
+	err := defaultKillProcessTarget(processTarget{pid: pid, startTime: startTime})
+	g.Expect(err).ToNot(HaveOccurred())
+	_ = cmd.Wait()
+	g.Expect(defaultIsProcessAlive(processTarget{pid: pid, startTime: startTime})).To(BeFalse())
 }
 
 func TestRemoveContainers_ReturnsNetworkNamespaces(t *testing.T) {
