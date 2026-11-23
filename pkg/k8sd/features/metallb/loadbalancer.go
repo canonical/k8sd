@@ -9,6 +9,7 @@ import (
 	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/client/helm"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
+	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	"gopkg.in/yaml.v2"
@@ -146,17 +147,14 @@ func ApplyLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.L
 
 	switch {
 	case loadbalancer.GetBGPMode():
-		msg := fmt.Sprintf(enabledMsgTmpl, "BGP")
-		if annotationActive {
-			msg = "enabled, BGP mode (alpha)"
-			if bothConfigsSet {
-				msg = "enabled, BGP mode (alpha) - warning: single-peer typed keys are ignored"
-			}
+		log := log.FromContext(ctx)
+		if bothConfigsSet {
+			log.Info("Warning: single-peer typed BGP keys are ignored because the bgp-peers annotation is set")
 		}
 		return types.FeatureStatus{
 			Enabled: true,
 			Version: ControllerImageTag,
-			Message: msg,
+			Message: fmt.Sprintf(enabledMsgTmpl, "BGP"),
 		}, nil
 	case loadbalancer.GetL2Mode():
 		return types.FeatureStatus{
