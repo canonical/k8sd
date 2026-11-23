@@ -125,7 +125,7 @@ func TestRunningContainerdShimPIDsDoesNotInvokeBash(t *testing.T) {
 	}
 
 	t.Setenv("PATH", dir)
-	if _, err := RunningContainerdShimPIDs(context.Background()); err != nil {
+	if _, err := RunningContainerdShimPIDs(context.Background(), false); err != nil {
 		t.Fatalf("expected direct ps execution to succeed without bash, got: %v", err)
 	}
 }
@@ -634,7 +634,7 @@ func TestRunningContainerdShimPIDs_LiveHost(t *testing.T) {
 	g := NewWithT(t)
 
 	// Verify RunningContainerdShimPIDs executes successfully against host processes without error.
-	_, err := RunningContainerdShimPIDs(context.Background())
+	_, err := RunningContainerdShimPIDs(context.Background(), false)
 	g.Expect(err).NotTo(HaveOccurred())
 }
 
@@ -680,7 +680,7 @@ func TestRunningContainerdShimPIDs_Controlled(t *testing.T) {
 		}
 	}
 
-	pids, err := RunningContainerdShimPIDs(context.Background())
+	pids, err := RunningContainerdShimPIDs(context.Background(), false)
 	g.Expect(err).NotTo(HaveOccurred())
 	// Post-order: descendant 30, child 20, parent shim 10. Unrelated microk8s 99 is excluded.
 	g.Expect(pids).To(Equal([]string{"30", "20", "10"}))
@@ -698,7 +698,7 @@ func TestRunningContainerdShimPIDs_Error(t *testing.T) {
 		return nil, errors.New("simulated ps failure")
 	}
 
-	_, err := RunningContainerdShimPIDs(context.Background())
+	_, err := RunningContainerdShimPIDs(context.Background(), false)
 	g.Expect(err).To(HaveOccurred())
 	g.Expect(err.Error()).To(ContainSubstring("failed to list running host processes"))
 }
@@ -800,7 +800,7 @@ wait "$snap_pid" "$spoof_pid" || true
 		g.Expect(exeTarget).To(Equal("/bin/containerd-shim-runc-v2"))
 	}
 
-	pids, err := RunningContainerdShimPIDs(t.Context())
+	pids, err := RunningContainerdShimPIDs(t.Context(), false)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(pids).To(ContainElement(snapPID))
 	g.Expect(pids).NotTo(ContainElement(spoofPID))
@@ -813,4 +813,28 @@ func mustAtoi(t *testing.T, s string) int {
 		t.Fatalf("invalid pid %q: %v", s, err)
 	}
 	return n
+}
+
+func TestRunningContainerdShimPIDsStrict(t *testing.T) {
+	g := NewWithT(t)
+	origProcDir := procDir
+	procDir = t.TempDir()
+	t.Cleanup(func() { procDir = origProcDir })
+
+	writeProc := func(pid, ppid, label, cmdline string) {
+		dir := filepath.Join(procDir, pid)
+		g.Expect(os.MkdirAll(filepath.Join(dir, "attr"), 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(dir, "stat"), []byte(fmt.Sprintf("%s (comm) S %s 1 1\n", pid, ppid)), 0o644)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(dir, "attr", "current"), []byte(label+" (enforce)\n"), 0o644)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(dir, "cmdline"), []byte(strings.ReplaceAll(cmdline, " ", "\x00")+"\x00"), 0o644)).To(Succeed())
+	}
+	writeProc("400", "1", "snap.k8s.containerd", "/snap/k8s/x1/bin/containerd-shim-runc-v2 -namespace k8s.io -id abc")
+	writeProc("401", "400", "cri-containerd.apparmor.d", "/pause")
+	// A pod spoofing the shim command line must be ignored.
+	writeProc("500", "1", "cri-containerd.apparmor.d", "/snap/k8s/x1/bin/containerd-shim-runc-v2 -namespace k8s.io -id bad")
+	writeProc("501", "500", "cri-containerd.apparmor.d", "/pause")
+
+	pids, err := RunningContainerdShimPIDs(t.Context(), true)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(pids).To(Equal([]string{"401", "400"}))
 }

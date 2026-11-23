@@ -106,10 +106,10 @@ func defaultKillProcessTarget(target processTarget) error {
 
 // RemoveContainers kills the k8s snap's container processes, waits for them to exit and returns
 // the network namespaces they were running in.
-func RemoveContainers(ctx context.Context) NetworkNamespaces {
+func RemoveContainers(ctx context.Context, strict bool) NetworkNamespaces {
 	return removeContainers(
 		ctx,
-		runningContainerdShimPIDs,
+		func(ctx context.Context) ([]string, error) { return runningContainerdShimPIDs(ctx, strict) },
 		killProcessTarget,
 		isProcessAlive,
 		readProcStat,

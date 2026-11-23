@@ -568,7 +568,7 @@ func TestRemoveContainers_PublicEntryPoint(t *testing.T) {
 	var calls int
 	var killed []int
 
-	runningContainerdShimPIDs = func(ctx context.Context) ([]string, error) {
+	runningContainerdShimPIDs = func(ctx context.Context, strict bool) ([]string, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		calls++
@@ -594,7 +594,7 @@ func TestRemoveContainers_PublicEntryPoint(t *testing.T) {
 	containersPollInterval = 10 * time.Millisecond
 	containersMaxWaitTimeout = 1 * time.Second
 
-	RemoveContainers(context.Background())
+	RemoveContainers(context.Background(), false)
 
 	mu.Lock()
 	defer mu.Unlock()

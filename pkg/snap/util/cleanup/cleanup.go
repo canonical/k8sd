@@ -20,7 +20,7 @@ func TryCleanupContainers(ctx context.Context, s snap.Snap) {
 	mountHelper := mountutils.NewUnixMountHelper()
 	netnsHelper := netnsutils.NewUnixNetworkNSHelper()
 
-	ownedNetns := internal.RemoveContainers(ctx)
+	ownedNetns := internal.RemoveContainers(ctx, s.Strict())
 	internal.RemoveNetworkNamespaces(ctx, netnsHelper, ownedNetns)
 
 	sidsToLogout := internal.GetISCSISessionsToLogout(ctx, s, mountHelper)
