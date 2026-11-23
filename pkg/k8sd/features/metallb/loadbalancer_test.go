@@ -798,7 +798,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
-		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha)"))
+		g.Expect(status.Message).To(Equal("enabled, BGP mode"))
 
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 		bgp := helmM.ApplyCalledWith[1].Values["bgp"].(map[string]any)
@@ -835,7 +835,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
-		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha) - warning: single-peer typed keys are ignored"))
+		g.Expect(status.Message).To(Equal("enabled, BGP mode"))
 
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 		lbValues := helmM.ApplyCalledWith[1].Values
@@ -940,7 +940,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
-		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha)"))
+		g.Expect(status.Message).To(Equal("enabled, BGP mode"))
 
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 		lbValues := helmM.ApplyCalledWith[1].Values
@@ -972,7 +972,7 @@ func TestApplyLoadBalancerWithAnnotations(t *testing.T) {
 
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(status.Enabled).To(BeTrue())
-		g.Expect(status.Message).To(Equal("enabled, BGP mode (alpha), frr-k8s backend"))
+		g.Expect(status.Message).To(Equal("enabled, BGP mode"))
 
 		g.Expect(helmM.ApplyCalledWith).To(HaveLen(2))
 
