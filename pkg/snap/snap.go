@@ -151,6 +151,14 @@ func (s *snap) StartServices(ctx context.Context, names []string, extraSnapArgs 
 			return fmt.Errorf("unsupported snap start argument %q", arg)
 		}
 	}
+	if s.Strict() {
+		cmd := []string{"snapctl", "start"}
+		if opts.Enable {
+			cmd = append(cmd, "--enable")
+		}
+		cmd = append(cmd, qualifyServiceNames(names)...)
+		return s.runHostCommand(ctx, cmd)
+	}
 
 	client, err := s.newSnapdClient()
 	if err != nil {
@@ -182,6 +190,14 @@ func (s *snap) StopServices(ctx context.Context, names []string, extraSnapArgs .
 		default:
 			return fmt.Errorf("unsupported snap stop argument %q", arg)
 		}
+	}
+	if s.Strict() {
+		cmd := []string{"snapctl", "stop"}
+		if opts.Disable {
+			cmd = append(cmd, "--disable")
+		}
+		cmd = append(cmd, qualifyServiceNames(names)...)
+		return s.runHostCommand(ctx, cmd)
 	}
 
 	client, err := s.newSnapdClient()
@@ -217,6 +233,14 @@ func (s *snap) RestartServices(ctx context.Context, names []string, extraSnapArg
 		default:
 			return fmt.Errorf("unsupported snap restart argument %q", arg)
 		}
+	}
+	if s.Strict() {
+		cmd := []string{"snapctl", "restart"}
+		if opts.Reload {
+			cmd = append(cmd, "--reload")
+		}
+		cmd = append(cmd, qualifyServiceNames(names)...)
+		return s.runHostCommand(ctx, cmd)
 	}
 
 	client, err := s.newSnapdClient()
