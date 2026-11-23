@@ -67,6 +67,10 @@ func kubelet(snap snap.Snap, hostname string, nodeIPs []net.IP, clusterDNS strin
 		"--tls-private-key-file":         filepath.Join(snap.KubernetesPKIDir(), "kubelet.key"),
 	}
 
+	if snap.Strict() {
+		args["--volume-plugin-dir"] = filepath.Join(snap.KubeletRootDir(), "volumeplugins")
+	}
+
 	if hostname != snap.Hostname() {
 		args["--hostname-override"] = hostname
 	}

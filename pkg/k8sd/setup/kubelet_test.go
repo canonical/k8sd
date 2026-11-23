@@ -428,4 +428,19 @@ func TestKubelet(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("StrictVolumePluginDir", func(t *testing.T) {
+		g := NewWithT(t)
+
+		s := mustSetupSnapAndDirectories(t, func(s *mock.Snap, dir string) {
+			setKubeletMock(s, dir)
+			s.Mock.Strict = true
+		})
+
+		g.Expect(setup.KubeletControlPlane(s, "dev", []net.IP{net.ParseIP("192.168.0.1")}, "10.152.1.1", "test-cluster.local", "provider", nil, nil)).To(Succeed())
+
+		val, err := snaputil.GetServiceArgument(s, "kubelet", "--volume-plugin-dir")
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(val).To(Equal(filepath.Join(s.Mock.KubeletRootDir, "volumeplugins")))
+	})
 }
