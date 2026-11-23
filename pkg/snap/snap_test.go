@@ -157,6 +157,31 @@ func TestSnap(t *testing.T) {
 		})
 	})
 
+	t.Run("CNIBinDir", func(t *testing.T) {
+		t.Run("Classic", func(t *testing.T) {
+			g := NewWithT(t)
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapDir:       "testdir",
+				SnapCommonDir: "testdir",
+			})
+			g.Expect(s.CNIBinDir()).To(Equal("/opt/cni/bin"))
+		})
+
+		t.Run("Strict", func(t *testing.T) {
+			g := NewWithT(t)
+			tmpDir := t.TempDir()
+			g.Expect(os.MkdirAll(filepath.Join(tmpDir, "meta"), 0o755)).To(Succeed())
+			g.Expect(os.WriteFile(filepath.Join(tmpDir, "meta", "snap.yaml"), []byte("confinement: strict\n"), 0o644)).To(Succeed())
+
+			commonDir := filepath.Join(tmpDir, "common")
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapDir:       tmpDir,
+				SnapCommonDir: commonDir,
+			})
+			g.Expect(s.CNIBinDir()).To(Equal(filepath.Join(commonDir, "opt", "cni", "bin")))
+		})
+	})
+
 	t.Run("Start", func(t *testing.T) {
 		g := NewWithT(t)
 		sockPath, srv := startFakeSnapdSocket(t)

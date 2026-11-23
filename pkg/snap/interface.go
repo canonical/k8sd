@@ -37,7 +37,7 @@ type Snap interface {
 	SystemMinConfig() map[string]string // system limits: fs.inotify parameters
 
 	CNIConfDir() string       // /etc/cni/net.d
-	CNIBinDir() string        // /opt/cni/bin
+	CNIBinDir() string        // classic confinement: /opt/cni/bin, strict confinement: /var/snap/k8s/common/opt/cni/bin
 	CNIPluginsBinary() string // /snap/k8s/current/bin/cni
 	CNIPlugins() []string     // cni plugins built into the cni binary
 

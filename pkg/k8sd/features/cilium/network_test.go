@@ -594,6 +594,7 @@ func validateNetworkValues(g Gomega, values map[string]any, network types.Networ
 	_, exists = annotations.Get(apiv1_annotations.AnnotationCNIExclusive)
 	cniValues := values["cni"].(map[string]interface{})
 	g.Expect(cniValues["exclusive"]).To(Equal(exists))
+	g.Expect(cniValues["binPath"]).To(Equal(snap.CNIBinDir()))
 
 	_, exists = annotations.Get(apiv1_annotations.AnnotationSCTPEnabled)
 	sctpValues := values["sctp"].(map[string]interface{})
