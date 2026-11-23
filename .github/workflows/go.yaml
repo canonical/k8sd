@@ -17,7 +17,7 @@ jobs:
       pull-requests: write  # for marocchino/sticky-pull-request-comment to create or update PR comment
       checks: write # for golangci/golangci-lint-action to checks to allow the action to annotate code in the PR.
     name: Unit Tests & Code Quality
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out code
@@ -59,7 +59,12 @@ jobs:
 
       - name: dqlite-for-golangci-lint
         run: |
-          sudo add-apt-repository ppa:dqlite/dev
+          sudo add-apt-repository -y ppa:dqlite/dev
+          # ppa:dqlite/dev doesn't publish for every new Ubuntu codename
+          # right away (404 on e.g. 26.04's "resolute" today); fall back
+          # to noble, an LTS it does publish for, instead of whatever
+          # codename this runner resolves to.
+          sudo sed -i "s/$(lsb_release -cs)/noble/" /etc/apt/sources.list.d/*dqlite*
           sudo apt update
           sudo apt install dqlite-tools-v2 libdqlite1.17-dev -y
 
@@ -73,7 +78,7 @@ jobs:
 
   test-binary:
     name: Binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out code
