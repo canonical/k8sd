@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // ServiceArgsFromMap processes a map of string pointers and categorizes them into update and delete lists.
@@ -27,13 +29,25 @@ func ServiceArgsFromMap(args map[string]*string) (map[string]string, []string) {
 	return updateArgs, deleteArgs
 }
 
-var ErrUnitNotRunning = errors.New("unit is not running")
+var (
+	ErrUnitNotRunning = errors.New("unit is not running")
+
+	procDir = "/proc"
+)
 
 // RunningServiceArgs queries systemd for the MainPID of the snap service unit
 // and returns its parsed command-line arguments from /proc/<pid>/cmdline.
 // Returns nil, nil when the service is not running.
-func RunningServiceArgs(ctx context.Context, serviceName string) (map[string]string, error) {
+// Under strict confinement systemd is unreachable, so the process is looked up in /proc instead.
+func RunningServiceArgs(ctx context.Context, serviceName string, strict bool) (map[string]string, error) {
 	unitName := fmt.Sprintf("snap.k8s.%s.service", serviceName)
+	if strict {
+		pid, err := confinedServicePID(serviceName)
+		if err != nil {
+			return nil, err
+		}
+		return processArgs(unitName, pid)
+	}
 
 	// unit not found:
 	// LoadState=not-found
@@ -83,8 +97,11 @@ func RunningServiceArgs(ctx context.Context, serviceName string) (map[string]str
 		// we checked the load and active states.
 		return nil, fmt.Errorf("pid is 0 for unit %q: %w", unitName, ErrUnitNotRunning)
 	}
+	return processArgs(unitName, pid)
+}
 
-	cmdlineData, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+func processArgs(unitName string, pid int) (map[string]string, error) {
+	cmdlineData, err := os.ReadFile(filepath.Join(procDir, strconv.Itoa(pid), "cmdline"))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			// this branch is the similar to pid == 0. it shouldn't really happen, unless due to a race condition.
@@ -104,6 +121,55 @@ func RunningServiceArgs(ctx context.Context, serviceName string) (map[string]str
 		}
 	}
 	return args, nil
+}
+
+// confinedServicePID returns the pid of the snap service process running under
+// its snap.k8s.<service> AppArmor profile.
+func confinedServicePID(serviceName string) (int, error) {
+	label := "snap.k8s." + serviceName
+	entries, err := os.ReadDir(procDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read %s: %w", procDir, err)
+	}
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		pidDir := filepath.Join(procDir, entry.Name())
+		if ProcessAppArmorLabel(pidDir) != label {
+			continue
+		}
+		// Child processes inherit the service profile, so also match the service binary.
+		cmdline, err := os.ReadFile(filepath.Join(pidDir, "cmdline"))
+		if err != nil {
+			continue
+		}
+		argv0, _, _ := bytes.Cut(cmdline, []byte{0})
+		if filepath.Base(string(argv0)) == serviceName {
+			return pid, nil
+		}
+	}
+	return 0, fmt.Errorf("no process confined by %q: %w", label, ErrUnitNotRunning)
+}
+
+// ProcessAppArmorLabel returns the AppArmor label of the process at pidDir, or ""
+// if it cannot be read. Only processes of the current user are inspected, as reading
+// another user's label needs CAP_SYS_PTRACE, which strict confinement denies.
+func ProcessAppArmorLabel(pidDir string) string {
+	info, err := os.Stat(pidDir)
+	if err != nil {
+		return ""
+	}
+	if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Getuid() {
+		return ""
+	}
+	raw, err := os.ReadFile(filepath.Join(pidDir, "attr", "current"))
+	if err != nil {
+		return ""
+	}
+	label, _, _ := strings.Cut(strings.TrimSpace(string(raw)), " ")
+	return label
 }
 
 type LoadState string

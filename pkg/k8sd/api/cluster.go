@@ -118,7 +118,7 @@ func (e *Endpoints) checkKubeletClusterDNS(ctx context.Context, client *kubernet
 		return errors.New("coredns does not have a cluster IP yet")
 	}
 
-	serviceArgs, err := utils.RunningServiceArgs(ctx, "kubelet")
+	serviceArgs, err := utils.RunningServiceArgs(ctx, "kubelet", e.provider.Snap().Strict())
 	if err != nil {
 		return fmt.Errorf("failed to get args for kubelet: %w", err)
 	}

@@ -43,7 +43,9 @@ type ServiceArgsController struct {
 // NewServiceArgsController creates a new ServiceArgsController.
 func NewServiceArgsController(opts ServiceArgsControllerOpts) *ServiceArgsController {
 	if opts.GetRunningArgs == nil {
-		opts.GetRunningArgs = utils.RunningServiceArgs
+		opts.GetRunningArgs = func(ctx context.Context, serviceName string) (map[string]string, error) {
+			return utils.RunningServiceArgs(ctx, serviceName, opts.Snap.Strict())
+		}
 	}
 	return &ServiceArgsController{
 		snap:           opts.Snap,
