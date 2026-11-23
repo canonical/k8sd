@@ -35,7 +35,7 @@ func newJoinClusterCmd(env cmdutil.ExecutionEnvironment) *cobra.Command {
 		Use:    "join-cluster <join-token>",
 		Short:  "Join a cluster using the provided token",
 		Long:   "Join a new node to an existing Kubernetes cluster using a join token obtained from a control plane node.",
-		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat), hookCheckLXD()),
+		PreRun: chainPreRunHooks(hookRequireRoot(env), hookInitializeFormatter(env, &opts.outputFormat), hookCheckLXD(env)),
 		Args:   cmdutil.ExactArgs(env, 1),
 		Run: func(cmd *cobra.Command, args []string) {
 			token := args[0]

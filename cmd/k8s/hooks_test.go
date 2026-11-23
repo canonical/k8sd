@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	cmdutil "github.com/canonical/k8sd/cmd/util"
+	"github.com/canonical/k8sd/pkg/snap/mock"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 )
@@ -60,10 +61,37 @@ func TestHookCheckLXDStderrNewline(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetErr(stderr)
 
-	hook := hookCheckLXDWith(func() (bool, error) {
+	env := cmdutil.ExecutionEnvironment{
+		Stderr: stderr,
+	}
+	hook := hookCheckLXDWith(env, func() (bool, error) {
 		return true, errors.New("permission denied")
 	})
 	hook(cmd, nil)
 
 	g.Expect(stderr.String()).To(Equal("Failed to check if running inside LXD container: permission denied\n"))
+}
+
+func TestHookCheckLXDStrictSkipped(t *testing.T) {
+	g := NewWithT(t)
+	stderr := &bytes.Buffer{}
+	cmd := &cobra.Command{}
+	cmd.SetErr(stderr)
+
+	mockSnap := &mock.Snap{
+		Mock: mock.Mock{Strict: true},
+	}
+	env := cmdutil.ExecutionEnvironment{
+		Stderr: stderr,
+		Snap:   mockSnap,
+	}
+	checked := false
+	hook := hookCheckLXDWith(env, func() (bool, error) {
+		checked = true
+		return true, nil
+	})
+	hook(cmd, nil)
+
+	g.Expect(checked).To(BeFalse())
+	g.Expect(stderr.String()).To(BeEmpty())
 }
