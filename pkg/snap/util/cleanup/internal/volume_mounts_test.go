@@ -178,3 +178,37 @@ func TestRemoveVolumeMountsForce(t *testing.T) {
 	g.Expect(recorder.unmounts["/var/lib/kubelet/plugins/vol1"]).To(Equal(unix.MNT_FORCE | unix.MNT_DETACH))
 	g.Expect(recorder.unmounts["/var/lib/containerd/vol2"]).To(Equal(unix.MNT_FORCE | unix.MNT_DETACH))
 }
+
+func TestRemoveVolumeMountsStrictUsesSnapCommonPaths(t *testing.T) {
+	ctx := context.Background()
+	g := NewWithT(t)
+
+	lockFilesDir := filepath.Join(t.TempDir(), "lockfiles")
+	g.Expect(os.MkdirAll(lockFilesDir, 0o755)).To(Succeed())
+
+	s := &mock.Snap{
+		Mock: mock.Mock{
+			Strict:              true,
+			ServiceArgumentsDir: "/var/snap/k8s/common/args",
+			LockFilesDir:        lockFilesDir,
+			ContainerdRootDir:   "/var/snap/k8s/common/var/lib/containerd",
+			ContainerdSocketDir: "/var/snap/k8s/common/run/containerd",
+		},
+	}
+
+	procMountsFile := filepath.Join(t.TempDir(), "mounts")
+	mountsContent := `
+tmpfs /var/snap/k8s/common/var/lib/kubelet/pods/abc/volumes/kubernetes.io~projected/tok tmpfs rw 0 0
+tmpfs /var/lib/kubelet/pods/abc/volumes/kubernetes.io~projected/tok tmpfs rw 0 0
+`
+	g.Expect(os.WriteFile(procMountsFile, []byte(mountsContent), 0o644)).To(Succeed())
+
+	recorder := &recordingMountManager{
+		MountManager: mountutils.NewMockMountHelper(procMountsFile),
+		unmounts:     make(map[string]int),
+	}
+
+	internal.RemoveVolumeMountsGracefully(ctx, s, recorder)
+	g.Expect(recorder.unmounts).To(HaveKeyWithValue("/var/snap/k8s/common/var/lib/kubelet/pods/abc/volumes/kubernetes.io~projected/tok", unix.MNT_DETACH))
+	g.Expect(recorder.unmounts).ToNot(HaveKey("/var/lib/kubelet/pods/abc/volumes/kubernetes.io~projected/tok"))
+}

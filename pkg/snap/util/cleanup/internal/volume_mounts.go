@@ -12,6 +12,16 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// kubeletMountDir returns the kubelet directory volume mounts are removed under. Under strict
+// confinement kubernetes-support only permits unmounting them through their $SNAP_COMMON path.
+func kubeletMountDir(s snap.Snap, subdir string) string {
+	if s.Strict() {
+		snapCommonDir := filepath.Dir(s.ServiceArgumentsDir())
+		return filepath.Join(snapCommonDir, "var", "lib", "kubelet", subdir)
+	}
+	return filepath.Join("/var/lib/kubelet", subdir)
+}
+
 func containerdMountPrefixes(ctx context.Context, s snap.Snap) []string {
 	paths := []string{}
 
@@ -34,7 +44,7 @@ func containerdMountPrefixes(ctx context.Context, s snap.Snap) []string {
 func RemoveVolumeMountsGracefully(ctx context.Context, s snap.Snap, mountHelper mountutils.MountManager) {
 	log := log.FromContext(ctx)
 
-	prefixes := []string{"/var/lib/kubelet/pods"}
+	prefixes := []string{kubeletMountDir(s, "pods")}
 	containerdPaths := containerdMountPrefixes(ctx, s)
 	prefixes = append(prefixes, containerdPaths...)
 	log.Info("Removing volume mounts", "prefixes", prefixes)
@@ -58,7 +68,7 @@ func RemoveVolumeMountsGracefully(ctx context.Context, s snap.Snap, mountHelper 
 func RemoveVolumeMountsForce(ctx context.Context, s snap.Snap, mountHelper mountutils.MountManager) {
 	log := log.FromContext(ctx)
 
-	prefixes := []string{"/var/lib/kubelet/pods", "/var/lib/kubelet/plugins"}
+	prefixes := []string{kubeletMountDir(s, "pods"), kubeletMountDir(s, "plugins")}
 	containerdPaths := containerdMountPrefixes(ctx, s)
 	prefixes = append(prefixes, containerdPaths...)
 	log.Info("Removing volume mounts", "prefixes", prefixes)
