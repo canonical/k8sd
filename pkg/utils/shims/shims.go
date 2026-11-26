@@ -1,16 +1,19 @@
 package shims
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/canonical/k8sd/pkg/utils"
 	"golang.org/x/sys/unix"
 )
 
@@ -28,16 +31,65 @@ var (
 	osStat        = os.Stat
 	statfsType    = unixStatfsType
 	listProcesses = listAllSystemProcesses
+	procDir       = "/proc"
 )
 
 // RunningContainerdShimPIDs returns a list of all the pids on the system that have been started by a containerd shim.
-func RunningContainerdShimPIDs(ctx context.Context) ([]string, error) {
+// Under strict confinement ps and /proc/<pid>/exe need ptrace, so shims are identified by their AppArmor label instead.
+func RunningContainerdShimPIDs(ctx context.Context, strict bool) ([]string, error) {
+	if strict {
+		procs, shimPIDs, err := listConfinedProcesses(procDir)
+		if err != nil {
+			return nil, err
+		}
+		return findAllChildren(shimPIDs, makeShallowChildPIDs(procs)), nil
+	}
+
 	procs, err := listProcesses(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list running host processes: %w", err)
 	}
 
 	return findAllChildren(findShimPIDs(procs), makeShallowChildPIDs(procs)), nil
+}
+
+// listConfinedProcesses returns the parent pid of every process in procRoot, and the
+// shims running under the k8s containerd AppArmor profile.
+func listConfinedProcesses(procRoot string) (map[string]processInfo, []string, error) {
+	entries, err := os.ReadDir(procRoot)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read %s: %w", procRoot, err)
+	}
+	procs := make(map[string]processInfo, len(entries))
+	var shimPIDs []string
+	for _, entry := range entries {
+		pid := entry.Name()
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		pidDir := filepath.Join(procRoot, pid)
+		stat, err := os.ReadFile(filepath.Join(pidDir, "stat"))
+		if err != nil {
+			continue
+		}
+		// The fields after the parenthesised comm are: state ppid ...
+		idx := bytes.LastIndexByte(stat, ')')
+		fields := strings.Fields(string(stat[idx+1:]))
+		if idx < 0 || len(fields) < 2 {
+			continue
+		}
+		procs[pid] = processInfo{parentPID: fields[1]}
+
+		if utils.ProcessAppArmorLabel(pidDir) != "snap.k8s.containerd" {
+			continue
+		}
+		cmdline, err := os.ReadFile(filepath.Join(pidDir, "cmdline"))
+		if err == nil && reBinaryCmd.Match(bytes.ReplaceAll(cmdline, []byte{0}, []byte{' '})) {
+			shimPIDs = append(shimPIDs, pid)
+		}
+	}
+	sortPIDs(shimPIDs)
+	return procs, shimPIDs, nil
 }
 
 type processInfo struct {

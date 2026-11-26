@@ -71,6 +71,8 @@ func defaultIsProcessAlive(target processTarget) bool {
 	return isTargetAlive(target, readProcStat)
 }
 
+var pidfdSendSignal = unix.PidfdSendSignal
+
 func defaultKillProcessTarget(target processTarget) error {
 	// Try Linux pidfd_open + pidfd_send_signal if available to bind the signal to the
 	// exact process instance, preventing races where a PID is reused before signal delivery.
@@ -84,16 +86,17 @@ func defaultKillProcessTarget(target processTarget) error {
 				return nil
 			}
 		}
-		if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil {
-			if errors.Is(err, unix.ESRCH) {
-				return nil
-			}
+		err = pidfdSendSignal(fd, unix.SIGKILL, nil, 0)
+		if err == nil || errors.Is(err, unix.ESRCH) {
+			return nil
+		}
+		// snapd's seccomp policy denies pidfd_send_signal with EPERM; fall back to kill(2).
+		if !errors.Is(err, unix.EPERM) {
 			return fmt.Errorf("failed to send SIGKILL via pidfd: %w", err)
 		}
-		return nil
 	}
 
-	// Fallback to process search and kill if pidfd_open is unsupported
+	// Fallback to process search and kill if pidfd is unsupported or denied
 	if !defaultIsProcessAlive(target) {
 		return nil
 	}
@@ -106,10 +109,10 @@ func defaultKillProcessTarget(target processTarget) error {
 
 // RemoveContainers kills the k8s snap's container processes, waits for them to exit and returns
 // the network namespaces they were running in.
-func RemoveContainers(ctx context.Context) NetworkNamespaces {
+func RemoveContainers(ctx context.Context, strict bool) NetworkNamespaces {
 	return removeContainers(
 		ctx,
-		runningContainerdShimPIDs,
+		func(ctx context.Context) ([]string, error) { return runningContainerdShimPIDs(ctx, strict) },
 		killProcessTarget,
 		isProcessAlive,
 		readProcStat,

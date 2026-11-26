@@ -157,6 +157,31 @@ func TestSnap(t *testing.T) {
 		})
 	})
 
+	t.Run("CNIBinDir", func(t *testing.T) {
+		t.Run("Classic", func(t *testing.T) {
+			g := NewWithT(t)
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapDir:       "testdir",
+				SnapCommonDir: "testdir",
+			})
+			g.Expect(s.CNIBinDir()).To(Equal("/opt/cni/bin"))
+		})
+
+		t.Run("Strict", func(t *testing.T) {
+			g := NewWithT(t)
+			tmpDir := t.TempDir()
+			g.Expect(os.MkdirAll(filepath.Join(tmpDir, "meta"), 0o755)).To(Succeed())
+			g.Expect(os.WriteFile(filepath.Join(tmpDir, "meta", "snap.yaml"), []byte("confinement: strict\n"), 0o644)).To(Succeed())
+
+			commonDir := filepath.Join(tmpDir, "common")
+			s := snap.NewSnap(snap.SnapOpts{
+				SnapDir:       tmpDir,
+				SnapCommonDir: commonDir,
+			})
+			g.Expect(s.CNIBinDir()).To(Equal(filepath.Join(commonDir, "opt", "cni", "bin")))
+		})
+	})
+
 	t.Run("Start", func(t *testing.T) {
 		g := NewWithT(t)
 		sockPath, srv := startFakeSnapdSocket(t)
@@ -181,6 +206,29 @@ func TestSnap(t *testing.T) {
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(srv.appCalls).To(HaveLen(1))
 		g.Expect(srv.changePolls).To(Equal(0))
+
+		t.Run("Strict", func(t *testing.T) {
+			g := NewWithT(t)
+			tmpDir := t.TempDir()
+			g.Expect(os.MkdirAll(filepath.Join(tmpDir, "meta"), 0o755)).To(Succeed())
+			g.Expect(os.WriteFile(filepath.Join(tmpDir, "meta", "snap.yaml"), []byte("confinement: strict\n"), 0o644)).To(Succeed())
+
+			mockRunner := &mock.Runner{}
+			strictSnap := snap.NewSnap(snap.SnapOpts{
+				SnapDir:       tmpDir,
+				SnapCommonDir: tmpDir,
+				RunCommand:    mockRunner.Run,
+			})
+
+			err := strictSnap.StartServices(context.Background(), []string{"test-service"})
+			g.Expect(err).To(Not(HaveOccurred()))
+			g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snapctl start --enable k8s.test-service"))
+
+			mockRunner.CalledWithCommand = nil
+			err = strictSnap.StartServices(context.Background(), []string{"test-service"}, "--no-wait")
+			g.Expect(err).To(Not(HaveOccurred()))
+			g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snapctl start --enable k8s.test-service"))
+		})
 
 		t.Run("Fail", func(t *testing.T) {
 			g := NewWithT(t)
@@ -215,6 +263,29 @@ func TestSnap(t *testing.T) {
 		g.Expect(srv.appCalls).To(HaveLen(1))
 		g.Expect(srv.changePolls).To(Equal(0))
 
+		t.Run("Strict", func(t *testing.T) {
+			g := NewWithT(t)
+			tmpDir := t.TempDir()
+			g.Expect(os.MkdirAll(filepath.Join(tmpDir, "meta"), 0o755)).To(Succeed())
+			g.Expect(os.WriteFile(filepath.Join(tmpDir, "meta", "snap.yaml"), []byte("confinement: strict\n"), 0o644)).To(Succeed())
+
+			mockRunner := &mock.Runner{}
+			strictSnap := snap.NewSnap(snap.SnapOpts{
+				SnapDir:       tmpDir,
+				SnapCommonDir: tmpDir,
+				RunCommand:    mockRunner.Run,
+			})
+
+			err := strictSnap.StopServices(context.Background(), []string{"test-service"})
+			g.Expect(err).To(Not(HaveOccurred()))
+			g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snapctl stop --disable k8s.test-service"))
+
+			mockRunner.CalledWithCommand = nil
+			err = strictSnap.StopServices(context.Background(), []string{"test-service"}, "--no-wait")
+			g.Expect(err).To(Not(HaveOccurred()))
+			g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snapctl stop --disable k8s.test-service"))
+		})
+
 		t.Run("Fail", func(t *testing.T) {
 			g := NewWithT(t)
 			srv.failApps = true
@@ -247,6 +318,34 @@ func TestSnap(t *testing.T) {
 		g.Expect(err).To(Not(HaveOccurred()))
 		g.Expect(srv.appCalls).To(HaveLen(1))
 		g.Expect(srv.changePolls).To(Equal(0))
+
+		t.Run("Strict", func(t *testing.T) {
+			g := NewWithT(t)
+			tmpDir := t.TempDir()
+			g.Expect(os.MkdirAll(filepath.Join(tmpDir, "meta"), 0o755)).To(Succeed())
+			g.Expect(os.WriteFile(filepath.Join(tmpDir, "meta", "snap.yaml"), []byte("confinement: strict\n"), 0o644)).To(Succeed())
+
+			mockRunner := &mock.Runner{}
+			strictSnap := snap.NewSnap(snap.SnapOpts{
+				SnapDir:       tmpDir,
+				SnapCommonDir: tmpDir,
+				RunCommand:    mockRunner.Run,
+			})
+
+			err := strictSnap.RestartServices(context.Background(), []string{"test-service"})
+			g.Expect(err).To(Not(HaveOccurred()))
+			g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snapctl restart k8s.test-service"))
+
+			mockRunner.CalledWithCommand = nil
+			err = strictSnap.RestartServices(context.Background(), []string{"test-service"}, "--reload")
+			g.Expect(err).To(Not(HaveOccurred()))
+			g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snapctl restart --reload k8s.test-service"))
+
+			mockRunner.CalledWithCommand = nil
+			err = strictSnap.RestartServices(context.Background(), []string{"test-service"}, "--reload", "--no-wait")
+			g.Expect(err).To(Not(HaveOccurred()))
+			g.Expect(mockRunner.CalledWithCommand).To(ConsistOf("snapctl restart --reload k8s.test-service"))
+		})
 
 		t.Run("Fail", func(t *testing.T) {
 			g := NewWithT(t)

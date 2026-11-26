@@ -3,7 +3,10 @@ package utils
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
@@ -159,9 +162,34 @@ func TestRunningServiceArgs(t *testing.T) {
 		// A completely unknown service name: LoadState=not-found.
 		// This is NOT wrapped in ErrUnitNotRunning — it's a different error class.
 		g := NewWithT(t)
-		_, err := RunningServiceArgs(ctx, "definitely-nonexistent-k8sd-test-unit")
+		_, err := RunningServiceArgs(ctx, "definitely-nonexistent-k8sd-test-unit", false)
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(errors.Is(err, ErrUnitNotRunning)).To(BeFalse())
 		g.Expect(err.Error()).To(ContainSubstring("was not found"))
 	})
+}
+
+func TestRunningServiceArgsStrict(t *testing.T) {
+	g := NewWithT(t)
+	oldProcDir := procDir
+	procDir = t.TempDir()
+	t.Cleanup(func() { procDir = oldProcDir })
+
+	writeProc := func(pid, label string, argv ...string) {
+		dir := filepath.Join(procDir, pid)
+		g.Expect(os.MkdirAll(filepath.Join(dir, "attr"), 0o755)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(dir, "attr", "current"), []byte(label+" (enforce)\n"), 0o644)).To(Succeed())
+		g.Expect(os.WriteFile(filepath.Join(dir, "cmdline"), []byte(strings.Join(argv, "\x00")+"\x00"), 0o644)).To(Succeed())
+	}
+	// A pod spoofing the kubelet command line and a child of kubelet must both be ignored.
+	writeProc("10", "cri-containerd.apparmor.d", "/snap/k8s/1/bin/kubelet", "--cluster-dns=1.1.1.1")
+	writeProc("11", "snap.k8s.kubelet", "/usr/sbin/iptables", "--cluster-dns=2.2.2.2")
+	writeProc("12", "snap.k8s.kubelet", "/snap/k8s/1/bin/kubelet", "--cluster-dns=10.152.183.10")
+
+	args, err := RunningServiceArgs(context.Background(), "kubelet", true)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(args).To(Equal(map[string]string{"--cluster-dns": "10.152.183.10"}))
+
+	_, err = RunningServiceArgs(context.Background(), "kube-proxy", true)
+	g.Expect(errors.Is(err, ErrUnitNotRunning)).To(BeTrue())
 }

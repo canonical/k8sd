@@ -37,12 +37,15 @@ func hookInitializeFormatter(env cmdutil.ExecutionEnvironment, format *string) f
 
 // hookCheckLXD verifies the ownership of directories needed for Kubernetes to function.
 // If a potential issue is detected, it displays a warning to the user.
-func hookCheckLXD() func(*cobra.Command, []string) {
-	return hookCheckLXDWith(cmdutil.InLXDContainer)
+func hookCheckLXD(env cmdutil.ExecutionEnvironment) func(*cobra.Command, []string) {
+	return hookCheckLXDWith(env, cmdutil.InLXDContainer)
 }
 
-func hookCheckLXDWith(checkLXD func() (bool, error)) func(*cobra.Command, []string) {
+func hookCheckLXDWith(env cmdutil.ExecutionEnvironment, checkLXD func() (bool, error)) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, args []string) {
+		if env.Snap != nil && env.Snap.Strict() {
+			return
+		}
 		// pathsOwnershipCheck paths to validate root is the owner
 		pathsOwnershipCheck := []string{"/sys", "/proc", "/dev/kmsg"}
 		inLXD, err := checkLXD()
