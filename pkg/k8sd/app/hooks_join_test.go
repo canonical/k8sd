@@ -5,17 +5,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
+	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
 	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	snapmock "github.com/canonical/k8sd/pkg/snap/mock"
+	upgradepkg "github.com/canonical/k8sd/pkg/upgrade"
+	"github.com/canonical/k8sd/pkg/version"
 	"github.com/canonical/lxd/shared/revert"
+	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	versionutil "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/kubernetes/fake"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 // TestRegisterEtcdMemberReverter_NotEnoughEndpoints tests that cleanup is skipped when <3 endpoints for a voting member.
@@ -306,4 +315,167 @@ func TestBuildInitialClusterMembers(t *testing.T) {
 			g.Expect(result).To(Equal(tt.expected))
 		})
 	}
+}
+
+type mockStateForUpgradeTest struct {
+	mctypes.State
+	name string
+}
+
+func (m *mockStateForUpgradeTest) Name() string {
+	return m.name
+}
+
+func TestInitiateRollingUpgrade_ExistingUpgradeCR(t *testing.T) {
+	g := NewWithT(t)
+	scheme, err := kubernetes.NewScheme()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	ctx := context.Background()
+	thisVer := versionutil.MustParse("1.36.0")
+	clusterVer := versionutil.MustParse("1.35.0")
+	versionData := version.Info{Revision: "100", KubernetesVersion: thisVer}
+	upgradeName := upgradepkg.GetName(versionData)
+
+	existing := &upgradesv1alpha.Upgrade{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: upgradeName,
+		},
+		Status: upgradesv1alpha.UpgradeStatus{
+			Phase:         upgradesv1alpha.UpgradePhaseCompleted,
+			Strategy:      upgradesv1alpha.UpgradeStrategyRollingUpgrade,
+			UpgradedNodes: []string{"node1", "node2"},
+		},
+	}
+
+	fakeClient := ctrlfake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).WithStatusSubresource(existing).Build()
+	k8sClient := &kubernetes.Client{
+		Client: fakeClient,
+	}
+
+	mockSnap := &snapmock.Snap{
+		Mock: snapmock.Mock{
+			Revision: "100",
+		},
+	}
+
+	state := &mockStateForUpgradeTest{name: "node1"}
+	err = initiateRollingUpgrade(ctx, mockSnap, state, k8sClient, thisVer, clusterVer)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	var updated upgradesv1alpha.Upgrade
+	err = fakeClient.Get(ctx, ctrlclient.ObjectKey{Name: upgradeName}, &updated)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(updated.Status.Phase).To(Equal(upgradesv1alpha.UpgradePhaseNodeUpgrade))
+	g.Expect(updated.Status.Strategy).To(Equal(upgradesv1alpha.UpgradeStrategyRollingUpgrade))
+	g.Expect(updated.Status.UpgradedNodes).To(Equal([]string{"node1"}))
+}
+
+func TestInitiateRollingUpgrade_ConcurrentInProgress(t *testing.T) {
+	g := NewWithT(t)
+	scheme, err := kubernetes.NewScheme()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	ctx := context.Background()
+	thisVer := versionutil.MustParse("1.36.0")
+	clusterVer := versionutil.MustParse("1.35.0")
+	versionData := version.Info{Revision: "100", KubernetesVersion: thisVer}
+	upgradeName := upgradepkg.GetName(versionData)
+
+	existing := &upgradesv1alpha.Upgrade{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: upgradeName,
+		},
+		Status: upgradesv1alpha.UpgradeStatus{
+			Phase:         upgradesv1alpha.UpgradePhaseNodeUpgrade,
+			Strategy:      upgradesv1alpha.UpgradeStrategyRollingUpgrade,
+			UpgradedNodes: []string{"node1"},
+		},
+	}
+
+	fakeClient := ctrlfake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).WithStatusSubresource(existing).Build()
+	k8sClient := &kubernetes.Client{
+		Client: fakeClient,
+	}
+
+	mockSnap := &snapmock.Snap{
+		Mock: snapmock.Mock{
+			Revision: "100",
+		},
+	}
+
+	state := &mockStateForUpgradeTest{name: "node2"}
+	err = initiateRollingUpgrade(ctx, mockSnap, state, k8sClient, thisVer, clusterVer)
+	g.Expect(err).NotTo(HaveOccurred())
+
+	var updated upgradesv1alpha.Upgrade
+	err = fakeClient.Get(ctx, ctrlclient.ObjectKey{Name: upgradeName}, &updated)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(updated.Status.Phase).To(Equal(upgradesv1alpha.UpgradePhaseNodeUpgrade))
+	g.Expect(updated.Status.UpgradedNodes).To(ConsistOf("node1", "node2"))
+}
+
+func TestInitiateRollingUpgrade_ConcurrentConflict(t *testing.T) {
+	g := NewWithT(t)
+	scheme, err := kubernetes.NewScheme()
+	g.Expect(err).NotTo(HaveOccurred())
+
+	ctx := context.Background()
+	thisVer := versionutil.MustParse("1.36.0")
+	clusterVer := versionutil.MustParse("1.35.0")
+	versionData := version.Info{Revision: "100", KubernetesVersion: thisVer}
+	upgradeName := upgradepkg.GetName(versionData)
+
+	existing := &upgradesv1alpha.Upgrade{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: upgradeName,
+		},
+		Status: upgradesv1alpha.UpgradeStatus{
+			Phase:         upgradesv1alpha.UpgradePhaseCompleted,
+			Strategy:      upgradesv1alpha.UpgradeStrategyRollingUpgrade,
+			UpgradedNodes: []string{"node-old"},
+		},
+	}
+
+	var patchAttempts atomic.Int32
+	interceptorFuncs := interceptor.Funcs{
+		SubResourcePatch: func(ctx context.Context, client ctrlclient.Client, subResourceName string, obj ctrlclient.Object, patch ctrlclient.Patch, opts ...ctrlclient.SubResourcePatchOption) error {
+			if subResourceName == "status" && patchAttempts.Add(1) == 1 {
+				var current upgradesv1alpha.Upgrade
+				if err := client.Get(ctx, ctrlclient.ObjectKeyFromObject(obj), &current); err == nil {
+					current.Status.Phase = upgradesv1alpha.UpgradePhaseFeatureUpgrade
+					current.Status.UpgradedNodes = []string{"node1"}
+					_ = client.Status().Update(ctx, &current)
+				}
+			}
+			return client.SubResource(subResourceName).Patch(ctx, obj, patch, opts...)
+		},
+	}
+
+	fakeClient := ctrlfake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existing).
+		WithStatusSubresource(existing).
+		WithInterceptorFuncs(interceptorFuncs).
+		Build()
+	k8sClient := &kubernetes.Client{
+		Client: fakeClient,
+	}
+
+	mockSnap := &snapmock.Snap{
+		Mock: snapmock.Mock{
+			Revision: "100",
+		},
+	}
+
+	state := &mockStateForUpgradeTest{name: "node2"}
+	err = initiateRollingUpgrade(ctx, mockSnap, state, k8sClient, thisVer, clusterVer)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(patchAttempts.Load()).To(BeNumerically(">=", 2))
+
+	var updated upgradesv1alpha.Upgrade
+	err = fakeClient.Get(ctx, ctrlclient.ObjectKey{Name: upgradeName}, &updated)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(updated.Status.Phase).To(Equal(upgradesv1alpha.UpgradePhaseFeatureUpgrade))
+	g.Expect(updated.Status.UpgradedNodes).To(ConsistOf("node1", "node2"))
 }
