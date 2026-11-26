@@ -103,17 +103,23 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 			},
 			func(ctx context.Context, dnsIP string) error {
 				if err := s.Database().Transaction(ctx, func(ctx context.Context, tx *sql.Tx) error {
-					if _, err := database.SetClusterConfig(ctx, tx, types.ClusterConfig{
-						Kubelet: types.Kubelet{ClusterDNS: utils.Pointer(dnsIP)},
-					}); err != nil {
-						return fmt.Errorf("failed to update cluster configuration for dns=%s: %w", dnsIP, err)
+					existing, err := database.GetClusterConfig(ctx, tx)
+					if err != nil {
+						return fmt.Errorf("failed to get cluster config: %w", err)
+					}
+					if !utils.EqualIP(existing.Kubelet.GetClusterDNS(), dnsIP) {
+						if _, err := database.SetClusterConfig(ctx, tx, types.ClusterConfig{
+							Kubelet: types.Kubelet{ClusterDNS: utils.Pointer(dnsIP)},
+						}); err != nil {
+							return fmt.Errorf("failed to update cluster configuration for dns=%s: %w", dnsIP, err)
+						}
 					}
 					return nil
 				}); err != nil {
 					return fmt.Errorf("database transaction to update cluster configuration failed: %w", err)
 				}
 
-				// DNS IP has changed, notify node config controller
+				// Always notify so the node config self-heals.
 				a.NotifyUpdateNodeConfigController()
 
 				return nil
@@ -154,6 +160,7 @@ func (a *App) onStart(ctx context.Context, s mctypes.State) error {
 	// reconciled at least once after the app starts. This is important specifically
 	// when k8sd gets restarted before getting the chance to reconcile features.
 	a.NotifyFeatureController(true, true, true, true, true, true, true)
+	a.NotifyUpdateNodeConfigController()
 
 	if a.serviceArgsController != nil {
 		go a.serviceArgsController.Run(ctx)
