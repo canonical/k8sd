@@ -562,6 +562,36 @@ func TestNetworkEnabled(t *testing.T) {
 			g.Expect(status.Enabled).To(BeFalse())
 			g.Expect(status.Version).To(Equal(cilium.CiliumAgentImageTag))
 		})
+
+		t.Run("ApplyUnchangedMissingDaemonSetFails", func(t *testing.T) {
+			g := NewWithT(t)
+
+			helmM := &helmmock.Mock{
+				ApplyChanged:            false,
+				GetLastDeployedDeployed: true,
+				GetLastDeployedResult:   time.Now(),
+			}
+			clientset := fake.NewSimpleClientset()
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(err.Error()).To(ContainSubstring("failed to get cilium daemonset"))
+			g.Expect(status.Enabled).To(BeFalse())
+		})
 	})
 }
 

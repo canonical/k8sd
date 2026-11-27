@@ -15,7 +15,6 @@ import (
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -364,9 +363,6 @@ func ciliumNeedsRolloutRestart(ctx context.Context, snap snap.Snap, chart helm.I
 
 	ds, err := client.AppsV1().DaemonSets("kube-system").Get(ctx, "cilium", metav1.GetOptions{})
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return false, nil
-		}
 		return false, fmt.Errorf("failed to get cilium daemonset: %w", err)
 	}
 	if workloadNeedsRestart(ds.Spec.Template.Annotations, lastDeployed) {
@@ -375,9 +371,6 @@ func ciliumNeedsRolloutRestart(ctx context.Context, snap snap.Snap, chart helm.I
 
 	dep, err := client.AppsV1().Deployments("kube-system").Get(ctx, "cilium-operator", metav1.GetOptions{})
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return false, nil
-		}
 		return false, fmt.Errorf("failed to get cilium-operator deployment: %w", err)
 	}
 	if workloadNeedsRestart(dep.Spec.Template.Annotations, lastDeployed) {
