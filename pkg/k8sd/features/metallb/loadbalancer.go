@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/client/helm"
@@ -601,12 +602,18 @@ func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMod
 	})
 }
 
+// webhookEndpointsTimeout bounds one reconcile attempt; on expiry the feature controller retries with backoff.
+var webhookEndpointsTimeout = 2 * time.Minute
+
 // waitForWebhookEndpoints blocks until the MetalLB webhook service has at least one ready endpoint.
 func waitForWebhookEndpoints(ctx context.Context, snap snap.Snap) error {
 	client, err := snap.KubernetesClient("")
 	if err != nil {
 		return fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, webhookEndpointsTimeout)
+	defer cancel()
 
 	return control.WaitUntilReady(ctx, func() (bool, error) {
 		return client.HasReadyEndpoints(ctx, ChartMetalLB.Namespace, webhookServiceName)
