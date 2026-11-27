@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	metallbAnnotations "github.com/canonical/k8s-snap-api/v2/api/annotations/metallb"
 	"github.com/canonical/k8sd/pkg/client/helm"
@@ -22,6 +23,8 @@ const (
 	DisabledMsg         = "disabled"
 	deleteFailedMsgTmpl = "Failed to delete MetalLB, the error was: %v"
 	deployFailedMsgTmpl = "Failed to deploy MetalLB, the error was: %v"
+
+	webhookServiceName = "metallb-webhook-service"
 
 	// bgpBackendNative is the default BGP implementation (MetalLB's built-in one).
 	// Does not support BFD.
@@ -535,6 +538,10 @@ func enableLoadBalancer(ctx context.Context, snap snap.Snap, loadbalancer types.
 		return fmt.Errorf("failed to wait for required MetalLB CRDs: %w", err)
 	}
 
+	if err := waitForWebhookEndpoints(ctx, snap); err != nil {
+		return fmt.Errorf("failed to wait for MetalLB webhook service endpoints: %w", err)
+	}
+
 	values := buildLoadBalancerValues(loadbalancer, neighbors, advertiseAll, bfdProfiles)
 
 	if _, err := m.Apply(ctx, ChartMetalLBLoadBalancer, helm.StatePresent, values); err != nil {
@@ -592,5 +599,23 @@ func waitForRequiredLoadBalancerCRDs(ctx context.Context, snap snap.Snap, bgpMod
 		}
 
 		return requiredCount == 0, nil
+	})
+}
+
+// webhookEndpointsTimeout bounds one reconcile attempt; on expiry the feature controller retries with backoff.
+var webhookEndpointsTimeout = 2 * time.Minute
+
+// waitForWebhookEndpoints blocks until the MetalLB webhook service has at least one ready endpoint.
+func waitForWebhookEndpoints(ctx context.Context, snap snap.Snap) error {
+	client, err := snap.KubernetesClient("")
+	if err != nil {
+		return fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, webhookEndpointsTimeout)
+	defer cancel()
+
+	return control.WaitUntilReady(ctx, func() (bool, error) {
+		return client.HasReadyEndpoints(ctx, ChartMetalLB.Namespace, webhookServiceName)
 	})
 }
