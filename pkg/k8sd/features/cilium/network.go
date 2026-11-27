@@ -5,14 +5,18 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
+	"github.com/canonical/k8sd/pkg/client/kubernetes"
 	"github.com/canonical/k8sd/pkg/k8sd/types"
 	"github.com/canonical/k8sd/pkg/log"
 	"github.com/canonical/k8sd/pkg/snap"
 	"github.com/canonical/k8sd/pkg/utils"
 	"github.com/canonical/k8sd/pkg/utils/control"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -292,14 +296,23 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}, err
 	}
 
-	if !changed {
+	needsRestart, err := ciliumNeedsRolloutRestart(ctx, snap, ChartCilium, changed)
+	if err != nil {
+		err = fmt.Errorf("failed to check if cilium rollout restart is needed: %w", err)
+		return types.FeatureStatus{
+			Enabled: false,
+			Version: CiliumAgentImageTag,
+			Message: fmt.Sprintf(NetworkDeployFailedMsgTmpl, err),
+		}, err
+	}
+
+	if !needsRestart {
 		return types.FeatureStatus{
 			Enabled: true,
 			Version: CiliumAgentImageTag,
 			Message: EnabledMsg,
 		}, nil
 	}
-
 	if err := rolloutRestartCilium(ctx, snap, 3); err != nil {
 		err = fmt.Errorf("failed to rollout restart cilium to apply new network configuration: %w", err)
 		return types.FeatureStatus{
@@ -314,6 +327,64 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		Version: CiliumAgentImageTag,
 		Message: EnabledMsg,
 	}, nil
+}
+
+func workloadNeedsRestart(annotations map[string]string, lastDeployed time.Time) bool {
+	if annotations == nil {
+		return true
+	}
+	restartedAtStr := annotations[kubernetes.RestartedAtAnnotation]
+	if restartedAtStr == "" {
+		return true
+	}
+	restartedAt, err := time.Parse(time.RFC3339, restartedAtStr)
+	if err != nil {
+		return true
+	}
+	return restartedAt.Before(lastDeployed.Truncate(time.Second))
+}
+
+func ciliumNeedsRolloutRestart(ctx context.Context, snap snap.Snap, chart helm.InstallableChart, changed bool) (bool, error) {
+	if changed {
+		return true, nil
+	}
+
+	lastDeployed, deployed, err := snap.HelmClient().GetLastDeployed(ctx, chart)
+	if err != nil {
+		return false, fmt.Errorf("failed to get last deployed time for chart %s: %w", chart.Name, err)
+	}
+	if !deployed {
+		return false, nil
+	}
+
+	client, err := snap.KubernetesClient("")
+	if err != nil {
+		return false, fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+
+	ds, err := client.AppsV1().DaemonSets("kube-system").Get(ctx, "cilium", metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to get cilium daemonset: %w", err)
+	}
+	if workloadNeedsRestart(ds.Spec.Template.Annotations, lastDeployed) {
+		return true, nil
+	}
+
+	dep, err := client.AppsV1().Deployments("kube-system").Get(ctx, "cilium-operator", metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to get cilium-operator deployment: %w", err)
+	}
+	if workloadNeedsRestart(dep.Spec.Template.Annotations, lastDeployed) {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func rolloutRestartCilium(ctx context.Context, snap snap.Snap, attempts int) error {

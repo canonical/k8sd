@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	apiv1_annotations "github.com/canonical/k8s-snap-api/v2/api/annotations/cilium"
 	"github.com/canonical/k8sd/pkg/client/helm"
@@ -370,8 +371,11 @@ func TestNetworkEnabled(t *testing.T) {
 		t.Run("ApplyUnchangedSkipsRolloutRestart", func(t *testing.T) {
 			g := NewWithT(t)
 
+			t0 := time.Now().Truncate(time.Second)
 			helmM := &helmmock.Mock{
-				ApplyChanged: false,
+				ApplyChanged:            false,
+				GetLastDeployedDeployed: true,
+				GetLastDeployedResult:   t0,
 			}
 			deployment := &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
@@ -379,11 +383,15 @@ func TestNetworkEnabled(t *testing.T) {
 					Namespace: "kube-system",
 				},
 			}
+			kubernetes.SetDeploymentRestartedAt(deployment, t0)
 			daemonset := &appsv1.DaemonSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cilium",
 					Namespace: "kube-system",
 				},
+			}
+			daemonset.Spec.Template.Annotations = map[string]string{
+				kubernetes.RestartedAtAnnotation: t0.Format(time.RFC3339),
 			}
 			clientset := fake.NewSimpleClientset(deployment, daemonset)
 			snapM := &snapmock.Snap{
@@ -409,11 +417,72 @@ func TestNetworkEnabled(t *testing.T) {
 
 			dep, err := clientset.AppsV1().Deployments("kube-system").Get(context.Background(), "cilium-operator", metav1.GetOptions{})
 			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(dep.Spec.Template.Annotations).NotTo(HaveKey(kubernetes.RestartedAtAnnotation))
+			g.Expect(dep.Spec.Template.Annotations[kubernetes.RestartedAtAnnotation]).To(Equal(t0.Format(time.RFC3339)))
 
 			ds, err := clientset.AppsV1().DaemonSets("kube-system").Get(context.Background(), "cilium", metav1.GetOptions{})
 			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(ds.Spec.Template.Annotations).NotTo(HaveKey(kubernetes.RestartedAtAnnotation))
+			g.Expect(ds.Spec.Template.Annotations[kubernetes.RestartedAtAnnotation]).To(Equal(t0.Format(time.RFC3339)))
+		})
+
+		t.Run("ApplyUnchangedPreviousRestartFailedStillRestarts", func(t *testing.T) {
+			g := NewWithT(t)
+
+			tOld := time.Now().Add(-10 * time.Minute).Truncate(time.Second)
+			tDeployed := time.Now().Add(-1 * time.Minute).Truncate(time.Second)
+			helmM := &helmmock.Mock{
+				ApplyChanged:            false,
+				GetLastDeployedDeployed: true,
+				GetLastDeployedResult:   tDeployed,
+			}
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cilium-operator",
+					Namespace: "kube-system",
+				},
+			}
+			kubernetes.SetDeploymentRestartedAt(deployment, tOld)
+			daemonset := &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cilium",
+					Namespace: "kube-system",
+				},
+			}
+			daemonset.Spec.Template.Annotations = map[string]string{
+				kubernetes.RestartedAtAnnotation: tOld.Format(time.RFC3339),
+			}
+			clientset := fake.NewSimpleClientset(deployment, daemonset)
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
+			g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+
+			dep, err := clientset.AppsV1().Deployments("kube-system").Get(context.Background(), "cilium-operator", metav1.GetOptions{})
+			g.Expect(err).ToNot(HaveOccurred())
+			depRestartedAt, err := time.Parse(time.RFC3339, dep.Spec.Template.Annotations[kubernetes.RestartedAtAnnotation])
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(depRestartedAt.After(tOld)).To(BeTrue())
+
+			ds, err := clientset.AppsV1().DaemonSets("kube-system").Get(context.Background(), "cilium", metav1.GetOptions{})
+			g.Expect(err).ToNot(HaveOccurred())
+			dsRestartedAt, err := time.Parse(time.RFC3339, ds.Spec.Template.Annotations[kubernetes.RestartedAtAnnotation])
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(dsRestartedAt.After(tOld)).To(BeTrue())
 		})
 
 		t.Run("ApplyChangedTriggersRolloutRestart", func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/canonical/k8sd/pkg/client/helm"
 )
@@ -21,6 +22,11 @@ type MockGetDeployedConfigArguments struct {
 	Chart   helm.InstallableChart
 }
 
+type MockGetLastDeployedArguments struct {
+	Context context.Context
+	Chart   helm.InstallableChart
+}
+
 // Mock is a mock implementation of helm.Client.
 type Mock struct {
 	mu              sync.Mutex
@@ -33,6 +39,12 @@ type Mock struct {
 	GetDeployedConfigDeployed   bool
 	GetDeployedConfigErr        error
 	GetDeployedConfigFunc       func(ctx context.Context, c helm.InstallableChart) (map[string]any, bool, error)
+
+	GetLastDeployedCalledWith []MockGetLastDeployedArguments
+	GetLastDeployedResult     time.Time
+	GetLastDeployedDeployed   bool
+	GetLastDeployedErr        error
+	GetLastDeployedFunc       func(ctx context.Context, c helm.InstallableChart) (time.Time, bool, error)
 }
 
 // Apply implements helm.Client.
@@ -89,6 +101,31 @@ func (m *Mock) GetDeployedConfigCalls() []MockGetDeployedConfigArguments {
 	defer m.mu.Unlock()
 
 	return slices.Clone(m.GetDeployedConfigCalledWith)
+}
+
+// GetLastDeployed implements helm.Client.
+func (m *Mock) GetLastDeployed(ctx context.Context, c helm.InstallableChart) (time.Time, bool, error) {
+	m.mu.Lock()
+	m.GetLastDeployedCalledWith = append(m.GetLastDeployedCalledWith, MockGetLastDeployedArguments{Context: ctx, Chart: c})
+	fn := m.GetLastDeployedFunc
+	res := m.GetLastDeployedResult
+	dep := m.GetLastDeployedDeployed
+	err := m.GetLastDeployedErr
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx, c)
+	}
+
+	return res, dep, err
+}
+
+// GetLastDeployedCalls returns a snapshot of recorded GetLastDeployed invocations safe for concurrent inspection.
+func (m *Mock) GetLastDeployedCalls() []MockGetLastDeployedArguments {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return slices.Clone(m.GetLastDeployedCalledWith)
 }
 
 var _ helm.Client = &Mock{}

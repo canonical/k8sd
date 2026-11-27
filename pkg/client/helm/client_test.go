@@ -652,3 +652,40 @@ func TestGetDeployedConfig_FailedRevisionOverDeployedRevisionReturnsDeployedConf
 	svc := cfg["service"].(map[string]any)
 	g.Expect(svc["clusterIP"]).To(Equal("10.152.183.10"), "must return rev 1 config")
 }
+
+func TestGetLastDeployed(t *testing.T) {
+	g := NewWithT(t)
+	baseDir := t.TempDir()
+	chart := writeTestChart(t, baseDir, "charts/last-deployed", "0.1.0")
+	c, store := newMemoryHelmClient(t, baseDir)
+
+	ts, deployed, err := c.GetLastDeployed(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed).To(BeFalse())
+	g.Expect(ts.IsZero()).To(BeTrue())
+
+	before := time.Now().Truncate(time.Second)
+	_, err = c.Apply(t.Context(), chart, StatePresent, map[string]any{"key": "val"})
+	g.Expect(err).NotTo(HaveOccurred())
+
+	ts, deployed, err = c.GetLastDeployed(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed).To(BeTrue())
+	g.Expect(ts.Before(before)).To(BeFalse())
+
+	rel2 := &releasev1.Release{
+		Name:      chart.Name,
+		Namespace: chart.Namespace,
+		Version:   2,
+		Info: &releasev1.Info{
+			Status:       releasecommon.StatusFailed,
+			LastDeployed: time.Now().Add(time.Hour),
+		},
+	}
+	g.Expect(store.Create(rel2)).To(Succeed())
+
+	ts2, deployed, err := c.GetLastDeployed(t.Context(), chart)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(deployed).To(BeTrue())
+	g.Expect(ts2).To(Equal(ts))
+}

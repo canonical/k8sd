@@ -349,23 +349,22 @@ func sanitizeHelmValues(values map[string]any) (map[string]any, error) {
 	return result, nil
 }
 
-// GetDeployedConfig implements Client.
-func (h *client) GetDeployedConfig(ctx context.Context, c InstallableChart) (map[string]any, bool, error) {
+func (h *client) deployedRelease(ctx context.Context, c InstallableChart) (*releasev1.Release, error) {
 	cfg, err := h.actionConfiguration(ctx, c.Namespace)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to create action configuration: %w", err)
+		return nil, fmt.Errorf("failed to create action configuration: %w", err)
 	}
 
 	rel, err := cfg.Releases.Deployed(c.Name)
 	if err != nil {
 		if errors.Is(err, driver.ErrNoDeployedReleases) || errors.Is(err, driver.ErrReleaseNotFound) {
-			return nil, false, nil
+			return nil, nil
 		}
-		return nil, false, fmt.Errorf("failed to get deployed release %s: %w", c.Name, err)
+		return nil, fmt.Errorf("failed to get deployed release %s: %w", c.Name, err)
 	}
 
 	if rel == nil {
-		return nil, false, nil
+		return nil, nil
 	}
 
 	var relObj *releasev1.Release
@@ -374,10 +373,23 @@ func (h *client) GetDeployedConfig(ctx context.Context, c InstallableChart) (map
 	} else if r, ok := rel.(releasev1.Release); ok {
 		relObj = &r
 	} else {
-		return nil, false, fmt.Errorf("unsupported release type %T for %s", rel, c.Name)
+		return nil, fmt.Errorf("unsupported release type %T for %s", rel, c.Name)
 	}
 
 	if relObj == nil || relObj.Info == nil || relObj.Info.Status != releasecommon.StatusDeployed {
+		return nil, nil
+	}
+
+	return relObj, nil
+}
+
+// GetDeployedConfig implements Client.
+func (h *client) GetDeployedConfig(ctx context.Context, c InstallableChart) (map[string]any, bool, error) {
+	relObj, err := h.deployedRelease(ctx, c)
+	if err != nil {
+		return nil, false, err
+	}
+	if relObj == nil {
 		return nil, false, nil
 	}
 
@@ -387,4 +399,17 @@ func (h *client) GetDeployedConfig(ctx context.Context, c InstallableChart) (map
 	}
 
 	return cloned, true, nil
+}
+
+// GetLastDeployed implements Client.
+func (h *client) GetLastDeployed(ctx context.Context, c InstallableChart) (time.Time, bool, error) {
+	relObj, err := h.deployedRelease(ctx, c)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if relObj == nil {
+		return time.Time{}, false, nil
+	}
+
+	return relObj.Info.LastDeployed, true, nil
 }
