@@ -1,6 +1,9 @@
 package helm
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Client handles the lifecycle of charts (manifests + config) on the cluster.
 type Client interface {
@@ -14,4 +17,8 @@ type Client interface {
 	// GetDeployedConfig returns the configuration of the currently deployed release of the specified chart.
 	// If no release is deployed, it returns (nil, false, nil).
 	GetDeployedConfig(ctx context.Context, c InstallableChart) (map[string]any, bool, error)
+
+	// GetLastDeployed returns the last deployment timestamp of the currently deployed release.
+	// If no release is deployed, it returns (time.Time{}, false, nil).
+	GetLastDeployed(ctx context.Context, c InstallableChart) (time.Time, bool, error)
 }
