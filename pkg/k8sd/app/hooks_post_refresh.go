@@ -19,6 +19,8 @@ import (
 	"github.com/canonical/k8sd/pkg/utils/experimental/snapdconfig"
 	"github.com/canonical/k8sd/pkg/version"
 	mctypes "github.com/canonical/microcluster/v3/microcluster/types"
+	"k8s.io/client-go/util/retry"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // postRefreshHook is executed after the node is ready after a `snap refresh` operation
@@ -88,6 +90,21 @@ func (a *App) performPostUpgrade(ctx context.Context, s mctypes.State) error {
 		return fmt.Errorf("failed to get Kubernetes client: %w", err)
 	}
 
+	rev, err := a.snap.Revision(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get revision: %w", err)
+	}
+
+	k8sVersion, err := a.snap.NodeKubernetesVersion(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get kubernetes version: %w", err)
+	}
+
+	// TODO(ben): Add more metadata to the upgrade.
+	// e.g. initial revision, target revision, name of the node that started the upgrade, etc.
+	versionData := version.Info{Revision: rev, KubernetesVersion: k8sVersion}
+	upgradeName := upgradepkg.GetName(versionData)
+
 	upgrade, err := k8sClient.GetInProgressUpgrade(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check for in-progress upgrade: %w", err)
@@ -95,42 +112,49 @@ func (a *App) performPostUpgrade(ctx context.Context, s mctypes.State) error {
 
 	if upgrade == nil {
 		log.Info("No upgrade is in progress - creating a new one.")
-		rev, err := a.snap.Revision(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get revision: %w", err)
+		upgrade = upgradesv1alpha.NewUpgrade(upgradeName)
+		if err := k8sClient.CreateOrGetUpgrade(ctx, upgrade); err != nil {
+			return fmt.Errorf("failed to create or get upgrade: %w", err)
 		}
-
-		k8sVersion, err := a.snap.NodeKubernetesVersion(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get kubernetes version: %w", err)
-		}
-
-		// TODO(ben): Add more metadata to the upgrade.
-		// e.g. initial revision, target revision, name of the node that started the upgrade, etc.
-		versionData := version.Info{Revision: rev, KubernetesVersion: k8sVersion}
-		upgrade = upgradesv1alpha.NewUpgrade(upgradepkg.GetName(versionData))
-		if err := k8sClient.Create(ctx, upgrade); err != nil {
-			return fmt.Errorf("failed to create upgrade: %w", err)
-		}
-		log.Info("Created new upgrade CR.", "upgrade", *upgrade)
+		log.Info("Prepared upgrade CR.", "upgrade", upgrade.Name, "phase", upgrade.Status.Phase)
 	} else {
 		log.Info("Upgrade in progress.", "upgrade", upgrade.Name, "phase", upgrade.Status.Phase)
 	}
 
-	log.Info("Marking node as upgraded.", "node", s.Name())
+	targetName := upgrade.Name
+	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err := k8sClient.Get(ctx, ctrlclient.ObjectKey{Name: targetName}, upgrade); err != nil {
+			return fmt.Errorf("failed to get upgrade %q: %w", targetName, err)
+		}
 
-	upgradedNodes := upgrade.Status.UpgradedNodes
-	if !slices.Contains(upgradedNodes, s.Name()) {
-		upgradedNodes = append(upgradedNodes, s.Name())
-	}
+		log.Info("Marking node as upgraded.", "node", s.Name())
+		var upgradedNodes []string
+		phase := upgradesv1alpha.UpgradePhaseNodeUpgrade
+		strategy := upgradesv1alpha.UpgradeStrategyInPlace
+		if upgrade.Status.Phase != upgradesv1alpha.UpgradePhaseCompleted && upgrade.Status.Phase != upgradesv1alpha.UpgradePhaseFailed {
+			upgradedNodes = upgrade.Status.UpgradedNodes
+			if upgrade.Status.Phase != "" {
+				phase = upgrade.Status.Phase
+			}
+			if upgrade.Status.Strategy != "" {
+				strategy = upgrade.Status.Strategy
+			}
+		}
+		if !slices.Contains(upgradedNodes, s.Name()) {
+			upgradedNodes = append(upgradedNodes, s.Name())
+		}
 
-	status := upgradesv1alpha.UpgradeStatus{
-		UpgradedNodes: upgradedNodes,
-		Phase:         upgradesv1alpha.UpgradePhaseNodeUpgrade,
-		Strategy:      upgradesv1alpha.UpgradeStrategyInPlace,
-	}
+		status := upgradesv1alpha.UpgradeStatus{
+			UpgradedNodes: upgradedNodes,
+			Phase:         phase,
+			Strategy:      strategy,
+		}
+		if err := k8sClient.PatchUpgradeStatus(ctx, upgrade, status); err != nil {
+			return err
+		}
 
-	if err := k8sClient.PatchUpgradeStatus(ctx, upgrade, status); err != nil {
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to mark node as upgraded: %w", err)
 	}
 

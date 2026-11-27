@@ -77,9 +77,23 @@ func (c *Client) GetInProgressUpgrade(ctx context.Context) (*upgradesv1alpha.Upg
 	})
 }
 
+// CreateOrGetUpgrade creates the upgrade CR, or fetches the existing one if it already exists.
+func (c *Client) CreateOrGetUpgrade(ctx context.Context, upgrade *upgradesv1alpha.Upgrade) error {
+	if err := c.Create(ctx, upgrade); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			return fmt.Errorf("failed to create upgrade: %w", err)
+		}
+		if err := c.Get(ctx, ctrlclient.ObjectKey{Name: upgrade.Name}, upgrade); err != nil {
+			return fmt.Errorf("failed to get existing upgrade: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // PatchUpgradeStatus patches the status of an upgrade CR.
 func (c *Client) PatchUpgradeStatus(ctx context.Context, u *upgradesv1alpha.Upgrade, status upgradesv1alpha.UpgradeStatus) error {
-	p := ctrlclient.MergeFrom(u.DeepCopy())
+	p := ctrlclient.MergeFromWithOptions(u.DeepCopy(), ctrlclient.MergeFromWithOptimisticLock{})
 	u.Status = status
 	if err := c.Status().Patch(ctx, u, p); err != nil {
 		return fmt.Errorf("failed to patch upgrade status: %w", err)

@@ -8,6 +8,7 @@ import (
 	upgradesv1alpha "github.com/canonical/k8s-snap-api/v2/api/v1alpha"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -234,13 +235,63 @@ func TestPatchUpgradeStatus(t *testing.T) {
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(upgrade).WithStatusSubresource(upgrade).Build(),
 	}
 
+	err = client.Get(ctx, ctrlclient.ObjectKey{Name: upgrade.Name}, upgrade)
+	g.Expect(err).NotTo(HaveOccurred())
+
 	err = client.PatchUpgradeStatus(ctx, upgrade, upgradesv1alpha.UpgradeStatus{
 		Phase: upgradesv1alpha.UpgradePhaseFeatureUpgrade,
 	})
 	g.Expect(err).NotTo(HaveOccurred())
-
 	fetched, err := client.GetUpgrade(ctx, nil)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(fetched).NotTo(BeNil())
 	g.Expect(fetched.Status.Phase).To(Equal(upgradesv1alpha.UpgradePhaseFeatureUpgrade))
+}
+
+func TestCreateOrGetUpgrade(t *testing.T) {
+	scheme, err := NewScheme()
+	if err != nil {
+		t.Fatalf("failed to create scheme: %v", err)
+	}
+
+	ctx := context.Background()
+
+	t.Run("CreatesNewUpgrade", func(t *testing.T) {
+		g := NewWithT(t)
+		client := &Client{
+			Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
+		}
+
+		upgrade := upgradesv1alpha.NewUpgrade("upgrade-new")
+		err := client.CreateOrGetUpgrade(ctx, upgrade)
+		g.Expect(err).NotTo(HaveOccurred())
+
+		fetched := &upgradesv1alpha.Upgrade{}
+		err = client.Get(ctx, ctrlclient.ObjectKey{Name: "upgrade-new"}, fetched)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(fetched.Name).To(Equal("upgrade-new"))
+	})
+
+	t.Run("GetsExistingUpgrade", func(t *testing.T) {
+		g := NewWithT(t)
+		existing := &upgradesv1alpha.Upgrade{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "upgrade-existing",
+			},
+			Status: upgradesv1alpha.UpgradeStatus{
+				Phase:         upgradesv1alpha.UpgradePhaseCompleted,
+				UpgradedNodes: []string{"node-1", "node-2"},
+			},
+		}
+		client := &Client{
+			Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build(),
+		}
+
+		upgrade := upgradesv1alpha.NewUpgrade("upgrade-existing")
+		err := client.CreateOrGetUpgrade(ctx, upgrade)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(upgrade.Name).To(Equal("upgrade-existing"))
+		g.Expect(upgrade.Status.Phase).To(Equal(upgradesv1alpha.UpgradePhaseCompleted))
+		g.Expect(upgrade.Status.UpgradedNodes).To(ConsistOf("node-1", "node-2"))
+	})
 }
