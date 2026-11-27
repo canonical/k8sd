@@ -336,11 +336,11 @@ func workloadNeedsRestart(annotations map[string]string, lastDeployed time.Time)
 	if restartedAtStr == "" {
 		return true
 	}
-	restartedAt, err := time.Parse(time.RFC3339, restartedAtStr)
+	restartedAt, err := time.Parse(time.RFC3339Nano, restartedAtStr)
 	if err != nil {
 		return true
 	}
-	return restartedAt.Before(lastDeployed.Truncate(time.Second))
+	return restartedAt.Truncate(time.Second).Before(lastDeployed.Truncate(time.Second))
 }
 
 func ciliumNeedsRolloutRestart(ctx context.Context, snap snap.Snap, chart helm.InstallableChart, changed bool) (bool, error) {
@@ -361,7 +361,7 @@ func ciliumNeedsRolloutRestart(ctx context.Context, snap snap.Snap, chart helm.I
 		return false, fmt.Errorf("failed to create kubernetes client: %w", err)
 	}
 
-	ds, err := client.AppsV1().DaemonSets("kube-system").Get(ctx, "cilium", metav1.GetOptions{})
+	ds, err := client.AppsV1().DaemonSets(chart.Namespace).Get(ctx, "cilium", metav1.GetOptions{})
 	if err != nil {
 		return false, fmt.Errorf("failed to get cilium daemonset: %w", err)
 	}
@@ -369,7 +369,7 @@ func ciliumNeedsRolloutRestart(ctx context.Context, snap snap.Snap, chart helm.I
 		return true, nil
 	}
 
-	dep, err := client.AppsV1().Deployments("kube-system").Get(ctx, "cilium-operator", metav1.GetOptions{})
+	dep, err := client.AppsV1().Deployments(chart.Namespace).Get(ctx, "cilium-operator", metav1.GetOptions{})
 	if err != nil {
 		return false, fmt.Errorf("failed to get cilium-operator deployment: %w", err)
 	}

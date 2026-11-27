@@ -424,6 +424,64 @@ func TestNetworkEnabled(t *testing.T) {
 			g.Expect(ds.Spec.Template.Annotations[kubernetes.RestartedAtAnnotation]).To(Equal(t0.Format(time.RFC3339)))
 		})
 
+		t.Run("ApplyUnchangedRFC3339NanoSkipsRolloutRestart", func(t *testing.T) {
+			g := NewWithT(t)
+
+			t0 := time.Now().Truncate(time.Second)
+			helmM := &helmmock.Mock{
+				ApplyChanged:            false,
+				GetLastDeployedDeployed: true,
+				GetLastDeployedResult:   t0,
+			}
+			nanoTimeStr := t0.Add(250 * time.Millisecond).Format(time.RFC3339Nano)
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cilium-operator",
+					Namespace: "kube-system",
+				},
+			}
+			deployment.Spec.Template.Annotations = map[string]string{
+				kubernetes.RestartedAtAnnotation: nanoTimeStr,
+			}
+			daemonset := &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cilium",
+					Namespace: "kube-system",
+				},
+			}
+			daemonset.Spec.Template.Annotations = map[string]string{
+				kubernetes.RestartedAtAnnotation: nanoTimeStr,
+			}
+			clientset := fake.NewSimpleClientset(deployment, daemonset)
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
+
+			dep, err := clientset.AppsV1().Deployments("kube-system").Get(context.Background(), "cilium-operator", metav1.GetOptions{})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(dep.Spec.Template.Annotations[kubernetes.RestartedAtAnnotation]).To(Equal(nanoTimeStr))
+
+			ds, err := clientset.AppsV1().DaemonSets("kube-system").Get(context.Background(), "cilium", metav1.GetOptions{})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(ds.Spec.Template.Annotations[kubernetes.RestartedAtAnnotation]).To(Equal(nanoTimeStr))
+		})
+
 		t.Run("ApplyUnchangedPreviousRestartFailedStillRestarts", func(t *testing.T) {
 			g := NewWithT(t)
 
