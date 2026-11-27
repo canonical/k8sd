@@ -282,7 +282,8 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}
 	}
 
-	if _, err := m.Apply(ctx, ChartCilium, helm.StatePresent, values); err != nil {
+	changed, err := m.Apply(ctx, ChartCilium, helm.StatePresent, values)
+	if err != nil {
 		err = fmt.Errorf("failed to enable network: %w", err)
 		return types.FeatureStatus{
 			Enabled: false,
@@ -291,7 +292,14 @@ func ApplyNetwork(ctx context.Context, snap snap.Snap, s mctypes.State, apiserve
 		}, err
 	}
 
-	// TODO(Hue): we should only rollout restart if necessary.
+	if !changed {
+		return types.FeatureStatus{
+			Enabled: true,
+			Version: CiliumAgentImageTag,
+			Message: EnabledMsg,
+		}, nil
+	}
+
 	if err := rolloutRestartCilium(ctx, snap, 3); err != nil {
 		err = fmt.Errorf("failed to rollout restart cilium to apply new network configuration: %w", err)
 		return types.FeatureStatus{

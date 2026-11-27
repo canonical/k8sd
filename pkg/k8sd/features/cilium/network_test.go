@@ -366,6 +366,133 @@ func TestNetworkEnabled(t *testing.T) {
 			g.Expect(bpfValues["root"]).To(Equal("/mnt/bpf"))
 			g.Expect(bpfValues["autoMount"]).To(Equal(map[string]any{"enabled": false}))
 		})
+
+		t.Run("ApplyUnchangedSkipsRolloutRestart", func(t *testing.T) {
+			g := NewWithT(t)
+
+			helmM := &helmmock.Mock{
+				ApplyChanged: false,
+			}
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cilium-operator",
+					Namespace: "kube-system",
+				},
+			}
+			daemonset := &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cilium",
+					Namespace: "kube-system",
+				},
+			}
+			clientset := fake.NewSimpleClientset(deployment, daemonset)
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
+			g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+
+			dep, err := clientset.AppsV1().Deployments("kube-system").Get(context.Background(), "cilium-operator", metav1.GetOptions{})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(dep.Spec.Template.Annotations).NotTo(HaveKey(kubernetes.RestartedAtAnnotation))
+
+			ds, err := clientset.AppsV1().DaemonSets("kube-system").Get(context.Background(), "cilium", metav1.GetOptions{})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(ds.Spec.Template.Annotations).NotTo(HaveKey(kubernetes.RestartedAtAnnotation))
+		})
+
+		t.Run("ApplyChangedTriggersRolloutRestart", func(t *testing.T) {
+			g := NewWithT(t)
+
+			helmM := &helmmock.Mock{
+				ApplyChanged: true,
+			}
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cilium-operator",
+					Namespace: "kube-system",
+				},
+			}
+			daemonset := &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cilium",
+					Namespace: "kube-system",
+				},
+			}
+			clientset := fake.NewSimpleClientset(deployment, daemonset)
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(status.Enabled).To(BeTrue())
+			g.Expect(status.Message).To(Equal(cilium.EnabledMsg))
+			g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+
+			dep, err := clientset.AppsV1().Deployments("kube-system").Get(context.Background(), "cilium-operator", metav1.GetOptions{})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(dep.Spec.Template.Annotations).To(HaveKey(kubernetes.RestartedAtAnnotation))
+
+			ds, err := clientset.AppsV1().DaemonSets("kube-system").Get(context.Background(), "cilium", metav1.GetOptions{})
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(ds.Spec.Template.Annotations).To(HaveKey(kubernetes.RestartedAtAnnotation))
+		})
+
+		t.Run("ApplyChangedRolloutRestartFailure", func(t *testing.T) {
+			g := NewWithT(t)
+
+			helmM := &helmmock.Mock{
+				ApplyChanged: true,
+			}
+			clientset := fake.NewSimpleClientset()
+			snapM := &snapmock.Snap{
+				Mock: snapmock.Mock{
+					HelmClient:       helmM,
+					KubernetesClient: &kubernetes.Client{Interface: clientset},
+				},
+			}
+			network := types.Network{
+				Enabled: ptr.To(true),
+				PodCIDR: ptr.To("192.0.2.0/24,2001:db8::/32"),
+			}
+			apiserver := types.APIServer{
+				SecurePort: ptr.To(6443),
+			}
+
+			status, err := cilium.ApplyNetwork(context.Background(), snapM, s, apiserver, network, annotations)
+
+			g.Expect(err).To(HaveOccurred())
+			g.Expect(err.Error()).To(ContainSubstring("failed to rollout restart cilium to apply new network configuration"))
+			g.Expect(status.Enabled).To(BeFalse())
+			g.Expect(status.Version).To(Equal(cilium.CiliumAgentImageTag))
+		})
 	})
 }
 
