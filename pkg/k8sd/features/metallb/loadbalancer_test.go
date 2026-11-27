@@ -353,17 +353,35 @@ func TestEnabled(t *testing.T) {
 			CIDRs:        ptr.To([]string{"192.0.2.0/24"}),
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		origTimeout := webhookEndpointsTimeout
+		webhookEndpointsTimeout = 2 * time.Second
+		t.Cleanup(func() {
+			webhookEndpointsTimeout = origTimeout
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		status, err := ApplyLoadBalancer(ctx, snapM, lbCfg, nil)
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err).To(MatchError(ContainSubstring("failed to wait for MetalLB webhook service endpoints")))
-		g.Expect(status.Enabled).To(BeFalse())
+		type result struct {
+			status types.FeatureStatus
+			err    error
+		}
+		resCh := make(chan result, 1)
+		go func() {
+			status, err := ApplyLoadBalancer(ctx, snapM, lbCfg, nil)
+			resCh <- result{status: status, err: err}
+		}()
 
-		// ChartMetalLB was applied, but ChartMetalLBLoadBalancer was NOT applied.
-		g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
-		g.Expect(helmM.ApplyCalledWith[0].Chart).To(Equal(ChartMetalLB))
+		var res result
+		g.Eventually(resCh, 30*time.Second, 100*time.Millisecond).Should(Receive(&res))
+		g.Expect(errors.Is(res.err, context.DeadlineExceeded)).To(BeTrue())
+		g.Expect(res.err).To(MatchError(ContainSubstring("failed to wait for MetalLB webhook service endpoints")))
+		g.Expect(res.status.Enabled).To(BeFalse())
+		g.Expect(res.status.Message).To(ContainSubstring("failed to wait for MetalLB webhook service endpoints"))
+
+		calls := helmM.Calls()
+		g.Expect(calls).To(HaveLen(1))
+		g.Expect(calls[0].Chart).To(Equal(ChartMetalLB))
 	})
 }
 
