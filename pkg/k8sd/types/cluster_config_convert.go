@@ -74,6 +74,9 @@ func ClusterConfigFromBootstrapConfig(b apiv2.BootstrapConfig) (ClusterConfig, e
 		config.Kubelet.ControlPlaneTaints = utils.Pointer(b.ControlPlaneTaints)
 	}
 
+	// DNS: a service IP given at bootstrap is the user's choice, otherwise Kubernetes allocates one.
+	config.DNS.ServiceIPPinned = utils.Pointer(config.Kubelet.GetClusterDNS() != "")
+
 	return config, nil
 }
 

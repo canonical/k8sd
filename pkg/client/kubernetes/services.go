@@ -3,7 +3,10 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"slices"
 
+	"github.com/canonical/k8sd/pkg/utils"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -15,4 +18,22 @@ func (c *Client) GetServiceClusterIP(ctx context.Context, name, namespace string
 	}
 
 	return svc.Spec.ClusterIP, nil
+}
+
+// FindServiceByClusterIP returns the Service in any namespace that holds ip as one of its ClusterIPs.
+// FindServiceByClusterIP returns false if no Service holds ip.
+func (c *Client) FindServiceByClusterIP(ctx context.Context, ip string) (corev1.Service, bool, error) {
+	services, err := c.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return corev1.Service{}, false, fmt.Errorf("failed to list services: %w", err)
+	}
+	for i := range services.Items {
+		svc := &services.Items[i]
+		if utils.EqualIP(svc.Spec.ClusterIP, ip) || slices.ContainsFunc(svc.Spec.ClusterIPs, func(clusterIP string) bool {
+			return utils.EqualIP(clusterIP, ip)
+		}) {
+			return *svc, true, nil
+		}
+	}
+	return corev1.Service{}, false, nil
 }

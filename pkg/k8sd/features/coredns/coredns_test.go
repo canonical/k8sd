@@ -192,6 +192,73 @@ func TestEnabled(t *testing.T) {
 	})
 }
 
+func TestEnabledServiceIPTaken(t *testing.T) {
+	const storedIP, newIP = "10.152.183.10", "10.152.183.20"
+	service := func(namespace, name, ip string) *corev1.Service {
+		return &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+			Spec:       corev1.ServiceSpec{ClusterIP: ip, ClusterIPs: []string{ip}},
+		}
+	}
+	apply := func(pinned *bool, services ...*corev1.Service) (*helmmock.Mock, types.FeatureStatus, string, error) {
+		objects := make([]runtime.Object, 0, len(services))
+		for _, svc := range services {
+			objects = append(objects, svc)
+		}
+		helmM := &helmmock.Mock{}
+		snapM := &snapmock.Snap{
+			Mock: snapmock.Mock{
+				HelmClient:       helmM,
+				KubernetesClient: &kubernetes.Client{Interface: fake.NewSimpleClientset(objects...)},
+			},
+		}
+		dns := types.DNS{Enabled: ptr.To(true), ServiceIPPinned: pinned}
+		kubelet := types.Kubelet{ClusterDNS: ptr.To(storedIP)}
+		status, ip, err := coredns.ApplyDNS(context.Background(), snapM, dns, kubelet, nil)
+		return helmM, status, ip, err
+	}
+
+	t.Run("OwnedByCoreDNS", func(t *testing.T) {
+		g := NewWithT(t)
+
+		helmM, status, ip, err := apply(ptr.To(false), service("kube-system", "coredns", storedIP))
+
+		g.Expect(err).To(Not(HaveOccurred()))
+		g.Expect(ip).To(Equal(storedIP))
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+		g.Expect(helmM.ApplyCalledWith[0].Values["service"]).To(HaveKeyWithValue("clusterIP", storedIP))
+	})
+
+	t.Run("AutoAssigned", func(t *testing.T) {
+		g := NewWithT(t)
+
+		// The fake helm client creates nothing, so the coredns Service stands for the one helm creates.
+		helmM, status, ip, err := apply(ptr.To(false), service("default", "other", storedIP), service("kube-system", "coredns", newIP))
+
+		g.Expect(err).To(Not(HaveOccurred()))
+		g.Expect(ip).To(Equal(newIP))
+		g.Expect(status.Enabled).To(BeTrue())
+		g.Expect(status.Message).To(Equal("enabled at " + newIP))
+		g.Expect(helmM.ApplyCalledWith).To(HaveLen(1))
+		g.Expect(helmM.ApplyCalledWith[0].Values["service"]).To(HaveKeyWithValue("clusterIP", ""))
+	})
+
+	for name, pinned := range map[string]*bool{"Pinned": ptr.To(true), "PinUnknown": nil} {
+		t.Run(name, func(t *testing.T) {
+			g := NewWithT(t)
+
+			helmM, status, ip, err := apply(pinned, service("default", "other", storedIP))
+
+			g.Expect(err).To(MatchError(ContainSubstring("DNS service IP " + storedIP + " is already allocated to Service default/other")))
+			g.Expect(ip).To(BeEmpty())
+			g.Expect(status.Enabled).To(BeFalse())
+			g.Expect(status.Message).To(ContainSubstring("already allocated to Service default/other"))
+			g.Expect(helmM.ApplyCalledWith).To(BeEmpty())
+		})
+	}
+}
+
 func validateValues(g Gomega, values map[string]any, dns types.DNS, kubelet types.Kubelet) {
 	g.Expect(values).To(HaveKeyWithValue("rollingUpdate", map[string]any{
 		"maxSurge":       1,
